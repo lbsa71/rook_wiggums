@@ -1,0 +1,254 @@
+import * as http from "node:http";
+import { LoopOrchestrator } from "./LoopOrchestrator";
+import { SubstrateFileReader } from "../substrate/io/FileReader";
+import { SubstrateFileType } from "../substrate/types";
+import { Ego } from "../agents/roles/Ego";
+import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
+import { HealthCheck } from "../evaluation/HealthCheck";
+
+export interface LoopHttpDependencies {
+  reader: SubstrateFileReader;
+  ego: Ego;
+}
+
+export class LoopHttpServer {
+  private server: http.Server;
+  private orchestrator: LoopOrchestrator;
+  private reader: SubstrateFileReader | null = null;
+  private ego: Ego | null = null;
+  private reportStore: GovernanceReportStore | null = null;
+  private healthCheck: HealthCheck | null = null;
+
+  constructor(orchestrator: LoopOrchestrator) {
+    this.orchestrator = orchestrator;
+    this.server = http.createServer((req, res) => this.handleRequest(req, res));
+  }
+
+  setOrchestrator(orchestrator: LoopOrchestrator): void {
+    this.orchestrator = orchestrator;
+  }
+
+  setDependencies(deps: LoopHttpDependencies): void {
+    this.reader = deps.reader;
+    this.ego = deps.ego;
+  }
+
+  setReportStore(store: GovernanceReportStore): void {
+    this.reportStore = store;
+  }
+
+  setHealthCheck(check: HealthCheck): void {
+    this.healthCheck = check;
+  }
+
+  listen(port: number): Promise<number> {
+    return new Promise((resolve) => {
+      this.server.listen(port, "127.0.0.1", () => {
+        const addr = this.server.address();
+        const boundPort = typeof addr === "object" && addr ? addr.port : port;
+        resolve(boundPort);
+      });
+    });
+  }
+
+  close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  getServer(): http.Server {
+    return this.server;
+  }
+
+  private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = req.url ?? "";
+    const method = req.method ?? "";
+
+    // Match parameterized routes
+    const substrateMatch = url.match(/^\/api\/substrate\/([A-Z]+)$/);
+    if (method === "GET" && substrateMatch) {
+      this.handleSubstrateRead(res, substrateMatch[1]);
+      return;
+    }
+
+    const route = `${method} ${url}`;
+
+    switch (route) {
+      case "GET /api/loop/status":
+        this.json(res, 200, {
+          state: this.orchestrator.getState(),
+          metrics: this.orchestrator.getMetrics(),
+        });
+        break;
+
+      case "GET /api/loop/metrics":
+        this.json(res, 200, this.orchestrator.getMetrics());
+        break;
+
+      case "POST /api/loop/start":
+        this.tryStateTransition(res, () => {
+          this.orchestrator.start();
+          // Fire-and-forget: start the loop without awaiting
+          this.orchestrator.runLoop().catch(() => {});
+        });
+        break;
+
+      case "POST /api/loop/pause":
+        this.tryStateTransition(res, () => this.orchestrator.pause());
+        break;
+
+      case "POST /api/loop/resume":
+        this.tryStateTransition(res, () => this.orchestrator.resume());
+        break;
+
+      case "POST /api/loop/stop":
+        this.tryStateTransition(res, () => this.orchestrator.stop());
+        break;
+
+      case "POST /api/conversation/send":
+        this.handleConversationSend(req, res);
+        break;
+
+      case "POST /api/loop/audit":
+        this.orchestrator.requestAudit();
+        this.json(res, 200, { success: true });
+        break;
+
+      case "GET /api/reports/latest":
+        this.handleReportsLatest(res);
+        break;
+
+      case "GET /api/reports":
+        this.handleReportsList(res);
+        break;
+
+      case "GET /api/health":
+        this.handleHealthCheck(res);
+        break;
+
+      default:
+        this.json(res, 404, { error: "Not found" });
+    }
+  }
+
+  private handleSubstrateRead(res: http.ServerResponse, fileTypeStr: string): void {
+    if (!this.reader) {
+      this.json(res, 500, { error: "Reader not configured" });
+      return;
+    }
+
+    const fileType = SubstrateFileType[fileTypeStr as keyof typeof SubstrateFileType];
+    if (!fileType) {
+      this.json(res, 400, { error: `Invalid file type: ${fileTypeStr}` });
+      return;
+    }
+
+    this.reader.read(fileType).then(
+      (content) => this.json(res, 200, content),
+      (err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        if (message.includes("ENOENT") || message.includes("no such file")) {
+          this.json(res, 404, { error: `File not found: ${fileTypeStr}` });
+        } else {
+          this.json(res, 500, { error: message });
+        }
+      }
+    );
+  }
+
+  private handleConversationSend(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (!this.ego) {
+      this.json(res, 500, { error: "Ego not configured" });
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    req.on("end", () => {
+      let parsed: { message?: string };
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        this.json(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+
+      if (!parsed.message || typeof parsed.message !== "string") {
+        this.json(res, 400, { error: "Missing required field: message" });
+        return;
+      }
+
+      this.ego!.appendConversation(parsed.message).then(
+        () => this.json(res, 200, { success: true }),
+        (err) => {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          this.json(res, 500, { error: message });
+        }
+      );
+    });
+  }
+
+  private handleReportsLatest(res: http.ServerResponse): void {
+    if (!this.reportStore) {
+      this.json(res, 500, { error: "Report store not configured" });
+      return;
+    }
+    this.reportStore.latest().then(
+      (report) => {
+        if (report) {
+          this.json(res, 200, report);
+        } else {
+          this.json(res, 404, { error: "No reports found" });
+        }
+      },
+      (err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        this.json(res, 500, { error: message });
+      }
+    );
+  }
+
+  private handleReportsList(res: http.ServerResponse): void {
+    if (!this.reportStore) {
+      this.json(res, 500, { error: "Report store not configured" });
+      return;
+    }
+    this.reportStore.list().then(
+      (reports) => this.json(res, 200, reports),
+      (err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        this.json(res, 500, { error: message });
+      }
+    );
+  }
+
+  private handleHealthCheck(res: http.ServerResponse): void {
+    if (!this.healthCheck) {
+      this.json(res, 500, { error: "Health check not configured" });
+      return;
+    }
+    this.healthCheck.run().then(
+      (result) => this.json(res, 200, result),
+      (err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        this.json(res, 500, { error: message });
+      }
+    );
+  }
+
+  private tryStateTransition(res: http.ServerResponse, fn: () => void): void {
+    try {
+      fn();
+      this.json(res, 200, { state: this.orchestrator.getState() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      this.json(res, 409, { error: message });
+    }
+  }
+
+  private json(res: http.ServerResponse, status: number, body: unknown): void {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  }
+}

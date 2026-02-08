@@ -1,0 +1,34 @@
+import { SubstrateFileType } from "../types";
+import {
+  PLAN_TEMPLATE,
+  MEMORY_TEMPLATE,
+  HABITS_TEMPLATE,
+  SKILLS_TEMPLATE,
+  VALUES_TEMPLATE,
+  ID_TEMPLATE,
+  SECURITY_TEMPLATE,
+  CHARTER_TEMPLATE,
+  SUPEREGO_TEMPLATE,
+  CLAUDE_TEMPLATE,
+  PROGRESS_TEMPLATE,
+  CONVERSATION_TEMPLATE,
+} from "./templates";
+
+const TEMPLATE_MAP: Record<SubstrateFileType, string> = {
+  [SubstrateFileType.PLAN]: PLAN_TEMPLATE,
+  [SubstrateFileType.MEMORY]: MEMORY_TEMPLATE,
+  [SubstrateFileType.HABITS]: HABITS_TEMPLATE,
+  [SubstrateFileType.SKILLS]: SKILLS_TEMPLATE,
+  [SubstrateFileType.VALUES]: VALUES_TEMPLATE,
+  [SubstrateFileType.ID]: ID_TEMPLATE,
+  [SubstrateFileType.SECURITY]: SECURITY_TEMPLATE,
+  [SubstrateFileType.CHARTER]: CHARTER_TEMPLATE,
+  [SubstrateFileType.SUPEREGO]: SUPEREGO_TEMPLATE,
+  [SubstrateFileType.CLAUDE]: CLAUDE_TEMPLATE,
+  [SubstrateFileType.PROGRESS]: PROGRESS_TEMPLATE,
+  [SubstrateFileType.CONVERSATION]: CONVERSATION_TEMPLATE,
+};
+
+export function getTemplate(fileType: SubstrateFileType): string {
+  return TEMPLATE_MAP[fileType];
+}

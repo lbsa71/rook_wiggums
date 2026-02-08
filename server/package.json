@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.2.2",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^10.0.0",
@@ -20,5 +21,8 @@
     "ts-jest": "^29.4.6",
     "tsx": "^4.21.0",
     "typescript": "~5.7"
+  },
+  "dependencies": {
+    "ws": "^8.19.0"
   }
 }
