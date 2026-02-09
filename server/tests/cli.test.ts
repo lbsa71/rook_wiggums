@@ -62,4 +62,36 @@ describe("parseArgs", () => {
     expect(result.configPath).toBe("/my/config.json");
     expect(result.model).toBe("haiku");
   });
+
+  it("defaults outputDir to undefined", () => {
+    const result = parseArgs(["node", "cli.ts", "backup"]);
+
+    expect(result.outputDir).toBeUndefined();
+  });
+
+  it("parses --output flag for backup command", () => {
+    const result = parseArgs(["node", "cli.ts", "backup", "--output", "/my/backups"]);
+
+    expect(result.command).toBe("backup");
+    expect(result.outputDir).toBe("/my/backups");
+  });
+
+  it("parses restore command", () => {
+    const result = parseArgs(["node", "cli.ts", "restore"]);
+
+    expect(result.command).toBe("restore");
+  });
+
+  it("parses restore command with --input flag", () => {
+    const result = parseArgs(["node", "cli.ts", "restore", "--input", "/backups/my-backup.tar.gz"]);
+
+    expect(result.command).toBe("restore");
+    expect(result.inputPath).toBe("/backups/my-backup.tar.gz");
+  });
+
+  it("defaults inputPath to undefined", () => {
+    const result = parseArgs(["node", "cli.ts", "restore"]);
+
+    expect(result.inputPath).toBeUndefined();
+  });
 });

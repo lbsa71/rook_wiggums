@@ -1,32 +1,15 @@
-import { buildBackupArgs, createBackup } from "../src/backup";
+import { createBackup, restoreBackup, findLatestBackup } from "../src/backup";
 import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSystem";
 import { InMemoryProcessRunner } from "../src/agents/claude/InMemoryProcessRunner";
 import { FixedClock } from "../src/substrate/abstractions/FixedClock";
 
-describe("buildBackupArgs", () => {
-  it("includes config and data dirs in tar args", () => {
-    const args = buildBackupArgs({
-      configDir: "/home/user/.config/rook-wiggums",
-      dataDir: "/home/user/.local/share/rook-wiggums",
-      outputPath: "/tmp/backup.tar.gz",
-    });
-
-    expect(args.command).toBe("tar");
-    expect(args.args).toContain("-czf");
-    expect(args.args).toContain("/tmp/backup.tar.gz");
-    expect(args.args).toContain("/home/user/.config/rook-wiggums");
-    expect(args.args).toContain("/home/user/.local/share/rook-wiggums");
-  });
-});
-
 describe("createBackup", () => {
-  it("runs tar and returns the output path", async () => {
+  it("runs tar with relative paths from substrate dir", async () => {
     const fs = new InMemoryFileSystem();
     const runner = new InMemoryProcessRunner();
     const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
 
-    await fs.mkdir("/config", { recursive: true });
-    await fs.mkdir("/data", { recursive: true });
+    await fs.mkdir("/data/substrate", { recursive: true });
 
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
 
@@ -34,8 +17,7 @@ describe("createBackup", () => {
       fs,
       runner,
       clock,
-      configDir: "/config",
-      dataDir: "/data",
+      substratePath: "/data/substrate",
       outputDir: "/backups",
     });
 
@@ -46,8 +28,10 @@ describe("createBackup", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("tar");
     expect(calls[0].args).toContain("-czf");
-    expect(calls[0].args).toContain("/config");
-    expect(calls[0].args).toContain("/data");
+    // Uses -C for relative paths (portable)
+    expect(calls[0].args).toContain("-C");
+    expect(calls[0].args).toContain("/data/substrate");
+    expect(calls[0].args).toContain(".");
   });
 
   it("creates output directory if it does not exist", async () => {
@@ -55,8 +39,7 @@ describe("createBackup", () => {
     const runner = new InMemoryProcessRunner();
     const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
 
-    await fs.mkdir("/config", { recursive: true });
-    await fs.mkdir("/data", { recursive: true });
+    await fs.mkdir("/data/substrate", { recursive: true });
 
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
 
@@ -64,8 +47,7 @@ describe("createBackup", () => {
       fs,
       runner,
       clock,
-      configDir: "/config",
-      dataDir: "/data",
+      substratePath: "/data/substrate",
       outputDir: "/backups",
     });
 
@@ -77,8 +59,7 @@ describe("createBackup", () => {
     const runner = new InMemoryProcessRunner();
     const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
 
-    await fs.mkdir("/config", { recursive: true });
-    await fs.mkdir("/data", { recursive: true });
+    await fs.mkdir("/data/substrate", { recursive: true });
 
     runner.enqueue({ stdout: "", stderr: "tar: error", exitCode: 1 });
 
@@ -86,8 +67,7 @@ describe("createBackup", () => {
       fs,
       runner,
       clock,
-      configDir: "/config",
-      dataDir: "/data",
+      substratePath: "/data/substrate",
       outputDir: "/backups",
     });
 
@@ -100,8 +80,7 @@ describe("createBackup", () => {
     const runner = new InMemoryProcessRunner();
     const clock = new FixedClock(new Date("2025-12-25T14:30:00.000Z"));
 
-    await fs.mkdir("/config", { recursive: true });
-    await fs.mkdir("/data", { recursive: true });
+    await fs.mkdir("/data/substrate", { recursive: true });
 
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
 
@@ -109,40 +88,14 @@ describe("createBackup", () => {
       fs,
       runner,
       clock,
-      configDir: "/config",
-      dataDir: "/data",
+      substratePath: "/data/substrate",
       outputDir: "/backups",
     });
 
     expect(result.outputPath).toContain("2025-12-25T");
   });
 
-  it("skips missing directories", async () => {
-    const fs = new InMemoryFileSystem();
-    const runner = new InMemoryProcessRunner();
-    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
-
-    // Only config exists, data dir missing
-    await fs.mkdir("/config", { recursive: true });
-
-    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
-
-    const result = await createBackup({
-      fs,
-      runner,
-      clock,
-      configDir: "/config",
-      dataDir: "/nonexistent",
-      outputDir: "/backups",
-    });
-
-    expect(result.success).toBe(true);
-    const calls = runner.getCalls();
-    expect(calls[0].args).toContain("/config");
-    expect(calls[0].args).not.toContain("/nonexistent");
-  });
-
-  it("returns failure when no directories exist", async () => {
+  it("returns failure when substrate directory does not exist", async () => {
     const fs = new InMemoryFileSystem();
     const runner = new InMemoryProcessRunner();
     const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
@@ -151,13 +104,163 @@ describe("createBackup", () => {
       fs,
       runner,
       clock,
-      configDir: "/nope1",
-      dataDir: "/nope2",
+      substratePath: "/nonexistent/substrate",
       outputDir: "/backups",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("No directories");
+    expect(result.error).toContain("Substrate directory not found");
     expect(runner.getCalls()).toHaveLength(0);
+  });
+});
+
+describe("restoreBackup", () => {
+  it("extracts archive to target substrate directory", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/backup.tar.gz", "fake-archive");
+
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+    const result = await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/target/substrate",
+      inputPath: "/backups/backup.tar.gz",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.restoredFrom).toBe("/backups/backup.tar.gz");
+
+    const calls = runner.getCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe("tar");
+    expect(calls[0].args).toContain("-xzf");
+    expect(calls[0].args).toContain("-C");
+    expect(calls[0].args).toContain("/target/substrate");
+  });
+
+  it("creates target substrate directory if missing", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/backup.tar.gz", "fake-archive");
+
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+    await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/new/substrate",
+      inputPath: "/backups/backup.tar.gz",
+    });
+
+    expect(await fs.exists("/new/substrate")).toBe(true);
+  });
+
+  it("returns failure when archive does not exist", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    const result = await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/target/substrate",
+      inputPath: "/missing/backup.tar.gz",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Backup file not found");
+  });
+
+  it("returns failure when no backup specified and none found", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    const result = await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/target/substrate",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No backup file specified");
+  });
+
+  it("returns failure when tar exits non-zero", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/backup.tar.gz", "fake-archive");
+
+    runner.enqueue({ stdout: "", stderr: "tar: corrupt archive", exitCode: 1 });
+
+    const result = await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/target/substrate",
+      inputPath: "/backups/backup.tar.gz",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("tar: corrupt archive");
+    expect(result.restoredFrom).toBe("/backups/backup.tar.gz");
+  });
+
+  it("auto-finds latest backup when no inputPath given", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/rook-wiggums-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
+    await fs.writeFile("/backups/rook-wiggums-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
+
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+    const result = await restoreBackup({
+      fs,
+      runner,
+      substratePath: "/target/substrate",
+      backupDir: "/backups",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.restoredFrom).toContain("2025-06-15");
+  });
+});
+
+describe("findLatestBackup", () => {
+  it("returns null when backup dir does not exist", async () => {
+    const fs = new InMemoryFileSystem();
+
+    const result = await findLatestBackup(fs, "/nonexistent");
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when no backup files exist", async () => {
+    const fs = new InMemoryFileSystem();
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/random.txt", "not a backup");
+
+    const result = await findLatestBackup(fs, "/backups");
+
+    expect(result).toBeNull();
+  });
+
+  it("returns the latest backup by sorted name", async () => {
+    const fs = new InMemoryFileSystem();
+    await fs.mkdir("/backups", { recursive: true });
+    await fs.writeFile("/backups/rook-wiggums-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
+    await fs.writeFile("/backups/rook-wiggums-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
+    await fs.writeFile("/backups/rook-wiggums-backup-2025-03-10T05-30-00.000Z.tar.gz", "mid");
+
+    const result = await findLatestBackup(fs, "/backups");
+
+    expect(result).toContain("2025-06-15");
   });
 });

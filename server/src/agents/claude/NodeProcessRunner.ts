@@ -5,7 +5,8 @@ import {
   ProcessRunOptions,
 } from "./IProcessRunner";
 
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes hard ceiling
+const DEFAULT_IDLE_TIMEOUT_MS = 120_000;    // 2 minutes without output
 
 export class NodeProcessRunner implements IProcessRunner {
   async run(
@@ -14,6 +15,7 @@ export class NodeProcessRunner implements IProcessRunner {
     options?: ProcessRunOptions
   ): Promise<ProcessResult> {
     const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
 
     return new Promise<ProcessResult>((resolve, reject) => {
       const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], cwd: options?.cwd });
@@ -21,28 +23,49 @@ export class NodeProcessRunner implements IProcessRunner {
       let stdout = "";
       let stderr = "";
 
+      const clearTimers = () => {
+        clearTimeout(hardTimer);
+        clearTimeout(idleTimer);
+      };
+
+      const resetIdleTimer = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          child.kill("SIGTERM");
+          reject(new Error(`Process idle for ${idleTimeoutMs}ms with no output`));
+        }, idleTimeoutMs);
+      };
+
       child.stdout.on("data", (data: Buffer) => {
         const chunk = data.toString();
         stdout += chunk;
         options?.onStdout?.(chunk);
+        resetIdleTimer();
       });
 
       child.stderr.on("data", (data: Buffer) => {
         stderr += data.toString();
+        resetIdleTimer();
       });
 
-      const timer = setTimeout(() => {
+      const hardTimer = setTimeout(() => {
+        clearTimers();
         child.kill("SIGTERM");
         reject(new Error(`Process timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
+      let idleTimer = setTimeout(() => {
+        child.kill("SIGTERM");
+        reject(new Error(`Process idle for ${idleTimeoutMs}ms with no output`));
+      }, idleTimeoutMs);
+
       child.on("close", (code) => {
-        clearTimeout(timer);
+        clearTimers();
         resolve({ stdout, stderr, exitCode: code ?? 1 });
       });
 
       child.on("error", (err) => {
-        clearTimeout(timer);
+        clearTimers();
         reject(err);
       });
     });

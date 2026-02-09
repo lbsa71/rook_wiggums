@@ -6,6 +6,7 @@ export interface RookConfig {
   substratePath: string;
   workingDirectory: string;
   sourceCodePath: string;
+  backupPath: string;
   port: number;
   model: string;
 }
@@ -27,6 +28,7 @@ export async function resolveConfig(
     substratePath: path.join(appPaths.data, "substrate"),
     workingDirectory: appPaths.data,
     sourceCodePath: options.cwd ?? appPaths.data,
+    backupPath: path.join(path.dirname(appPaths.data), "rook-wiggums-backups"),
     port: 3000,
     model: "sonnet",
   };
@@ -59,6 +61,7 @@ export async function resolveConfig(
     substratePath: fileConfig.substratePath ?? defaults.substratePath,
     workingDirectory: fileConfig.workingDirectory ?? defaults.workingDirectory,
     sourceCodePath: fileConfig.sourceCodePath ?? defaults.sourceCodePath,
+    backupPath: fileConfig.backupPath ?? defaults.backupPath,
     port: fileConfig.port ?? defaults.port,
     model: fileConfig.model ?? defaults.model,
   };

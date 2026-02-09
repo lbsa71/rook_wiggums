@@ -11,6 +11,7 @@
     "build": "tsc",
     "test": "jest",
     "backup": "tsx src/cli.ts backup",
+    "restore": "tsx src/cli.ts restore",
     "lint": "eslint src/ tests/"
   },
   "devDependencies": {
