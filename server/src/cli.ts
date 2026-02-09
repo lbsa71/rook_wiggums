@@ -6,26 +6,33 @@ import { resolveConfig } from "./config";
 import { initWorkspace } from "./init";
 import { startServer } from "./startup";
 import { createBackup, restoreBackup } from "./backup";
+import { transfer, resolveRemotePath } from "./transfer";
 
 export interface ParsedArgs {
-  command: "init" | "start" | "backup" | "restore";
+  command: "init" | "start" | "backup" | "restore" | "transfer";
   configPath?: string;
   model?: string;
   outputDir?: string;
   inputPath?: string;
+  source?: string;
+  dest?: string;
+  identity?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
-  let command: "init" | "start" | "backup" | "restore" = "start";
+  let command: "init" | "start" | "backup" | "restore" | "transfer" = "start";
   let configPath: string | undefined;
   let model: string | undefined;
   let outputDir: string | undefined;
   let inputPath: string | undefined;
+  let source: string | undefined;
+  let dest: string | undefined;
+  let identity: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "init" || arg === "start" || arg === "backup" || arg === "restore") {
+    if (arg === "init" || arg === "start" || arg === "backup" || arg === "restore" || arg === "transfer") {
       command = arg;
     } else if (arg === "--config" && i + 1 < args.length) {
       configPath = args[++i];
@@ -35,14 +42,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
       outputDir = args[++i];
     } else if (arg === "--input" && i + 1 < args.length) {
       inputPath = args[++i];
+    } else if (arg === "--source" && i + 1 < args.length) {
+      source = args[++i];
+    } else if (arg === "--dest" && i + 1 < args.length) {
+      dest = args[++i];
+    } else if ((arg === "-i" || arg === "--identity") && i + 1 < args.length) {
+      identity = args[++i];
     }
   }
 
-  return { command, configPath, model, outputDir, inputPath };
+  return { command, configPath, model, outputDir, inputPath, source, dest, identity };
 }
 
 async function main(): Promise<void> {
-  const { command, configPath, model, outputDir } = parseArgs(process.argv);
+  const { command, configPath, model, outputDir, source, dest, identity } = parseArgs(process.argv);
   const fs = new NodeFileSystem();
   const appPaths = getAppPaths();
 
@@ -87,6 +100,25 @@ async function main(): Promise<void> {
       console.log(`Restored from: ${result.restoredFrom}`);
     } else {
       console.error(`Restore failed: ${result.error}`);
+      process.exit(1);
+    }
+  } else if (command === "transfer") {
+    if (!dest) {
+      console.error("Usage: transfer --dest <user@host | path> [--source <path>] [-i <identity>]");
+      process.exit(1);
+    }
+    const resolvedSource = source ?? config.substratePath;
+    const resolvedDest = resolveRemotePath(dest);
+    const result = await transfer({
+      runner: new NodeProcessRunner(),
+      sourceSubstrate: resolvedSource,
+      destSubstrate: resolvedDest,
+      identity,
+    });
+    if (result.success) {
+      console.log(`Transfer complete: ${resolvedSource} → ${resolvedDest}`);
+    } else {
+      console.error(`Transfer failed: ${result.error}`);
       process.exit(1);
     }
   } else {

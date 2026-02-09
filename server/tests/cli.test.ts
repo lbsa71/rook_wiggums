@@ -94,4 +94,42 @@ describe("parseArgs", () => {
 
     expect(result.inputPath).toBeUndefined();
   });
+
+  it("parses transfer command with --source and --dest", () => {
+    const result = parseArgs(["node", "cli.ts", "transfer", "--source", "/space-a", "--dest", "/space-b"]);
+
+    expect(result.command).toBe("transfer");
+    expect(result.source).toBe("/space-a");
+    expect(result.dest).toBe("/space-b");
+  });
+
+  it("defaults source and dest to undefined", () => {
+    const result = parseArgs(["node", "cli.ts", "transfer"]);
+
+    expect(result.command).toBe("transfer");
+    expect(result.source).toBeUndefined();
+    expect(result.dest).toBeUndefined();
+  });
+
+  it("parses -i flag for SSH identity", () => {
+    const result = parseArgs([
+      "node", "cli.ts", "transfer",
+      "-i", "~/.ssh/google_compute_engine",
+      "--dest", "rook@34.63.182.98",
+    ]);
+
+    expect(result.command).toBe("transfer");
+    expect(result.identity).toBe("~/.ssh/google_compute_engine");
+    expect(result.dest).toBe("rook@34.63.182.98");
+  });
+
+  it("parses --identity as alias for -i", () => {
+    const result = parseArgs([
+      "node", "cli.ts", "transfer",
+      "--identity", "/keys/id_rsa",
+      "--dest", "rook@host",
+    ]);
+
+    expect(result.identity).toBe("/keys/id_rsa");
+  });
 });
