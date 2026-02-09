@@ -29,6 +29,9 @@ export class LoopOrchestrator {
 
   private auditOnNextCycle = false;
 
+  // Message injection — works in both cycle and tick mode
+  private launcher: { inject(message: string): void } | null = null;
+
   // Tick mode
   private tickPromptBuilder: TickPromptBuilder | null = null;
   private sdkSessionFactory: SdkSessionFactory | null = null;
@@ -88,6 +91,10 @@ export class LoopOrchestrator {
     }
     this.logger.debug("stop() called");
     this.transition(LoopState.STOPPED);
+  }
+
+  setLauncher(launcher: { inject(message: string): void }): void {
+    this.launcher = launcher;
   }
 
   nudge(): void {
@@ -351,12 +358,21 @@ export class LoopOrchestrator {
       data: { message },
     });
 
+    // Tick mode: forward to active session manager
     if (this.activeSessionManager?.isActive()) {
       this.activeSessionManager.inject(message);
-    } else {
-      this.logger.debug("injectMessage: no active session, queuing");
-      this.pendingMessages.push(message);
+      return;
     }
+
+    // Cycle mode: forward to launcher's active session (via streamInput)
+    if (this.launcher) {
+      this.launcher.inject(message);
+      return;
+    }
+
+    // No active session — queue for next tick
+    this.logger.debug("injectMessage: no active session or launcher, queuing");
+    this.pendingMessages.push(message);
   }
 
   private transition(to: LoopState): void {

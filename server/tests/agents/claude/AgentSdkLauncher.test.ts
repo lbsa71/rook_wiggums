@@ -1,6 +1,8 @@
 import { AgentSdkLauncher, SdkQueryFn, SdkMessage } from "../../../src/agents/claude/AgentSdkLauncher";
 import { FixedClock } from "../../../src/substrate/abstractions/FixedClock";
 import { ProcessLogEntry } from "../../../src/agents/claude/StreamJsonParser";
+import { SdkUserMessage } from "../../../src/session/ISdkSession";
+import { InMemoryLogger } from "../../../src/logging";
 
 function createMockQueryFn(messages: SdkMessage[]): SdkQueryFn & { getCalls(): Array<{ prompt: string; options?: Record<string, unknown> }> } {
   const calls: Array<{ prompt: string; options?: Record<string, unknown> }> = [];
@@ -236,5 +238,109 @@ describe("AgentSdkLauncher", () => {
     expect(result.rawOutput).toBe('{"done":true}');
     expect(entries.filter((e) => e.type === "text").length).toBe(2);
     expect(entries.filter((e) => e.type === "tool_use").length).toBe(1);
+  });
+
+  describe("inject()", () => {
+    function createStreamInputQueryFn(messages: SdkMessage[]): {
+      queryFn: SdkQueryFn;
+      streamInputCallCount: number;
+      getStreamInputMessages: () => SdkUserMessage[];
+    } {
+      const state = { callCount: 0, messages: [] as SdkUserMessage[] };
+
+      const queryFn: SdkQueryFn = (_params) => {
+        const stream = (async function* () {
+          // Yield messages with a microtask gap so inject() has a chance to fire
+          for (const msg of messages) {
+            await new Promise((r) => setTimeout(r, 5));
+            yield msg;
+          }
+        })();
+
+        return Object.assign(stream, {
+          streamInput: async (input: AsyncIterable<SdkUserMessage>) => {
+            state.callCount++;
+            for await (const msg of input) {
+              state.messages.push(msg);
+            }
+          },
+          close: () => {},
+        });
+      };
+
+      return {
+        queryFn,
+        get streamInputCallCount() { return state.callCount; },
+        getStreamInputMessages: () => [...state.messages],
+      };
+    }
+
+    it("forwards injected message to active session streamInput", async () => {
+      const messages: SdkMessage[] = [
+        { type: "assistant", message: { content: [{ type: "text", text: "working..." }] } },
+        { type: "result", subtype: "success", result: "done", total_cost_usd: 0.01, duration_ms: 100 },
+      ];
+      const { queryFn, getStreamInputMessages } = createStreamInputQueryFn(messages);
+      const logger = new InMemoryLogger();
+      const launcher = new AgentSdkLauncher(queryFn, clock, undefined, logger);
+
+      const launchPromise = launcher.launch(
+        { systemPrompt: "Go", message: "Start" },
+      );
+
+      // Give launch() time to create the session and start iterating
+      await new Promise((r) => setTimeout(r, 2));
+
+      launcher.inject("hello from user");
+
+      const result = await launchPromise;
+      expect(result.success).toBe(true);
+
+      // The message was forwarded via the channel to streamInput
+      expect(logger.getEntries().some((e) => e.includes("inject"))).toBe(true);
+      expect(getStreamInputMessages().some((m) => m.message.content === "hello from user")).toBe(true);
+    });
+
+    it("logs warning when inject called with no active session", () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const queryFn = createMockQueryFn(messages);
+      const logger = new InMemoryLogger();
+      const launcher = new AgentSdkLauncher(queryFn, clock, undefined, logger);
+
+      // No launch() called — no active session
+      launcher.inject("orphan message");
+
+      expect(logger.getEntries().some((e) => e.includes("no active session"))).toBe(true);
+    });
+
+    it("calls streamInput on the SDK stream if available", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const mock = createStreamInputQueryFn(messages);
+      const launcher = new AgentSdkLauncher(mock.queryFn, clock);
+
+      await launcher.launch({ systemPrompt: "Go", message: "Start" });
+
+      // streamInput was called when the session was created
+      expect(mock.streamInputCallCount).toBe(1);
+    });
+
+    it("cleans up message channel after launch completes", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const mock = createStreamInputQueryFn(messages);
+      const logger = new InMemoryLogger();
+      const launcher = new AgentSdkLauncher(mock.queryFn, clock, undefined, logger);
+
+      await launcher.launch({ systemPrompt: "Go", message: "Start" });
+
+      // After launch completes, inject should warn about no active session
+      launcher.inject("too late");
+      expect(logger.getEntries().some((e) => e.includes("no active session"))).toBe(true);
+    });
   });
 });

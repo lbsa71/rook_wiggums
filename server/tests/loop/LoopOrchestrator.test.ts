@@ -836,6 +836,28 @@ describe("LoopOrchestrator", () => {
     });
   });
 
+  describe("injectMessage with launcher", () => {
+    it("forwards to launcher.inject() when launcher is set", () => {
+      const injected: string[] = [];
+      orchestrator.setLauncher({ inject: (msg) => injected.push(msg) });
+
+      orchestrator.injectMessage("hello from user");
+
+      expect(injected).toEqual(["hello from user"]);
+    });
+
+    it("emits message_injected event", () => {
+      orchestrator.setLauncher({ inject: () => {} });
+
+      orchestrator.injectMessage("test");
+
+      const events = eventSink.getEvents();
+      const injectedEvent = events.find((e) => e.type === "message_injected");
+      expect(injectedEvent).toBeDefined();
+      expect(injectedEvent!.data.message).toBe("test");
+    });
+  });
+
   describe("tick mode", () => {
     const successResult: SdkResultSuccess = {
       type: "result",

@@ -99,6 +99,7 @@ export function createApplication(config: ApplicationConfig): Application {
   httpServer.setDependencies({ reader, ego });
   httpServer.setEventSink(wsServer, clock);
   httpServer.setHealthCheck(new HealthCheck(reader));
+  orchestrator.setLauncher(launcher);
   if (config.mode === "tick") {
     httpServer.setMode("tick");
   }

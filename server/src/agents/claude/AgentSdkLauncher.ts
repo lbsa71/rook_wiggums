@@ -7,6 +7,8 @@ import {
   LaunchOptions,
   ProcessLogEntry,
 } from "./ISessionLauncher";
+import { MessageChannel } from "../../session/MessageChannel";
+import { SdkUserMessage } from "../../session/ISdkSession";
 
 // Minimal SDK-compatible types so we don't leak transitive SDK dependencies
 export interface SdkContentBlock {
@@ -63,6 +65,7 @@ const noopLogger: ILogger = { debug() {} };
 export class AgentSdkLauncher implements ISessionLauncher {
   private readonly model: string;
   private readonly logger: ILogger;
+  private activeChannel: MessageChannel<SdkUserMessage> | null = null;
 
   constructor(
     private readonly queryFn: SdkQueryFn,
@@ -72,6 +75,21 @@ export class AgentSdkLauncher implements ISessionLauncher {
   ) {
     this.model = model ?? "sonnet";
     this.logger = logger ?? noopLogger;
+  }
+
+  inject(message: string): void {
+    if (!this.activeChannel) {
+      this.logger.debug("sdk-launch: inject called but no active session");
+      return;
+    }
+    this.logger.debug(`sdk-launch: inject message (${message.length} chars)`);
+    const userMessage: SdkUserMessage = {
+      type: "user",
+      message: { role: "user", content: message },
+      parent_tool_use_id: null,
+      session_id: "injected",
+    };
+    this.activeChannel.push(userMessage);
   }
 
   async launch(
@@ -102,6 +120,15 @@ export class AgentSdkLauncher implements ISessionLauncher {
     try {
       const stream = this.queryFn({ prompt: request.message, options: queryOptions });
 
+      // Wire message injection via streamInput if the SDK stream supports it
+      this.activeChannel = new MessageChannel<SdkUserMessage>();
+      const streamWithInput = stream as { streamInput?: (s: AsyncIterable<SdkUserMessage>) => Promise<void> };
+      if (typeof streamWithInput.streamInput === "function") {
+        streamWithInput.streamInput(this.activeChannel).catch((err) => {
+          this.logger.debug(`sdk-launch: streamInput error — ${err instanceof Error ? err.message : String(err)}`);
+        });
+      }
+
       for await (const msg of stream) {
         this.processMessage(msg, options?.onLogEntry, (text) => {
           accumulatedText += text;
@@ -122,6 +149,11 @@ export class AgentSdkLauncher implements ISessionLauncher {
       isError = true;
       errorMessage = err instanceof Error ? err.message : String(err);
       this.logger.debug(`sdk-launch: error — ${errorMessage}`);
+    } finally {
+      if (this.activeChannel && !this.activeChannel.isClosed()) {
+        this.activeChannel.close();
+      }
+      this.activeChannel = null;
     }
 
     const endTime = this.clock.now();
