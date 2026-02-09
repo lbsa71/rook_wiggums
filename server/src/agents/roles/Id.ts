@@ -48,10 +48,11 @@ export class Id {
 
   async generateDrives(onLogEntry?: (entry: ProcessLogEntry) => void): Promise<GoalCandidate[]> {
     try {
-      const systemPrompt = await this.promptBuilder.buildSystemPrompt(AgentRole.ID);
+      const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.ID);
+      const contextRefs = this.promptBuilder.getContextReferences(AgentRole.ID);
       const result = await this.sessionLauncher.launch({
         systemPrompt,
-        message: "Analyze the current state. Are we idle? What goals should we pursue?",
+        message: `${contextRefs}\n\nAnalyze the current state. Are we idle? What goals should we pursue?`,
       }, { onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) return [];

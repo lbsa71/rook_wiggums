@@ -21,6 +21,7 @@ export interface TaskResult {
   summary: string;
   progressEntry: string;
   skillUpdates: string | null;
+  memoryUpdates: string | null;
   proposals: SubconsciousProposal[];
 }
 
@@ -43,10 +44,11 @@ export class Subconscious {
 
   async execute(task: TaskAssignment, onLogEntry?: (entry: ProcessLogEntry) => void): Promise<TaskResult> {
     try {
-      const systemPrompt = await this.promptBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+      const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+      const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUBCONSCIOUS);
       const result = await this.sessionLauncher.launch({
         systemPrompt,
-        message: `Execute this task:\nID: ${task.taskId}\nDescription: ${task.description}`,
+        message: `${contextRefs}\n\nExecute this task:\nID: ${task.taskId}\nDescription: ${task.description}`,
       }, { onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
@@ -55,6 +57,7 @@ export class Subconscious {
           summary: `Task execution failed: ${result.error || "Claude session error"}`,
           progressEntry: "",
           skillUpdates: null,
+          memoryUpdates: null,
           proposals: [],
         };
       }
@@ -65,6 +68,7 @@ export class Subconscious {
         summary: parsed.summary ?? "",
         progressEntry: parsed.progressEntry ?? "",
         skillUpdates: parsed.skillUpdates ?? null,
+        memoryUpdates: parsed.memoryUpdates ?? null,
         proposals: parsed.proposals ?? [],
       };
     } catch (err) {
@@ -74,6 +78,7 @@ export class Subconscious {
         summary: `Task execution failed: ${msg}`,
         progressEntry: "",
         skillUpdates: null,
+        memoryUpdates: null,
         proposals: [],
       };
     }
@@ -99,5 +104,10 @@ export class Subconscious {
   async updateSkills(content: string): Promise<void> {
     this.checker.assertCanWrite(AgentRole.SUBCONSCIOUS, SubstrateFileType.SKILLS);
     await this.writer.write(SubstrateFileType.SKILLS, content);
+  }
+
+  async updateMemory(content: string): Promise<void> {
+    this.checker.assertCanWrite(AgentRole.SUBCONSCIOUS, SubstrateFileType.MEMORY);
+    await this.writer.write(SubstrateFileType.MEMORY, content);
   }
 }

@@ -39,9 +39,9 @@ describe("ROLE_PROMPTS", () => {
       expect(prompt).toMatch(/execute|task|work/i);
     });
 
-    it("explains substrate context is pre-loaded", () => {
+    it("explains substrate files are attached via @ references", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUBCONSCIOUS];
-      expect(prompt).toMatch(/SUBSTRATE CONTEXT/i);
+      expect(prompt).toMatch(/@ references/i);
     });
 
     it("instructs to write concrete progress entries", () => {

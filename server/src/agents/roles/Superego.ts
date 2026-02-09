@@ -43,10 +43,11 @@ export class Superego {
 
   async audit(onLogEntry?: (entry: ProcessLogEntry) => void): Promise<GovernanceReport> {
     try {
-      const systemPrompt = await this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
+      const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
+      const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUPEREGO);
       const result = await this.sessionLauncher.launch({
         systemPrompt,
-        message: "Perform a full audit of all substrate files. Report findings.",
+        message: `${contextRefs}\n\nPerform a full audit of all substrate files. Report findings.`,
       }, { onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
@@ -75,10 +76,11 @@ export class Superego {
 
   async evaluateProposals(proposals: Proposal[], onLogEntry?: (entry: ProcessLogEntry) => void): Promise<ProposalEvaluation[]> {
     try {
-      const systemPrompt = await this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
+      const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
+      const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUPEREGO);
       const result = await this.sessionLauncher.launch({
         systemPrompt,
-        message: `Evaluate these proposals:\n${JSON.stringify(proposals, null, 2)}`,
+        message: `${contextRefs}\n\nEvaluate these proposals:\n${JSON.stringify(proposals, null, 2)}`,
       }, { onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {

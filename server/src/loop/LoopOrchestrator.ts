@@ -161,6 +161,10 @@ export class LoopOrchestrator {
           await this.subconscious.updateSkills(taskResult.skillUpdates);
         }
 
+        if (taskResult.memoryUpdates) {
+          await this.subconscious.updateMemory(taskResult.memoryUpdates);
+        }
+
         if (taskResult.summary) {
           await this.subconscious.logConversation(taskResult.summary);
         }
