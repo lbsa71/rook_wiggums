@@ -1,7 +1,7 @@
 import { Id } from "../agents/roles/Id";
 import { Superego } from "../agents/roles/Superego";
 import { Ego } from "../agents/roles/Ego";
-import { ProcessLogEntry } from "../agents/claude/StreamJsonParser";
+import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { SubstrateFileType } from "../substrate/types";
 import { IClock } from "../substrate/abstractions/IClock";

@@ -1,6 +1,6 @@
 import { IClock } from "../substrate/abstractions/IClock";
 import { ILogger } from "../logging";
-import { ProcessLogEntry } from "../agents/claude/StreamJsonParser";
+import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
 import {
   SdkMessage,
   SdkAssistantMessage,

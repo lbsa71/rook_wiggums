@@ -1,4 +1,7 @@
-import { ProcessLogEntry } from "./StreamJsonParser";
+export interface ProcessLogEntry {
+  type: "thinking" | "text" | "tool_use" | "tool_result" | "status";
+  content: string;
+}
 
 export interface ClaudeSessionRequest {
   systemPrompt: string;
@@ -28,5 +31,3 @@ export interface ISessionLauncher {
     options?: LaunchOptions
   ): Promise<ClaudeSessionResult>;
 }
-
-export type { ProcessLogEntry };

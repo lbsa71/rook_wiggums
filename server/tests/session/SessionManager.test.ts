@@ -2,7 +2,7 @@ import { SessionManager, SessionConfig } from "../../src/session/SessionManager"
 import { InMemorySdkSession } from "../../src/session/InMemorySdkSession";
 import { SdkSessionFactory } from "../../src/session/ISdkSession";
 import { SdkAssistantMessage, SdkResultSuccess, SdkResultError, SdkSystemMessage } from "../../src/agents/claude/AgentSdkLauncher";
-import { ProcessLogEntry } from "../../src/agents/claude/StreamJsonParser";
+import { ProcessLogEntry } from "../../src/agents/claude/ISessionLauncher";
 import { FixedClock } from "../../src/substrate/abstractions/FixedClock";
 import { InMemoryLogger } from "../../src/logging";
 

@@ -1,6 +1,6 @@
 import { AgentSdkLauncher, SdkQueryFn, SdkMessage } from "../../../src/agents/claude/AgentSdkLauncher";
 import { FixedClock } from "../../../src/substrate/abstractions/FixedClock";
-import { ProcessLogEntry } from "../../../src/agents/claude/StreamJsonParser";
+import { ProcessLogEntry } from "../../../src/agents/claude/ISessionLauncher";
 import { SdkUserMessage } from "../../../src/session/ISdkSession";
 import { InMemoryLogger } from "../../../src/logging";
 

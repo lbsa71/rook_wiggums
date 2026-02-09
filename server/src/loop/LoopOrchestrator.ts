@@ -2,7 +2,7 @@ import { Ego } from "../agents/roles/Ego";
 import { Subconscious } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
 import { Id } from "../agents/roles/Id";
-import { ProcessLogEntry } from "../agents/claude/StreamJsonParser";
+import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { IClock } from "../substrate/abstractions/IClock";
 import { ILogger } from "../logging";
