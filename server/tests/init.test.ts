@@ -13,7 +13,11 @@ const TEST_PATHS: AppPaths = {
 const TEST_CONFIG: RookConfig = {
   substratePath: "/xdg/data/rook-wiggums/substrate",
   workingDirectory: "/xdg/data/rook-wiggums",
+  sourceCodePath: "/xdg/data/rook-wiggums",
+  backupPath: "/xdg/data/rook-wiggums-backups",
   port: 3000,
+  model: "sonnet",
+  mode: "cycle",
 };
 
 describe("initWorkspace", () => {

@@ -22,6 +22,7 @@ export class LoopHttpServer {
   private healthCheck: HealthCheck | null = null;
   private eventSink: ILoopEventSink | null = null;
   private clock: IClock | null = null;
+  private mode: "cycle" | "tick" = "cycle";
 
   constructor(orchestrator: LoopOrchestrator) {
     this.orchestrator = orchestrator;
@@ -48,6 +49,10 @@ export class LoopHttpServer {
   setEventSink(sink: ILoopEventSink, clock: IClock): void {
     this.eventSink = sink;
     this.clock = clock;
+  }
+
+  setMode(mode: "cycle" | "tick"): void {
+    this.mode = mode;
   }
 
   listen(port: number): Promise<number> {
@@ -99,7 +104,11 @@ export class LoopHttpServer {
         this.tryStateTransition(res, () => {
           this.orchestrator.start();
           // Fire-and-forget: start the loop without awaiting
-          this.orchestrator.runLoop().catch(() => {});
+          if (this.mode === "tick") {
+            this.orchestrator.runTickLoop().catch(() => {});
+          } else {
+            this.orchestrator.runLoop().catch(() => {});
+          }
         });
         break;
 
@@ -198,7 +207,8 @@ export class LoopHttpServer {
               data: { role: "USER", message: parsed.message },
             });
           }
-          // Wake the loop so Ego picks up the message on the next cycle
+          // Inject into live session (tick mode) and wake the loop (cycle mode)
+          this.orchestrator.injectMessage(parsed.message!);
           this.orchestrator.nudge();
           this.json(res, 200, { success: true });
         },

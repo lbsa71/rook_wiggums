@@ -54,6 +54,7 @@ export async function startServer(config: RookConfig): Promise<StartedServer> {
     sourceCodePath: config.sourceCodePath,
     model: config.model,
     httpPort: config.port,
+    mode: config.mode,
   });
 
   console.log(`Debug log: ${app.logPath}`);

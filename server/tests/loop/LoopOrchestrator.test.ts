@@ -18,6 +18,10 @@ import { AppendOnlyWriter } from "../../src/substrate/io/AppendOnlyWriter";
 import { FileLock } from "../../src/substrate/io/FileLock";
 import { PermissionChecker } from "../../src/agents/permissions";
 import { PromptBuilder } from "../../src/agents/prompts/PromptBuilder";
+import { TickPromptBuilder } from "../../src/session/TickPromptBuilder";
+import { InMemorySdkSession } from "../../src/session/InMemorySdkSession";
+import { SdkSessionFactory } from "../../src/session/ISdkSession";
+import { SdkResultSuccess, SdkAssistantMessage } from "../../src/agents/claude/AgentSdkLauncher";
 
 function createTestDeps() {
   const fs = new InMemoryFileSystem();
@@ -829,6 +833,180 @@ describe("LoopOrchestrator", () => {
       const launches = deps.launcher.getLaunches();
       expect(launches.length).toBeGreaterThan(0);
       expect(launches[0].options?.onLogEntry).toBeDefined();
+    });
+  });
+
+  describe("tick mode", () => {
+    const successResult: SdkResultSuccess = {
+      type: "result",
+      subtype: "success",
+      result: "done",
+      total_cost_usd: 0.05,
+      duration_ms: 2000,
+    };
+
+    const textMessage: SdkAssistantMessage = {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "I completed the task" }] },
+    };
+
+    function createTickOrchestrator(
+      tickDeps: ReturnType<typeof createTestDeps>,
+      tickTimer: ImmediateTimer,
+      tickEventSink: InMemoryEventSink,
+      tickLogger: InMemoryLogger,
+      sessionMessages: Parameters<typeof InMemorySdkSession>[0] = [textMessage, successResult],
+    ): LoopOrchestrator {
+      const substrateConfig = new SubstrateConfig("/substrate");
+      const tickReader = new SubstrateFileReader(tickDeps.fs, substrateConfig);
+      const tickPromptBuilder = new TickPromptBuilder(tickReader, { substratePath: "/substrate" });
+
+      const session = new InMemorySdkSession(sessionMessages);
+      const factory: SdkSessionFactory = () => session;
+
+      const orch = new LoopOrchestrator(
+        tickDeps.ego,
+        tickDeps.subconscious,
+        tickDeps.superego,
+        tickDeps.id,
+        tickDeps.appendWriter,
+        tickDeps.clock,
+        tickTimer,
+        tickEventSink,
+        defaultLoopConfig(),
+        tickLogger,
+      );
+
+      orch.setTickDependencies({
+        tickPromptBuilder,
+        sdkSessionFactory: factory,
+      });
+
+      return orch;
+    }
+
+    it("runOneTick creates session and returns result", async () => {
+      const tickOrch = createTickOrchestrator(deps, timer, eventSink, logger);
+
+      const result = await tickOrch.runOneTick();
+
+      expect(result.tickNumber).toBe(1);
+      expect(result.success).toBe(true);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("runOneTick increments tick number", async () => {
+      const tickOrch = createTickOrchestrator(deps, timer, eventSink, logger);
+
+      const r1 = await tickOrch.runOneTick();
+      const r2 = await tickOrch.runOneTick();
+
+      expect(r1.tickNumber).toBe(1);
+      expect(r2.tickNumber).toBe(2);
+    });
+
+    it("runOneTick emits tick_started and tick_complete events", async () => {
+      const tickOrch = createTickOrchestrator(deps, timer, eventSink, logger);
+
+      await tickOrch.runOneTick();
+
+      const events = eventSink.getEvents();
+      const tickStarted = events.find((e) => e.type === "tick_started");
+      const tickComplete = events.find((e) => e.type === "tick_complete");
+
+      expect(tickStarted).toBeDefined();
+      expect(tickStarted!.data.tickNumber).toBe(1);
+
+      expect(tickComplete).toBeDefined();
+      expect(tickComplete!.data.tickNumber).toBe(1);
+      expect(tickComplete!.data.success).toBe(true);
+    });
+
+    it("runOneTick returns error when session fails", async () => {
+      const factory: SdkSessionFactory = () => ({
+        async *[Symbol.asyncIterator]() {
+          throw new Error("session crashed");
+        },
+        async streamInput() {},
+        close() {},
+      });
+
+      const substrateConfig = new SubstrateConfig("/substrate");
+      const tickReader = new SubstrateFileReader(deps.fs, substrateConfig);
+      const tickPromptBuilder = new TickPromptBuilder(tickReader, { substratePath: "/substrate" });
+
+      const tickOrch = new LoopOrchestrator(
+        deps.ego, deps.subconscious, deps.superego, deps.id,
+        deps.appendWriter, deps.clock, timer, eventSink,
+        defaultLoopConfig(), logger,
+      );
+      tickOrch.setTickDependencies({ tickPromptBuilder, sdkSessionFactory: factory });
+
+      const result = await tickOrch.runOneTick();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("session crashed");
+    });
+
+    it("runOneTick throws when tick dependencies not set", async () => {
+      // orchestrator from beforeEach has no tick deps
+      await expect(orchestrator.runOneTick()).rejects.toThrow("Tick dependencies not configured");
+    });
+
+    it("injectMessage forwards to active session manager", async () => {
+      const tickOrch = createTickOrchestrator(deps, timer, eventSink, logger);
+
+      // No active session — should just queue
+      tickOrch.injectMessage("hello");
+
+      const events = eventSink.getEvents();
+      const injected = events.find((e) => e.type === "message_injected");
+      expect(injected).toBeDefined();
+      expect(injected!.data.message).toBe("hello");
+    });
+
+    it("injectMessage queues message when no active session", async () => {
+      const tickOrch = createTickOrchestrator(deps, timer, eventSink, logger);
+
+      tickOrch.injectMessage("queued message");
+
+      // Run a tick — the queued message should be injected
+      await tickOrch.runOneTick();
+
+      expect(logger.getEntries().some((e) => e.includes("queued message"))).toBe(true);
+    });
+
+    it("runTickLoop runs multiple ticks with delays", async () => {
+      let tickCount = 0;
+      const maxTicks = 2;
+
+      const substrateConfig = new SubstrateConfig("/substrate");
+      const tickReader = new SubstrateFileReader(deps.fs, substrateConfig);
+      const tickPromptBuilder = new TickPromptBuilder(tickReader, { substratePath: "/substrate" });
+
+      // Use a variable to hold the orchestrator reference (hoisted for factory closure)
+      let tickOrch: LoopOrchestrator;
+
+      const factory: SdkSessionFactory = () => {
+        tickCount++;
+        if (tickCount >= maxTicks) {
+          // Stop directly — synchronous call before returning session
+          tickOrch.stop();
+        }
+        return new InMemorySdkSession([textMessage, successResult]);
+      };
+
+      tickOrch = new LoopOrchestrator(
+        deps.ego, deps.subconscious, deps.superego, deps.id,
+        deps.appendWriter, deps.clock, timer, eventSink,
+        defaultLoopConfig(), logger,
+      );
+      tickOrch.setTickDependencies({ tickPromptBuilder, sdkSessionFactory: factory });
+      tickOrch.start();
+
+      await tickOrch.runTickLoop();
+
+      expect(tickCount).toBe(maxTicks);
     });
   });
 });

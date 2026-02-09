@@ -22,6 +22,8 @@ import { LoopHttpServer } from "./LoopHttpServer";
 import { LoopWebSocketServer } from "./LoopWebSocketServer";
 import { defaultLoopConfig } from "./types";
 import { HealthCheck } from "../evaluation/HealthCheck";
+import { TickPromptBuilder } from "../session/TickPromptBuilder";
+import { createSdkSessionFactory } from "../session/SdkSessionAdapter";
 
 export interface ApplicationConfig {
   substratePath: string;
@@ -32,6 +34,7 @@ export interface ApplicationConfig {
   cycleDelayMs?: number;
   superegoAuditInterval?: number;
   maxConsecutiveIdleCycles?: number;
+  mode?: "cycle" | "tick";
 }
 
 export interface Application {
@@ -39,6 +42,7 @@ export interface Application {
   httpServer: LoopHttpServer;
   wsServer: LoopWebSocketServer;
   logPath: string;
+  mode: "cycle" | "tick";
   start(port?: number): Promise<number>;
   stop(): Promise<void>;
 }
@@ -95,6 +99,21 @@ export function createApplication(config: ApplicationConfig): Application {
   httpServer.setDependencies({ reader, ego });
   httpServer.setEventSink(wsServer, clock);
   httpServer.setHealthCheck(new HealthCheck(reader));
+  if (config.mode === "tick") {
+    httpServer.setMode("tick");
+  }
+
+  // Tick mode wiring
+  if (config.mode === "tick") {
+    const tickPromptBuilder = new TickPromptBuilder(reader, {
+      substratePath: config.substratePath,
+      sourceCodePath: config.sourceCodePath,
+    });
+    const sdkSessionFactory = createSdkSessionFactory(sdkQuery as unknown as SdkQueryFn);
+    orchestrator.setTickDependencies({ tickPromptBuilder, sdkSessionFactory });
+  }
+
+  const mode = config.mode ?? "cycle";
 
   return {
     orchestrator,
@@ -110,5 +129,6 @@ export function createApplication(config: ApplicationConfig): Application {
       wsServer.close();
       await httpServer.close();
     },
+    mode,
   };
 }

@@ -52,8 +52,15 @@ export function createInitialMetrics(): LoopMetrics {
   };
 }
 
+export interface TickResult {
+  tickNumber: number;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
 export interface LoopEvent {
-  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output" | "conversation_message";
+  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output" | "conversation_message" | "tick_started" | "tick_complete" | "message_injected";
   timestamp: string;
   data: Record<string, unknown>;
 }

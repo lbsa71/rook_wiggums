@@ -13,9 +13,13 @@ import {
   LoopState,
   LoopConfig,
   CycleResult,
+  TickResult,
   LoopMetrics,
   createInitialMetrics,
 } from "./types";
+import { SessionManager, SessionConfig } from "../session/SessionManager";
+import { TickPromptBuilder } from "../session/TickPromptBuilder";
+import { SdkSessionFactory } from "../session/ISdkSession";
 
 export class LoopOrchestrator {
   private state: LoopState = LoopState.STOPPED;
@@ -24,6 +28,13 @@ export class LoopOrchestrator {
   private isProcessing = false;
 
   private auditOnNextCycle = false;
+
+  // Tick mode
+  private tickPromptBuilder: TickPromptBuilder | null = null;
+  private sdkSessionFactory: SdkSessionFactory | null = null;
+  private activeSessionManager: SessionManager | null = null;
+  private tickNumber = 0;
+  private pendingMessages: string[] = [];
 
   constructor(
     private readonly ego: Ego,
@@ -244,6 +255,108 @@ export class LoopOrchestrator {
       await this.timer.delay(this.config.cycleDelayMs);
     }
     this.logger.debug("runLoop() exited");
+  }
+
+  setTickDependencies(deps: {
+    tickPromptBuilder: TickPromptBuilder;
+    sdkSessionFactory: SdkSessionFactory;
+  }): void {
+    this.tickPromptBuilder = deps.tickPromptBuilder;
+    this.sdkSessionFactory = deps.sdkSessionFactory;
+  }
+
+  async runOneTick(): Promise<TickResult> {
+    if (!this.tickPromptBuilder || !this.sdkSessionFactory) {
+      throw new Error("Tick dependencies not configured");
+    }
+
+    this.tickNumber++;
+    this.logger.debug(`tick ${this.tickNumber}: starting`);
+
+    this.eventSink.emit({
+      type: "tick_started",
+      timestamp: this.clock.now().toISOString(),
+      data: { tickNumber: this.tickNumber },
+    });
+
+    const systemPrompt = await this.tickPromptBuilder.buildSystemPrompt();
+    const initialPrompt = await this.tickPromptBuilder.buildInitialPrompt();
+
+    const sessionConfig: SessionConfig = {
+      systemPrompt,
+      initialPrompt,
+    };
+
+    const sessionManager = new SessionManager(
+      this.sdkSessionFactory,
+      sessionConfig,
+      this.clock,
+      this.logger,
+      this.createLogCallback("TICK"),
+    );
+
+    this.activeSessionManager = sessionManager;
+
+    // Inject any queued messages
+    for (const msg of this.pendingMessages) {
+      this.logger.debug(`tick ${this.tickNumber}: injecting queued message (${msg.length} chars): ${msg}`);
+      sessionManager.inject(msg);
+    }
+    this.pendingMessages = [];
+
+    const result = await sessionManager.run();
+
+    this.activeSessionManager = null;
+
+    this.logger.debug(`tick ${this.tickNumber}: done — success=${result.success} duration=${result.durationMs}ms`);
+
+    const tickResult: TickResult = {
+      tickNumber: this.tickNumber,
+      success: result.success,
+      durationMs: result.durationMs,
+      error: result.error,
+    };
+
+    this.eventSink.emit({
+      type: "tick_complete",
+      timestamp: this.clock.now().toISOString(),
+      data: { tickNumber: this.tickNumber, success: result.success, durationMs: result.durationMs },
+    });
+
+    return tickResult;
+  }
+
+  async runTickLoop(): Promise<void> {
+    this.logger.debug("runTickLoop() entered");
+    while (this.state === LoopState.RUNNING) {
+      await this.runOneTick();
+
+      if (this.state !== LoopState.RUNNING) {
+        this.logger.debug(`runTickLoop: exiting — state is ${this.state}`);
+        break;
+      }
+
+      this.logger.debug(`runTickLoop: delaying ${this.config.cycleDelayMs}ms before next tick`);
+      await this.timer.delay(this.config.cycleDelayMs);
+    }
+    this.logger.debug("runTickLoop() exited");
+  }
+
+  injectMessage(message: string): void {
+    this.logger.debug(`injectMessage: "${message}"`);
+
+    this.eventSink.emit({
+      type: "message_injected",
+      timestamp: this.clock.now().toISOString(),
+      data: { message },
+    });
+
+    if (this.activeSessionManager?.isActive()) {
+      this.activeSessionManager.inject(message);
+    } else {
+      this.logger.debug("injectMessage: no active session, queuing");
+      this.pendingMessages.push(message);
+    }
   }
 
   private transition(to: LoopState): void {

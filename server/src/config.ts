@@ -9,6 +9,7 @@ export interface RookConfig {
   backupPath: string;
   port: number;
   model: string;
+  mode: "cycle" | "tick";
 }
 
 export interface ResolveConfigOptions {
@@ -31,6 +32,7 @@ export async function resolveConfig(
     backupPath: path.join(path.dirname(appPaths.data), "rook-wiggums-backups"),
     port: 3000,
     model: "sonnet",
+    mode: "cycle",
   };
 
   let fileConfig: Partial<RookConfig> = {};
@@ -64,6 +66,7 @@ export async function resolveConfig(
     backupPath: fileConfig.backupPath ?? defaults.backupPath,
     port: fileConfig.port ?? defaults.port,
     model: fileConfig.model ?? defaults.model,
+    mode: (fileConfig as Partial<RookConfig>).mode ?? defaults.mode,
   };
 
   // Env vars override everything
