@@ -58,7 +58,6 @@ describe("FileLogger", () => {
     logger.debug("timestamped");
 
     const content = fs.readFileSync(logPath, "utf-8");
-    // First line is the session header, second line is the entry
     const lines = content.trim().split("\n");
     const entryLine = lines.find(l => l.includes("timestamped"));
     expect(entryLine).toMatch(/^\[.+T.+Z\] timestamped$/);
@@ -87,12 +86,12 @@ describe("FileLogger", () => {
     expect(fs.existsSync(logPath)).toBe(true);
   });
 
-  it("writes session header with log path as first line", () => {
+  it("writes session header as first line", () => {
     void new FileLogger(logPath);
 
     const content = fs.readFileSync(logPath, "utf-8");
     const firstLine = content.split("\n")[0];
-    expect(firstLine).toContain("Session started");
+    expect(firstLine).toContain("=== Session started ===");
     expect(firstLine).toContain(logPath);
   });
 
@@ -102,57 +101,80 @@ describe("FileLogger", () => {
     expect(logger.getFilePath()).toBe(logPath);
   });
 
-  describe("log rotation", () => {
-    it("rotates existing log file on construction", () => {
-      // Write a "previous session" log
+  describe("append behavior", () => {
+    it("appends to existing log instead of replacing it", () => {
       fs.writeFileSync(logPath, "old session data\n");
 
-      // Creating a new FileLogger should rotate the old file
       void new FileLogger(logPath);
 
-      // Old file should be renamed — check that a rotated file exists
-      const files = fs.readdirSync(tmpDir);
-      const rotated = files.filter(f => f.startsWith("debug.") && f !== "debug.log");
-      expect(rotated).toHaveLength(1);
-      expect(rotated[0]).toMatch(/^debug\.\d{4}-\d{2}-\d{2}T.+\.log$/);
-
-      // Rotated file should contain old data
-      const rotatedContent = fs.readFileSync(path.join(tmpDir, rotated[0]), "utf-8");
-      expect(rotatedContent).toBe("old session data\n");
-
-      // New debug.log should have fresh session header
-      const newContent = fs.readFileSync(logPath, "utf-8");
-      expect(newContent).toContain("Session started");
-      expect(newContent).not.toContain("old session data");
+      const content = fs.readFileSync(logPath, "utf-8");
+      // Old data preserved, session header appended
+      expect(content).toContain("old session data");
+      expect(content).toContain("=== Session started ===");
     });
 
-    it("does not rotate when no previous log exists", () => {
+    it("multiple sessions accumulate in one file", () => {
+      const logger1 = new FileLogger(logPath);
+      logger1.debug("session 1 work");
+
+      const logger2 = new FileLogger(logPath);
+      logger2.debug("session 2 work");
+
+      const content = fs.readFileSync(logPath, "utf-8");
+      expect(content).toContain("session 1 work");
+      expect(content).toContain("session 2 work");
+
+      // Two session headers
+      const sessionHeaders = content.split("\n").filter(l => l.includes("=== Session started ==="));
+      expect(sessionHeaders).toHaveLength(2);
+    });
+
+    it("no rotated files when under size limit", () => {
+      fs.writeFileSync(logPath, "small data\n");
+
       void new FileLogger(logPath);
 
       const files = fs.readdirSync(tmpDir);
       const rotated = files.filter(f => f.startsWith("debug.") && f !== "debug.log");
       expect(rotated).toHaveLength(0);
     });
+  });
 
-    it("preserves multiple rotated files across sessions", () => {
-      // Session 1
-      fs.writeFileSync(logPath, "session 1\n");
+  describe("size-based rotation", () => {
+    it("rotates when file exceeds size threshold", () => {
+      // Write data exceeding the threshold
+      fs.writeFileSync(logPath, "x".repeat(200));
 
-      // Session 2 — rotates session 1
-      void new FileLogger(logPath);
-      // Manually write some content and close by writing directly
-      fs.writeFileSync(logPath, "session 2\n");
-
-      // Wait 1ms so timestamp differs
-      const start = Date.now();
-      while (Date.now() - start < 2) { /* busy wait */ }
-
-      // Session 3 — rotates session 2
-      void new FileLogger(logPath);
+      // Use a small threshold so it triggers
+      void new FileLogger(logPath, 100);
 
       const files = fs.readdirSync(tmpDir);
       const rotated = files.filter(f => f.startsWith("debug.") && f !== "debug.log");
-      expect(rotated).toHaveLength(2);
+      expect(rotated).toHaveLength(1);
+      expect(rotated[0]).toMatch(/^debug\.\d{4}-\d{2}-\d{2}T.+\.log$/);
+
+      // Rotated file has old data
+      const rotatedContent = fs.readFileSync(path.join(tmpDir, rotated[0]), "utf-8");
+      expect(rotatedContent).toBe("x".repeat(200));
+
+      // New debug.log starts fresh with session header
+      const newContent = fs.readFileSync(logPath, "utf-8");
+      expect(newContent).toContain("=== Session started ===");
+      expect(newContent).not.toContain("xxx");
+    });
+
+    it("does not rotate when file is under threshold", () => {
+      fs.writeFileSync(logPath, "small\n");
+
+      void new FileLogger(logPath, 1000);
+
+      const files = fs.readdirSync(tmpDir);
+      const rotated = files.filter(f => f.startsWith("debug.") && f !== "debug.log");
+      expect(rotated).toHaveLength(0);
+
+      const content = fs.readFileSync(logPath, "utf-8");
+      expect(content).toContain("small");
+      expect(content).toContain("=== Session started ===");
     });
   });
 });

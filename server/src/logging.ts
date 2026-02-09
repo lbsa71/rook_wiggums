@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, renameSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, renameSync, statSync } from "fs";
 import * as path from "path";
 
 export interface ILogger {
@@ -17,13 +17,15 @@ export class InMemoryLogger implements ILogger {
   }
 }
 
+const MAX_LOG_SIZE_BYTES = 500 * 1024; // 500 KB
+
 export class FileLogger implements ILogger {
   private readonly resolvedPath: string;
 
-  constructor(filePath: string) {
+  constructor(filePath: string, maxSizeBytes?: number) {
     this.resolvedPath = filePath;
-    this.rotate();
-    this.writeHeader();
+    this.rotateIfNeeded(maxSizeBytes ?? MAX_LOG_SIZE_BYTES);
+    this.writeSessionHeader();
   }
 
   debug(message: string): void {
@@ -35,8 +37,13 @@ export class FileLogger implements ILogger {
     return this.resolvedPath;
   }
 
-  private rotate(): void {
+  private rotateIfNeeded(maxSizeBytes: number): void {
     if (!existsSync(this.resolvedPath)) {
+      return;
+    }
+
+    const stats = statSync(this.resolvedPath);
+    if (stats.size < maxSizeBytes) {
       return;
     }
 
@@ -47,8 +54,9 @@ export class FileLogger implements ILogger {
     renameSync(this.resolvedPath, rotatedPath);
   }
 
-  private writeHeader(): void {
+  private writeSessionHeader(): void {
     const timestamp = new Date().toISOString();
-    writeFileSync(this.resolvedPath, `[${timestamp}] Session started — log: ${this.resolvedPath}\n`);
+    const separator = existsSync(this.resolvedPath) ? "\n" : "";
+    appendFileSync(this.resolvedPath, `${separator}[${timestamp}] === Session started === log: ${this.resolvedPath}\n`);
   }
 }
