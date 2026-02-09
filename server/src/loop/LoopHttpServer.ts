@@ -207,9 +207,17 @@ export class LoopHttpServer {
               data: { role: "USER", message: parsed.message },
             });
           }
-          // Inject into live session (tick mode) and wake the loop (cycle mode)
-          this.orchestrator.injectMessage(parsed.message!);
-          this.orchestrator.nudge();
+          // Fire-and-forget: launch a separate Ego session to respond
+          this.orchestrator.handleUserMessage(parsed.message!).catch((err) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (this.eventSink && this.clock) {
+              this.eventSink.emit({
+                type: "conversation_response",
+                timestamp: this.clock.now().toISOString(),
+                data: { error: errMsg },
+              });
+            }
+          });
           this.json(res, 200, { success: true });
         },
         (err) => {

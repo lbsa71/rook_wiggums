@@ -89,7 +89,8 @@ export class LoopOrchestrator {
     if (this.state === LoopState.STOPPED) {
       return;
     }
-    this.logger.debug("stop() called");
+    this.logger.debug("stop() called — injecting persist message");
+    this.injectMessage("Persist all changes and exit. Write any pending updates to PLAN.md, PROGRESS.md, and MEMORY.md, then finish.");
     this.transition(LoopState.STOPPED);
   }
 
@@ -347,6 +348,37 @@ export class LoopOrchestrator {
       await this.timer.delay(this.config.cycleDelayMs);
     }
     this.logger.debug("runTickLoop() exited");
+  }
+
+  async handleUserMessage(message: string): Promise<void> {
+    this.logger.debug(`handleUserMessage: "${message}"`);
+
+    try {
+      const response = await this.ego.respondToMessage(message, this.createLogCallback("EGO"));
+
+      if (response) {
+        this.eventSink.emit({
+          type: "conversation_response",
+          timestamp: this.clock.now().toISOString(),
+          data: { response },
+        });
+      } else {
+        this.logger.debug("handleUserMessage: ego returned no response");
+        this.eventSink.emit({
+          type: "conversation_response",
+          timestamp: this.clock.now().toISOString(),
+          data: { error: "No response from session" },
+        });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`handleUserMessage: error — ${errorMsg}`);
+      this.eventSink.emit({
+        type: "conversation_response",
+        timestamp: this.clock.now().toISOString(),
+        data: { error: errorMsg },
+      });
+    }
   }
 
   injectMessage(message: string): void {

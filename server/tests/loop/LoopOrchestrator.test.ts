@@ -172,7 +172,7 @@ describe("LoopOrchestrator", () => {
       orchestrator.resume();
       orchestrator.stop();
 
-      const events = eventSink.getEvents();
+      const events = eventSink.getEvents().filter(e => e.type === "state_changed");
       expect(events).toHaveLength(4);
       expect(events.map(e => e.data)).toEqual([
         { from: LoopState.STOPPED, to: LoopState.RUNNING },
@@ -855,6 +855,82 @@ describe("LoopOrchestrator", () => {
       const injectedEvent = events.find((e) => e.type === "message_injected");
       expect(injectedEvent).toBeDefined();
       expect(injectedEvent!.data.message).toBe("test");
+    });
+  });
+
+  describe("handleUserMessage", () => {
+    it("launches ego.respondToMessage and emits conversation_response event", async () => {
+      deps.launcher.enqueueSuccess("Hi there, friend!");
+
+      await orchestrator.handleUserMessage("Ji!");
+
+      const events = eventSink.getEvents();
+      const responseEvent = events.find((e) => e.type === "conversation_response");
+      expect(responseEvent).toBeDefined();
+      expect(responseEvent!.data.response).toBe("Hi there, friend!");
+    });
+
+    it("appends ego response to CONVERSATION.md", async () => {
+      deps.launcher.enqueueSuccess("Hello!");
+
+      await orchestrator.handleUserMessage("Hi");
+
+      const content = await deps.fs.readFile("/substrate/CONVERSATION.md");
+      expect(content).toContain("[EGO] Hello!");
+    });
+
+    it("emits conversation_response with error on failure", async () => {
+      deps.launcher.enqueueFailure("session crashed");
+
+      await orchestrator.handleUserMessage("Hello");
+
+      const events = eventSink.getEvents();
+      const responseEvent = events.find((e) => e.type === "conversation_response");
+      expect(responseEvent).toBeDefined();
+      expect(responseEvent!.data.error).toBeDefined();
+    });
+
+    it("passes onLogEntry to ego for process_output events", async () => {
+      deps.launcher.enqueueSuccess("Hi!");
+
+      await orchestrator.handleUserMessage("Hello");
+
+      // Verify it was called with onLogEntry by checking the launch
+      const launches = deps.launcher.getLaunches();
+      expect(launches[0].options?.onLogEntry).toBeDefined();
+    });
+  });
+
+  describe("graceful stop", () => {
+    it("stop() injects persist message before transitioning to STOPPED", () => {
+      const injected: string[] = [];
+      orchestrator.setLauncher({ inject: (msg) => injected.push(msg) });
+      orchestrator.start();
+
+      orchestrator.stop();
+
+      expect(injected.length).toBe(1);
+      expect(injected[0]).toContain("Persist");
+      expect(orchestrator.getState()).toBe(LoopState.STOPPED);
+    });
+
+    it("stop() emits persist message event even when no launcher or active session", () => {
+      orchestrator.start();
+      orchestrator.stop();
+
+      // Check that a message_injected event was emitted with persist content
+      const events = eventSink.getEvents();
+      const persistEvent = events.find(
+        (e) => e.type === "message_injected" && String(e.data.message).includes("Persist")
+      );
+      expect(persistEvent).toBeDefined();
+    });
+
+    it("stop() still works when no launcher or session is set", () => {
+      orchestrator.start();
+      orchestrator.stop();
+
+      expect(orchestrator.getState()).toBe(LoopState.STOPPED);
     });
   });
 

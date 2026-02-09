@@ -238,14 +238,14 @@ describe("LoopHttpServer", () => {
       expect(msgEvent!.data.message).toBe("Hi there");
     });
 
-    it("calls orchestrator.nudge() to wake the loop", async () => {
+    it("calls orchestrator.handleUserMessage() to spawn response session", async () => {
       await harness.fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n");
-      const nudgeSpy = jest.spyOn(orchestrator, "nudge");
+      const handleSpy = jest.spyOn(orchestrator, "handleUserMessage").mockResolvedValue();
 
       const res = await fetch(port, "POST", "/api/conversation/send", JSON.stringify({ message: "Wake up" }));
 
       expect(res.status).toBe(200);
-      expect(nudgeSpy).toHaveBeenCalledTimes(1);
+      expect(handleSpy).toHaveBeenCalledWith("Wake up");
     });
   });
 

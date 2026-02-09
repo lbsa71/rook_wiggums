@@ -134,6 +134,54 @@ describe("Ego agent", () => {
     });
   });
 
+  describe("respondToMessage", () => {
+    it("launches a session with the user message and appends response to CONVERSATION", async () => {
+      launcher.enqueueSuccess("Hello! How can I help you today?");
+
+      await ego.respondToMessage("Ji!");
+
+      const content = await fs.readFile("/substrate/CONVERSATION.md");
+      expect(content).toContain("[EGO] Hello! How can I help you today?");
+    });
+
+    it("includes the user message in the launch prompt", async () => {
+      launcher.enqueueSuccess("Hi there!");
+
+      await ego.respondToMessage("Ji!");
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].request.message).toContain("Ji!");
+    });
+
+    it("passes onLogEntry callback to the session", async () => {
+      launcher.enqueueSuccess("Response");
+
+      const entries: ProcessLogEntry[] = [];
+      await ego.respondToMessage("Hi", (e) => entries.push(e));
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].options?.onLogEntry).toBeDefined();
+    });
+
+    it("does not append on session failure", async () => {
+      launcher.enqueueFailure("session crashed");
+
+      await ego.respondToMessage("Hello");
+
+      const content = await fs.readFile("/substrate/CONVERSATION.md");
+      expect(content).not.toContain("session crashed");
+    });
+
+    it("passes cwd to session launcher", async () => {
+      launcher.enqueueSuccess("Hi!");
+
+      await ego.respondToMessage("Hello");
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].options?.cwd).toBe("/workspace");
+    });
+  });
+
   describe("dispatchNext", () => {
     it("returns the next actionable task from the plan", async () => {
       const dispatch = await ego.dispatchNext();
