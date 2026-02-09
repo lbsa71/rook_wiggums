@@ -1,5 +1,7 @@
 import * as http from "node:http";
 import { LoopOrchestrator } from "./LoopOrchestrator";
+import { ILoopEventSink } from "./ILoopEventSink";
+import { IClock } from "../substrate/abstractions/IClock";
 import { SubstrateFileReader } from "../substrate/io/FileReader";
 import { SubstrateFileType } from "../substrate/types";
 import { Ego } from "../agents/roles/Ego";
@@ -18,6 +20,8 @@ export class LoopHttpServer {
   private ego: Ego | null = null;
   private reportStore: GovernanceReportStore | null = null;
   private healthCheck: HealthCheck | null = null;
+  private eventSink: ILoopEventSink | null = null;
+  private clock: IClock | null = null;
 
   constructor(orchestrator: LoopOrchestrator) {
     this.orchestrator = orchestrator;
@@ -39,6 +43,11 @@ export class LoopHttpServer {
 
   setHealthCheck(check: HealthCheck): void {
     this.healthCheck = check;
+  }
+
+  setEventSink(sink: ILoopEventSink, clock: IClock): void {
+    this.eventSink = sink;
+    this.clock = clock;
   }
 
   listen(port: number): Promise<number> {
@@ -180,7 +189,19 @@ export class LoopHttpServer {
       }
 
       this.ego!.appendConversation(parsed.message).then(
-        () => this.json(res, 200, { success: true }),
+        () => {
+          // Emit event so frontend updates immediately
+          if (this.eventSink && this.clock) {
+            this.eventSink.emit({
+              type: "conversation_message",
+              timestamp: this.clock.now().toISOString(),
+              data: { role: "USER", message: parsed.message },
+            });
+          }
+          // Wake the loop so Ego picks up the message on the next cycle
+          this.orchestrator.nudge();
+          this.json(res, 200, { success: true });
+        },
         (err) => {
           const message = err instanceof Error ? err.message : "Unknown error";
           this.json(res, 500, { error: message });

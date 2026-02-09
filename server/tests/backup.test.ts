@@ -1,4 +1,4 @@
-import { createBackup, restoreBackup, findLatestBackup } from "../src/backup";
+import { createBackup, createRemoteBackup, restoreBackup, findLatestBackup } from "../src/backup";
 import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSystem";
 import { InMemoryProcessRunner } from "../src/agents/claude/InMemoryProcessRunner";
 import { FixedClock } from "../src/substrate/abstractions/FixedClock";
@@ -111,6 +111,125 @@ describe("createBackup", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Substrate directory not found");
     expect(runner.getCalls()).toHaveLength(0);
+  });
+});
+
+describe("createRemoteBackup", () => {
+  it("rsyncs remote substrate then tars locally", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+
+    // rsync succeeds, tar succeeds, cleanup succeeds
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+    const result = await createRemoteBackup({
+      fs,
+      runner,
+      clock,
+      remoteSource: "rook@host:.local/share/rook-wiggums/substrate",
+      outputDir: "/backups",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.outputPath).toMatch(/rook-wiggums-backup-.*\.tar\.gz$/);
+
+    const calls = runner.getCalls();
+    // 1: rsync, 2: tar, 3: rm cleanup
+    expect(calls).toHaveLength(3);
+    expect(calls[0].command).toBe("rsync");
+    expect(calls[0].args).toContain("rook@host:.local/share/rook-wiggums/substrate/");
+    expect(calls[1].command).toBe("tar");
+    expect(calls[1].args).toContain("-czf");
+    expect(calls[2].command).toBe("rm");
+  });
+
+  it("passes SSH identity to rsync", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+    await createRemoteBackup({
+      fs,
+      runner,
+      clock,
+      remoteSource: "rook@host:.local/share/rook-wiggums/substrate",
+      outputDir: "/backups",
+      identity: "~/.ssh/my_key",
+    });
+
+    const calls = runner.getCalls();
+    expect(calls[0].args).toContain("-e");
+    expect(calls[0].args).toContain("ssh -i ~/.ssh/my_key");
+  });
+
+  it("returns failure when rsync fails", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+
+    runner.enqueue({ stdout: "", stderr: "rsync: connection refused", exitCode: 1 });
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 }); // cleanup
+
+    const result = await createRemoteBackup({
+      fs,
+      runner,
+      clock,
+      remoteSource: "rook@host:substrate",
+      outputDir: "/backups",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("rsync: connection refused");
+  });
+
+  it("returns failure when tar fails", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 }); // rsync OK
+    runner.enqueue({ stdout: "", stderr: "tar: error", exitCode: 1 }); // tar fails
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 }); // cleanup
+
+    const result = await createRemoteBackup({
+      fs,
+      runner,
+      clock,
+      remoteSource: "rook@host:substrate",
+      outputDir: "/backups",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("tar: error");
+  });
+
+  it("cleans up temp dir even on failure", async () => {
+    const fs = new InMemoryFileSystem();
+    const runner = new InMemoryProcessRunner();
+    const clock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+
+    runner.enqueue({ stdout: "", stderr: "fail", exitCode: 1 }); // rsync fails
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 }); // cleanup still runs
+
+    await createRemoteBackup({
+      fs,
+      runner,
+      clock,
+      remoteSource: "rook@host:substrate",
+      outputDir: "/backups",
+    });
+
+    const calls = runner.getCalls();
+    const rmCall = calls.find((c) => c.command === "rm");
+    expect(rmCall).toBeDefined();
+    expect(rmCall!.args).toContain("-rf");
   });
 });
 

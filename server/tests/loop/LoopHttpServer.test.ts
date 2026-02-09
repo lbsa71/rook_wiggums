@@ -29,6 +29,8 @@ interface TestHarness {
   ego: Ego;
   fs: InMemoryFileSystem;
   clock: FixedClock;
+  eventSink: InMemoryEventSink;
+  timer: ImmediateTimer;
 }
 
 function createTestHarness(): TestHarness {
@@ -56,7 +58,7 @@ function createTestHarness(): TestHarness {
     ego, subconscious, superego, id, appendWriter, clock, timer, eventSink, defaultLoopConfig(), new InMemoryLogger()
   );
 
-  return { orchestrator, reader, ego, fs, clock };
+  return { orchestrator, reader, ego, fs, clock, eventSink, timer };
 }
 
 function fetch(port: number, method: string, path: string, requestBody?: string): Promise<{ status: number; body: string }> {
@@ -221,6 +223,31 @@ describe("LoopHttpServer", () => {
       expect(res.status).toBe(400);
       const body = JSON.parse(res.body);
       expect(body.error).toBeDefined();
+    });
+
+    it("emits conversation_message event when eventSink is configured", async () => {
+      await harness.fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n");
+      server.setEventSink(harness.eventSink, harness.clock);
+      harness.eventSink.reset();
+
+      const res = await fetch(port, "POST", "/api/conversation/send", JSON.stringify({ message: "Hi there" }));
+
+      expect(res.status).toBe(200);
+      const events = harness.eventSink.getEvents();
+      const msgEvent = events.find(e => e.type === "conversation_message");
+      expect(msgEvent).toBeDefined();
+      expect(msgEvent!.data.role).toBe("USER");
+      expect(msgEvent!.data.message).toBe("Hi there");
+    });
+
+    it("calls orchestrator.nudge() to wake the loop", async () => {
+      await harness.fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n");
+      const nudgeSpy = jest.spyOn(orchestrator, "nudge");
+
+      const res = await fetch(port, "POST", "/api/conversation/send", JSON.stringify({ message: "Wake up" }));
+
+      expect(res.status).toBe(200);
+      expect(nudgeSpy).toHaveBeenCalledTimes(1);
     });
   });
 

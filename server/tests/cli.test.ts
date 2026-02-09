@@ -132,4 +132,41 @@ describe("parseArgs", () => {
 
     expect(result.identity).toBe("/keys/id_rsa");
   });
+
+  it("parses logs command", () => {
+    const result = parseArgs(["node", "cli.ts", "logs"]);
+
+    expect(result.command).toBe("logs");
+  });
+
+  it("parses logs command with remote source and identity", () => {
+    const result = parseArgs([
+      "node", "cli.ts", "logs",
+      "-i", "~/.ssh/google_compute_engine",
+      "--source", "rook@34.63.182.98",
+    ]);
+
+    expect(result.command).toBe("logs");
+    expect(result.identity).toBe("~/.ssh/google_compute_engine");
+    expect(result.source).toBe("rook@34.63.182.98");
+  });
+
+  it("parses -n flag for line count", () => {
+    const result = parseArgs([
+      "node", "cli.ts", "logs",
+      "--source", "rook@host",
+      "-n", "50",
+    ]);
+
+    expect(result.lines).toBe(50);
+  });
+
+  it("parses --lines as alias for -n", () => {
+    const result = parseArgs([
+      "node", "cli.ts", "logs",
+      "--lines", "100",
+    ]);
+
+    expect(result.lines).toBe(100);
+  });
 });

@@ -71,6 +71,53 @@ export async function restoreBackup(options: RestoreOptions): Promise<RestoreRes
   return { success: true, restoredFrom: archivePath };
 }
 
+export interface RemoteBackupOptions {
+  fs: IFileSystem;
+  runner: IProcessRunner;
+  clock: IClock;
+  remoteSource: string;
+  outputDir: string;
+  identity?: string;
+}
+
+export async function createRemoteBackup(options: RemoteBackupOptions): Promise<BackupResult> {
+  const { fs, runner, clock, remoteSource, outputDir, identity } = options;
+
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const timestamp = clock.now().toISOString().replace(/:/g, "-");
+  const filename = `rook-wiggums-backup-${timestamp}.tar.gz`;
+  const outputPath = path.join(outputDir, filename);
+  const tempDir = path.join(outputDir, `.tmp-backup-${timestamp}`);
+
+  await fs.mkdir(tempDir, { recursive: true });
+
+  try {
+    // Step 1: rsync remote substrate to temp dir
+    const rsyncArgs = ["-a", "--mkpath"];
+    if (identity) {
+      rsyncArgs.push("-e", `ssh -i ${identity}`);
+    }
+    rsyncArgs.push(`${remoteSource}/`, `${tempDir}/`);
+
+    const rsyncResult = await runner.run("rsync", rsyncArgs);
+    if (rsyncResult.exitCode !== 0) {
+      return { success: false, error: rsyncResult.stderr };
+    }
+
+    // Step 2: tar the temp dir into the archive
+    const tarResult = await runner.run("tar", ["-czf", outputPath, "-C", tempDir, "."]);
+    if (tarResult.exitCode !== 0) {
+      return { success: false, outputPath, error: tarResult.stderr };
+    }
+
+    return { success: true, outputPath };
+  } finally {
+    // Step 3: cleanup temp dir
+    await runner.run("rm", ["-rf", tempDir]);
+  }
+}
+
 export async function createBackup(options: BackupOptions): Promise<BackupResult> {
   const { fs, runner, clock, substratePath, outputDir } = options;
 

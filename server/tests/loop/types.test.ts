@@ -127,4 +127,15 @@ describe("LoopEvent type", () => {
 
     expect(event.type).toBe("idle");
   });
+
+  it("can represent a conversation_message event", () => {
+    const event: LoopEvent = {
+      type: "conversation_message",
+      timestamp: "2025-06-15T10:00:03.000Z",
+      data: { role: "USER", message: "Hello" },
+    };
+
+    expect(event.type).toBe("conversation_message");
+    expect(event.data.role).toBe("USER");
+  });
 });

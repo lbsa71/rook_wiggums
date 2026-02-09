@@ -79,6 +79,11 @@ export class LoopOrchestrator {
     this.transition(LoopState.STOPPED);
   }
 
+  nudge(): void {
+    this.logger.debug("nudge() — waking timer for immediate cycle");
+    this.timer.wake();
+  }
+
   requestAudit(): void {
     this.auditOnNextCycle = true;
     this.eventSink.emit({

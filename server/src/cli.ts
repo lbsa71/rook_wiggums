@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
 import { SystemClock } from "./substrate/abstractions/SystemClock";
 import { NodeProcessRunner } from "./agents/claude/NodeProcessRunner";
@@ -5,11 +6,13 @@ import { getAppPaths } from "./paths";
 import { resolveConfig } from "./config";
 import { initWorkspace } from "./init";
 import { startServer } from "./startup";
-import { createBackup, restoreBackup } from "./backup";
+import { createBackup, createRemoteBackup, restoreBackup } from "./backup";
+import { resolveRemotePath as resolveBackupSource } from "./transfer";
 import { transfer, resolveRemotePath, resolveRemoteConfigPath } from "./transfer";
+import { fetchRemoteLogs, fetchLocalLogs } from "./logs";
 
 export interface ParsedArgs {
-  command: "init" | "start" | "backup" | "restore" | "transfer";
+  command: "init" | "start" | "backup" | "restore" | "transfer" | "logs";
   configPath?: string;
   model?: string;
   outputDir?: string;
@@ -17,11 +20,12 @@ export interface ParsedArgs {
   source?: string;
   dest?: string;
   identity?: string;
+  lines?: number;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
-  let command: "init" | "start" | "backup" | "restore" | "transfer" = "start";
+  let command: "init" | "start" | "backup" | "restore" | "transfer" | "logs" = "start";
   let configPath: string | undefined;
   let model: string | undefined;
   let outputDir: string | undefined;
@@ -29,10 +33,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let source: string | undefined;
   let dest: string | undefined;
   let identity: string | undefined;
+  let lines: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "init" || arg === "start" || arg === "backup" || arg === "restore" || arg === "transfer") {
+    if (arg === "init" || arg === "start" || arg === "backup" || arg === "restore" || arg === "transfer" || arg === "logs") {
       command = arg;
     } else if (arg === "--config" && i + 1 < args.length) {
       configPath = args[++i];
@@ -48,14 +53,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
       dest = args[++i];
     } else if ((arg === "-i" || arg === "--identity") && i + 1 < args.length) {
       identity = args[++i];
+    } else if ((arg === "-n" || arg === "--lines") && i + 1 < args.length) {
+      lines = parseInt(args[++i], 10);
     }
   }
 
-  return { command, configPath, model, outputDir, inputPath, source, dest, identity };
+  return { command, configPath, model, outputDir, inputPath, source, dest, identity, lines };
 }
 
 async function main(): Promise<void> {
-  const { command, configPath, model, outputDir, source, dest, identity } = parseArgs(process.argv);
+  const { command, configPath, model, outputDir, source, dest, identity, lines } = parseArgs(process.argv);
   const fs = new NodeFileSystem();
   const appPaths = getAppPaths();
 
@@ -75,13 +82,24 @@ async function main(): Promise<void> {
     await initWorkspace(fs, config, appPaths);
     console.log("Workspace initialized successfully.");
   } else if (command === "backup") {
-    const result = await createBackup({
-      fs,
-      runner: new NodeProcessRunner(),
-      clock: new SystemClock(),
-      substratePath: config.substratePath,
-      outputDir: outputDir ?? config.backupPath,
-    });
+    const isRemote = source && source.includes("@");
+    const backupOutputDir = outputDir ?? config.backupPath;
+    const result = isRemote
+      ? await createRemoteBackup({
+          fs,
+          runner: new NodeProcessRunner(),
+          clock: new SystemClock(),
+          remoteSource: resolveBackupSource(source),
+          outputDir: backupOutputDir,
+          identity,
+        })
+      : await createBackup({
+          fs,
+          runner: new NodeProcessRunner(),
+          clock: new SystemClock(),
+          substratePath: source ?? config.substratePath,
+          outputDir: backupOutputDir,
+        });
     if (result.success) {
       console.log(`Backup created: ${result.outputPath}`);
     } else {
@@ -126,6 +144,30 @@ async function main(): Promise<void> {
     } else {
       console.error(`Transfer failed: ${result.error}`);
       process.exit(1);
+    }
+  } else if (command === "logs") {
+    if (source && source.includes("@")) {
+      const result = await fetchRemoteLogs({
+        runner: new NodeProcessRunner(),
+        host: source,
+        identity,
+        lines,
+      });
+      if (result.success) {
+        process.stdout.write(result.output!);
+      } else {
+        console.error(`Failed to fetch logs: ${result.error}`);
+        process.exit(1);
+      }
+    } else {
+      const logPath = source ?? path.resolve(config.substratePath, "..", "debug.log");
+      const result = await fetchLocalLogs({ fs, logPath });
+      if (result.success) {
+        process.stdout.write(result.output!);
+      } else {
+        console.error(`Failed to read logs: ${result.error}`);
+        process.exit(1);
+      }
     }
   } else {
     await startServer(config);

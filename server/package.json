@@ -13,6 +13,7 @@
     "backup": "tsx src/cli.ts backup",
     "restore": "tsx src/cli.ts restore",
     "transfer": "tsx src/cli.ts transfer",
+    "logs": "tsx src/cli.ts logs",
     "lint": "eslint src/ tests/"
   },
   "devDependencies": {

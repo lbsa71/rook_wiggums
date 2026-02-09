@@ -53,7 +53,7 @@ export function createInitialMetrics(): LoopMetrics {
 }
 
 export interface LoopEvent {
-  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output";
+  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output" | "conversation_message";
   timestamp: string;
   data: Record<string, unknown>;
 }

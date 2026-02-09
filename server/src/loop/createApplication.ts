@@ -94,6 +94,7 @@ export function createApplication(config: ApplicationConfig): Application {
 
   httpServer.setOrchestrator(orchestrator);
   httpServer.setDependencies({ reader, ego });
+  httpServer.setEventSink(wsServer, clock);
   httpServer.setHealthCheck(new HealthCheck(reader));
 
   return {

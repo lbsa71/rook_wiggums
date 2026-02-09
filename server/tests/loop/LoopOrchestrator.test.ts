@@ -873,6 +873,22 @@ describe("LoopOrchestrator", () => {
     });
   });
 
+  describe("nudge", () => {
+    it("calls timer.wake() to interrupt the delay", () => {
+      const wakeSpy = jest.spyOn(timer, "wake");
+
+      orchestrator.nudge();
+
+      expect(wakeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("logs a debug message", () => {
+      orchestrator.nudge();
+
+      expect(logger.getEntries().some(m => m.includes("nudge()"))).toBe(true);
+    });
+  });
+
   describe("process_output events", () => {
     it("emits process_output events during dispatch cycle", async () => {
       orchestrator.start();

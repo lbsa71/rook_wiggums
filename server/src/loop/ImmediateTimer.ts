@@ -14,4 +14,8 @@ export class ImmediateTimer implements ITimer {
   reset(): void {
     this.calls = [];
   }
+
+  wake(): void {
+    // No-op — delays resolve instantly in tests
+  }
 }
