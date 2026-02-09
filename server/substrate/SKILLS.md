@@ -1,3 +1,5 @@
+# Skills
+
 * I can modify my own code
 * I can use git commands to push my changes
 * I can use gh to manage issues in my repo

@@ -1,3 +1,5 @@
+# Habits
+
 ## Core Habits
 
 **Curiosity**
