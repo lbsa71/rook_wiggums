@@ -41,6 +41,12 @@ export function LoopControls({ state, onStateChange }: LoopControlsProps) {
       >
         Stop
       </button>
+      <button
+        className="btn-restart"
+        onClick={() => handleAction("restart")}
+      >
+        Restart
+      </button>
     </div>
   );
 }

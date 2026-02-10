@@ -105,8 +105,7 @@ export class LoopOrchestrator {
   }
 
   requestRestart(): void {
-    this.logger.debug("requestRestart() called — persisting and shutting down for rebuild");
-    this.injectMessage("Persist all changes and exit. Write any pending updates to PLAN.md, PROGRESS.md, and MEMORY.md, then finish.");
+    this.logger.debug("requestRestart() called — shutting down for rebuild");
     this.eventSink.emit({
       type: "restart_requested",
       timestamp: this.clock.now().toISOString(),

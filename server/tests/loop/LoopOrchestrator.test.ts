@@ -1011,17 +1011,13 @@ describe("LoopOrchestrator", () => {
   });
 
   describe("requestRestart", () => {
-    it("injects persist message and calls shutdown callback", () => {
-      const injected: string[] = [];
+    it("stops and calls shutdown with exit code 75", () => {
       const shutdownCalls: number[] = [];
-      orchestrator.setLauncher({ inject: (msg) => injected.push(msg) });
       orchestrator.setShutdown((code) => shutdownCalls.push(code));
       orchestrator.start();
 
       orchestrator.requestRestart();
 
-      expect(injected.length).toBe(1);
-      expect(injected[0]).toContain("Persist");
       expect(shutdownCalls).toEqual([75]);
       expect(orchestrator.getState()).toBe(LoopState.STOPPED);
     });

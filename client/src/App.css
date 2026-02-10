@@ -162,6 +162,16 @@ body {
   cursor: not-allowed;
 }
 
+.loop-controls .btn-restart {
+  margin-left: 0.5rem;
+  border-color: #ff8c00;
+}
+
+.loop-controls .btn-restart:hover {
+  background: #2a1800;
+  border-color: #ffaa33;
+}
+
 .plan-view pre,
 .substrate-content {
   white-space: pre-wrap;
