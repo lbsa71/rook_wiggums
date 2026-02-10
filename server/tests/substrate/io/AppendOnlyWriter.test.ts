@@ -62,4 +62,65 @@ describe("AppendOnlyWriter", () => {
       writer.append(SubstrateFileType.MEMORY, "Some text")
     ).rejects.toThrow("Cannot use AppendOnlyWriter for OVERWRITE-mode");
   });
+
+  describe("secret detection", () => {
+    it("rejects entries containing API keys", async () => {
+      const entry = '[SUBCONSCIOUS] Progress update: api_key: "abcdef1234567890abcdef1234567890abcdef12"';
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow("potential secrets detected");
+    });
+
+    it("rejects entries containing tokens", async () => {
+      const entry = '[ID] Generated goal with auth_token: "my-secret-token-12345678901234567890"';
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow("potential secrets detected");
+    });
+
+    it("rejects entries containing AWS credentials", async () => {
+      const entry = "[EGO] Task result: AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow("potential secrets detected");
+    });
+
+    it("rejects entries containing private keys", async () => {
+      const entry = "[SUPEREGO] Audit finding: -----BEGIN PRIVATE KEY-----";
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow("potential secrets detected");
+    });
+
+    it("rejects entries containing database connection strings", async () => {
+      const entry = "[SUBCONSCIOUS] Database connected: postgres://user:password@localhost:5432/db";
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow("potential secrets detected");
+    });
+
+    it("accepts entries without secrets", async () => {
+      const entry = "[SUBCONSCIOUS] I learned about API key security today. Always use environment variables!";
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).resolves.not.toThrow();
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain(entry);
+    });
+
+    it("provides informative error messages", async () => {
+      const entry = 'Progress: api_key: "abcdef1234567890abcdef1234567890abcdef12"';
+
+      await expect(
+        writer.append(SubstrateFileType.PROGRESS, entry)
+      ).rejects.toThrow(/Generic API Key.*line.*column/);
+    });
+  });
 });

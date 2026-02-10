@@ -23,6 +23,9 @@ import { defaultLoopConfig } from "./types";
 import { HealthCheck } from "../evaluation/HealthCheck";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { createSdkSessionFactory } from "../session/SdkSessionAdapter";
+import { BackupScheduler } from "./BackupScheduler";
+import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
+import { HealthCheckScheduler } from "./HealthCheckScheduler";
 
 export interface ApplicationConfig {
   substratePath: string;
@@ -35,6 +38,11 @@ export interface ApplicationConfig {
   maxConsecutiveIdleCycles?: number;
   mode?: "cycle" | "tick";
   sdkQueryFn?: SdkQueryFn;
+  enableBackups?: boolean;
+  backupIntervalMs?: number;
+  backupRetentionCount?: number;
+  enableHealthChecks?: boolean;
+  healthCheckIntervalMs?: number;
 }
 
 export interface Application {
@@ -108,6 +116,40 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   orchestrator.setShutdown((code) => process.exit(code));
   if (config.mode === "tick") {
     httpServer.setMode("tick");
+  }
+
+  // Backup scheduler setup
+  if (config.enableBackups !== false) { // Default enabled
+    const backupDir = path.resolve(config.substratePath, "..", "backups");
+    const runner = new NodeProcessRunner();
+    const backupScheduler = new BackupScheduler(
+      fs,
+      runner,
+      clock,
+      logger,
+      {
+        substratePath: config.substratePath,
+        backupDir,
+        backupIntervalMs: config.backupIntervalMs ?? 86400000, // Default: 24 hours
+        retentionCount: config.backupRetentionCount ?? 7, // Default: keep 7 backups
+        verifyBackups: true,
+      }
+    );
+    orchestrator.setBackupScheduler(backupScheduler);
+  }
+
+  // Health check scheduler setup
+  if (config.enableHealthChecks !== false) { // Default enabled
+    const healthCheck = new HealthCheck(reader);
+    const healthCheckScheduler = new HealthCheckScheduler(
+      healthCheck,
+      clock,
+      logger,
+      {
+        checkIntervalMs: config.healthCheckIntervalMs ?? 3600000, // Default: 1 hour
+      }
+    );
+    orchestrator.setHealthCheckScheduler(healthCheckScheduler);
   }
 
   // Tick mode wiring

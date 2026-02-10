@@ -2,6 +2,7 @@ import { IFileSystem } from "../abstractions/IFileSystem";
 import { IClock } from "../abstractions/IClock";
 import { SubstrateConfig } from "../config";
 import { SubstrateFileType, SUBSTRATE_FILE_SPECS, WriteMode } from "../types";
+import { detectSecrets, formatSecretErrors } from "../validation/SecretDetector";
 import { FileLock } from "./FileLock";
 
 export class AppendOnlyWriter {
@@ -18,6 +19,15 @@ export class AppendOnlyWriter {
     if (spec.writeMode !== WriteMode.APPEND) {
       throw new Error(
         `Cannot use AppendOnlyWriter for OVERWRITE-mode file type: ${fileType}`
+      );
+    }
+
+    // Secret detection before appending
+    const secretResult = detectSecrets(entry);
+    if (secretResult.hasSecrets) {
+      const errors = formatSecretErrors(secretResult);
+      throw new Error(
+        `Cannot append entry: potential secrets detected - ${errors.join(", ")}`
       );
     }
 

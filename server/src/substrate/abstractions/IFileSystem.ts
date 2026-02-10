@@ -2,6 +2,7 @@ export interface FileStat {
   mtimeMs: number;
   isFile: boolean;
   isDirectory: boolean;
+  size: number;
 }
 
 export interface IFileSystem {
@@ -13,4 +14,5 @@ export interface IFileSystem {
   stat(path: string): Promise<FileStat>;
   readdir(path: string): Promise<string[]>;
   copyFile(src: string, dest: string): Promise<void>;
+  unlink(path: string): Promise<void>;
 }

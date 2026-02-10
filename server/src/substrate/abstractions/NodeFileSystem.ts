@@ -33,6 +33,7 @@ export class NodeFileSystem implements IFileSystem {
       mtimeMs: stat.mtimeMs,
       isFile: stat.isFile(),
       isDirectory: stat.isDirectory(),
+      size: stat.size,
     };
   }
 
@@ -42,5 +43,9 @@ export class NodeFileSystem implements IFileSystem {
 
   async copyFile(src: string, dest: string): Promise<void> {
     await fs.copyFile(src, dest);
+  }
+
+  async unlink(path: string): Promise<void> {
+    await fs.unlink(path);
   }
 }

@@ -21,6 +21,8 @@ import { SessionManager, SessionConfig } from "../session/SessionManager";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
+import { BackupScheduler } from "./BackupScheduler";
+import { HealthCheckScheduler } from "./HealthCheckScheduler";
 
 export class LoopOrchestrator {
   private state: LoopState = LoopState.STOPPED;
@@ -33,6 +35,12 @@ export class LoopOrchestrator {
   // Message injection — works in both cycle and tick mode
   private launcher: { inject(message: string): void } | null = null;
   private shutdownFn: ((exitCode: number) => void) | null = null;
+
+  // Backup scheduler
+  private backupScheduler: BackupScheduler | null = null;
+
+  // Health check scheduler
+  private healthCheckScheduler: HealthCheckScheduler | null = null;
 
   // Tick mode
   private tickPromptBuilder: TickPromptBuilder | null = null;
@@ -102,6 +110,14 @@ export class LoopOrchestrator {
 
   setShutdown(fn: (exitCode: number) => void): void {
     this.shutdownFn = fn;
+  }
+
+  setBackupScheduler(scheduler: BackupScheduler): void {
+    this.backupScheduler = scheduler;
+  }
+
+  setHealthCheckScheduler(scheduler: HealthCheckScheduler): void {
+    this.healthCheckScheduler = scheduler;
   }
 
   requestRestart(): void {
@@ -243,6 +259,16 @@ export class LoopOrchestrator {
     if (this.cycleNumber % this.config.superegoAuditInterval === 0 || this.auditOnNextCycle) {
       this.auditOnNextCycle = false;
       await this.runAudit();
+    }
+
+    // Backup scheduling
+    if (this.backupScheduler && this.backupScheduler.shouldRunBackup()) {
+      await this.runScheduledBackup();
+    }
+
+    // Health check scheduling
+    if (this.healthCheckScheduler && this.healthCheckScheduler.shouldRunCheck()) {
+      await this.runScheduledHealthCheck();
     }
 
     return result;
@@ -475,5 +501,112 @@ export class LoopOrchestrator {
       timestamp: this.clock.now().toISOString(),
       data: { cycleNumber: this.cycleNumber },
     });
+  }
+
+  private async runScheduledBackup(): Promise<void> {
+    this.logger.debug(`backup: starting scheduled backup (cycle ${this.cycleNumber})`);
+    try {
+      const result = await this.backupScheduler!.runBackup();
+      if (result.success) {
+        this.logger.debug(`backup: success — ${result.backupPath} (verified: ${result.verification?.valid ?? false})`);
+        this.eventSink.emit({
+          type: "backup_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: true,
+            backupPath: result.backupPath,
+            verified: result.verification?.valid ?? false,
+            checksum: result.verification?.checksum,
+            sizeBytes: result.verification?.sizeBytes,
+          },
+        });
+      } else {
+        this.logger.debug(`backup: failed — ${result.error}`);
+        this.eventSink.emit({
+          type: "backup_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: false,
+            error: result.error,
+          },
+        });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`backup: unexpected error — ${errorMsg}`);
+      this.eventSink.emit({
+        type: "backup_complete",
+        timestamp: this.clock.now().toISOString(),
+        data: {
+          cycleNumber: this.cycleNumber,
+          success: false,
+          error: errorMsg,
+        },
+      });
+    }
+  }
+
+  private async runScheduledHealthCheck(): Promise<void> {
+    this.logger.debug(`health_check: starting scheduled check (cycle ${this.cycleNumber})`);
+    try {
+      const result = await this.healthCheckScheduler!.runCheck();
+      if (result.success && result.result) {
+        this.logger.debug(`health_check: complete — overall: ${result.result.overall}`);
+        this.eventSink.emit({
+          type: "health_check_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: true,
+            overall: result.result.overall,
+            drift: {
+              score: result.result.drift.score,
+              findings: result.result.drift.findings.length,
+            },
+            consistency: {
+              consistent: result.result.consistency.inconsistencies.length === 0,
+              issues: result.result.consistency.inconsistencies.length,
+            },
+            security: {
+              compliant: result.result.security.compliant,
+              issues: result.result.security.issues.length,
+            },
+            planQuality: {
+              score: result.result.planQuality.score,
+              findings: result.result.planQuality.findings.length,
+            },
+            reasoning: {
+              valid: result.result.reasoning.valid,
+              issues: result.result.reasoning.issues.length,
+            },
+          },
+        });
+      } else {
+        this.logger.debug(`health_check: failed — ${result.error}`);
+        this.eventSink.emit({
+          type: "health_check_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: false,
+            error: result.error,
+          },
+        });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`health_check: unexpected error — ${errorMsg}`);
+      this.eventSink.emit({
+        type: "health_check_complete",
+        timestamp: this.clock.now().toISOString(),
+        data: {
+          cycleNumber: this.cycleNumber,
+          success: false,
+          error: errorMsg,
+        },
+      });
+    }
   }
 }

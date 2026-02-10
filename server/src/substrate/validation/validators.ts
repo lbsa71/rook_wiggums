@@ -1,4 +1,5 @@
 import { SubstrateFileType } from "../types";
+import { detectSecrets, formatSecretErrors } from "./SecretDetector";
 
 export interface ValidationResult {
   valid: boolean;
@@ -25,6 +26,13 @@ export function validateSubstrateContent(
     } else if (!content.includes("\n## Tasks")) {
       errors.push("PLAN must have a ## Tasks section");
     }
+  }
+
+  // Secret detection (Phase 1 security roadmap)
+  // Prevents accidental exposure of API keys, tokens, credentials in substrate files
+  const secretResult = detectSecrets(content);
+  if (secretResult.hasSecrets) {
+    errors.push(...formatSecretErrors(secretResult));
   }
 
   return { valid: errors.length === 0, errors };

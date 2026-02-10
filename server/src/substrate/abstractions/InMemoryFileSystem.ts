@@ -69,11 +69,16 @@ export class InMemoryFileSystem implements IFileSystem {
   async stat(path: string): Promise<FileStat> {
     const file = this.files.get(path);
     if (file) {
-      return { mtimeMs: file.mtimeMs, isFile: true, isDirectory: false };
+      return {
+        mtimeMs: file.mtimeMs,
+        isFile: true,
+        isDirectory: false,
+        size: Buffer.byteLength(file.content, "utf-8"),
+      };
     }
     if (this.dirs.has(path)) {
       const meta = this.dirMeta.get(path)!;
-      return { mtimeMs: meta.mtimeMs, isFile: false, isDirectory: true };
+      return { mtimeMs: meta.mtimeMs, isFile: false, isDirectory: true, size: 0 };
     }
     throw new Error(`ENOENT: no such file or directory '${path}'`);
   }
@@ -109,5 +114,12 @@ export class InMemoryFileSystem implements IFileSystem {
       throw new Error(`ENOENT: no such file '${src}'`);
     }
     this.files.set(dest, { content: entry.content, mtimeMs: Date.now() });
+  }
+
+  async unlink(path: string): Promise<void> {
+    if (!this.files.has(path)) {
+      throw new Error(`ENOENT: no such file '${path}'`);
+    }
+    this.files.delete(path);
   }
 }
