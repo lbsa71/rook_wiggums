@@ -180,7 +180,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     },
     async stop(): Promise<void> {
       try { orchestrator.stop(); } catch { /* already stopped */ }
-      wsServer.close();
+      await wsServer.close();
       await httpServer.close();
     },
     mode,

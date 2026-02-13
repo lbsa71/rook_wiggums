@@ -55,12 +55,25 @@ async function setupSubstrate(fs: InMemoryFileSystem) {
 }
 
 describe("Integration: Full Cycle", () => {
+  let orchestrator: LoopOrchestrator | null = null;
+
+  afterEach(() => {
+    if (orchestrator) {
+      try {
+        orchestrator.stop();
+      } catch {
+        // ignore
+      }
+      orchestrator = null;
+    }
+  });
+
   it("dispatches a task, executes it, marks complete, and logs progress", async () => {
     const deps = createFullDeps();
     await setupSubstrate(deps.fs);
 
     const eventSink = new InMemoryEventSink();
-    const orchestrator = new LoopOrchestrator(
+    orchestrator = new LoopOrchestrator(
       deps.ego, deps.subconscious, deps.superego, deps.id,
       deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
       defaultLoopConfig(), new InMemoryLogger()
@@ -95,7 +108,7 @@ describe("Integration: Full Cycle", () => {
 
     const eventSink = new InMemoryEventSink();
     const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 1 });
-    const orchestrator = new LoopOrchestrator(
+    orchestrator = new LoopOrchestrator(
       deps.ego, deps.subconscious, deps.superego, deps.id,
       deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
       config, new InMemoryLogger()
@@ -110,6 +123,15 @@ describe("Integration: Full Cycle", () => {
       proposals: [],
     }));
 
+    // Reconsideration after Task A
+    deps.launcher.enqueueSuccess(JSON.stringify({
+      outcomeMatchesIntent: true,
+      qualityScore: 80,
+      issuesFound: [],
+      recommendedActions: [],
+      needsReassessment: false,
+    }));
+
     // Task B
     deps.launcher.enqueueSuccess(JSON.stringify({
       result: "success",
@@ -117,6 +139,15 @@ describe("Integration: Full Cycle", () => {
       progressEntry: "Did B",
       skillUpdates: null,
       proposals: [],
+    }));
+
+    // Reconsideration after Task B
+    deps.launcher.enqueueSuccess(JSON.stringify({
+      outcomeMatchesIntent: true,
+      qualityScore: 80,
+      issuesFound: [],
+      recommendedActions: [],
+      needsReassessment: false,
     }));
 
     orchestrator.start();
@@ -137,7 +168,7 @@ describe("Integration: Full Cycle", () => {
     await setupSubstrate(deps.fs);
 
     const eventSink = new InMemoryEventSink();
-    const orchestrator = new LoopOrchestrator(
+    orchestrator = new LoopOrchestrator(
       deps.ego, deps.subconscious, deps.superego, deps.id,
       deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
       defaultLoopConfig(), new InMemoryLogger()

@@ -8,4 +8,6 @@ module.exports = {
   moduleNameMapper: {
     "^@anthropic-ai/claude-agent-sdk$": "<rootDir>/tests/__mocks__/claude-agent-sdk.ts",
   },
+  forceExit: true,
+  testTimeout: 4000,
 };

@@ -1,4 +1,4 @@
-import { createApplication, ApplicationConfig } from "../../src/loop/createApplication";
+import { createApplication, ApplicationConfig, Application } from "../../src/loop/createApplication";
 import { LoopState } from "../../src/loop/types";
 import type { SdkQueryFn } from "../../src/agents/claude/AgentSdkLauncher";
 
@@ -15,6 +15,19 @@ function baseConfig(overrides?: Partial<ApplicationConfig>): ApplicationConfig {
 }
 
 describe("createApplication", () => {
+  const createdApps: Application[] = [];
+
+  afterEach(async () => {
+    for (const app of createdApps) {
+      try {
+        await app.stop();
+      } catch {
+        // ignore
+      }
+    }
+    createdApps.length = 0;
+  });
+
   it("creates an application with all components wired", async () => {
     const app = await createApplication(baseConfig({
       httpPort: 0,
@@ -22,6 +35,7 @@ describe("createApplication", () => {
       superegoAuditInterval: 10,
       maxConsecutiveIdleCycles: 5,
     }));
+    createdApps.push(app);
 
     expect(app).toBeDefined();
     expect(app.orchestrator).toBeDefined();
@@ -36,6 +50,7 @@ describe("createApplication", () => {
       superegoAuditInterval: 5,
       maxConsecutiveIdleCycles: 3,
     }));
+    createdApps.push(app);
 
     expect(app.orchestrator.getState()).toBe(LoopState.STOPPED);
   });
@@ -47,6 +62,7 @@ describe("createApplication", () => {
       superegoAuditInterval: 10,
       maxConsecutiveIdleCycles: 5,
     }));
+    createdApps.push(app);
 
     expect(typeof app.start).toBe("function");
     expect(typeof app.stop).toBe("function");
@@ -54,6 +70,8 @@ describe("createApplication", () => {
 
   it("uses default config for optional fields", async () => {
     const app = await createApplication(baseConfig());
+    createdApps.push(app);
+
     expect(app).toBeDefined();
     expect(app.orchestrator.getState()).toBe(LoopState.STOPPED);
   });

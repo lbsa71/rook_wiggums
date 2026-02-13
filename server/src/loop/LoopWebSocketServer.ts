@@ -19,7 +19,9 @@ export class LoopWebSocketServer implements ILoopEventSink {
     }
   }
 
-  close(): void {
-    this.wss.close();
+  close(): Promise<void> {
+    return new Promise((resolve) => {
+      this.wss.close(() => resolve());
+    });
   }
 }
