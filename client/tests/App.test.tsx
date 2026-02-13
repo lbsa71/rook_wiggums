@@ -29,7 +29,7 @@ describe("App", () => {
 
   it("renders the application title", () => {
     render(<App />);
-    expect(screen.getByText("Rook Wiggums")).toBeInTheDocument();
+    expect(screen.getByText("Substrate")).toBeInTheDocument();
   });
 
   it("shows connection status", () => {

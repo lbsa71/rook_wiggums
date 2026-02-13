@@ -1,8 +1,8 @@
 {
-  "name": "rook-wiggums",
+  "name": "substrate",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-Referential Agent Shell (Ralph Wiggum REPL)",
+  "description": "Self-Referential Agent Shell",
   "workspaces": [
     "server",
     "client"

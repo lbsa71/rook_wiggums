@@ -4,8 +4,8 @@ import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSy
 
 describe("resolveRemoteLogPath", () => {
   it("appends default log path for bare user@host", () => {
-    expect(resolveRemoteLogPath("rook@34.63.182.98")).toBe(
-      ".local/share/rook-wiggums/debug.log"
+    expect(resolveRemoteLogPath("user@34.63.182.98")).toBe(
+      ".local/share/substrate/debug.log"
     );
   });
 });
@@ -22,7 +22,7 @@ describe("fetchRemoteLogs", () => {
 
     const result = await fetchRemoteLogs({
       runner,
-      host: "rook@34.63.182.98",
+      host: "user@34.63.182.98",
     });
 
     expect(result.success).toBe(true);
@@ -31,7 +31,7 @@ describe("fetchRemoteLogs", () => {
     const calls = runner.getCalls();
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("ssh");
-    expect(calls[0].args).toContain("rook@34.63.182.98");
+    expect(calls[0].args).toContain("user@34.63.182.98");
     expect(calls[0].args.some(a => a.includes("tail"))).toBe(true);
   });
 
@@ -40,7 +40,7 @@ describe("fetchRemoteLogs", () => {
 
     await fetchRemoteLogs({
       runner,
-      host: "rook@34.63.182.98",
+      host: "user@34.63.182.98",
       identity: "~/.ssh/google_compute_engine",
     });
 
@@ -54,7 +54,7 @@ describe("fetchRemoteLogs", () => {
 
     await fetchRemoteLogs({
       runner,
-      host: "rook@example.com",
+      host: "user@example.com",
     });
 
     const calls = runner.getCalls();
@@ -67,7 +67,7 @@ describe("fetchRemoteLogs", () => {
 
     await fetchRemoteLogs({
       runner,
-      host: "rook@example.com",
+      host: "user@example.com",
       lines: 50,
     });
 
@@ -81,7 +81,7 @@ describe("fetchRemoteLogs", () => {
 
     const result = await fetchRemoteLogs({
       runner,
-      host: "rook@example.com",
+      host: "user@example.com",
     });
 
     expect(result.success).toBe(false);

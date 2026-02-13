@@ -1,7 +1,7 @@
 import type { IProcessRunner } from "./agents/claude/IProcessRunner";
 
-const DEFAULT_REMOTE_SUBSTRATE = ".local/share/rook-wiggums/substrate";
-const DEFAULT_REMOTE_CONFIG = ".config/rook-wiggums";
+const DEFAULT_REMOTE_SUBSTRATE = ".local/share/substrate/substrate";
+const DEFAULT_REMOTE_CONFIG = ".config/substrate";
 
 export interface TransferOptions {
   runner: IProcessRunner;

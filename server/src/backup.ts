@@ -39,7 +39,7 @@ export async function findLatestBackup(
 
   const entries = await fs.readdir(backupDir);
   const backups = entries
-    .filter((f) => f.startsWith("rook-wiggums-backup-") && f.endsWith(".tar.gz"))
+    .filter((f) => f.startsWith("substrate-backup-") && f.endsWith(".tar.gz"))
     .sort();
 
   if (backups.length === 0) return null;
@@ -86,7 +86,7 @@ export async function createRemoteBackup(options: RemoteBackupOptions): Promise<
   await fs.mkdir(outputDir, { recursive: true });
 
   const timestamp = clock.now().toISOString().replace(/:/g, "-");
-  const filename = `rook-wiggums-backup-${timestamp}.tar.gz`;
+  const filename = `substrate-backup-${timestamp}.tar.gz`;
   const outputPath = path.join(outputDir, filename);
   const tempDir = path.join(outputDir, `.tmp-backup-${timestamp}`);
 
@@ -128,7 +128,7 @@ export async function createBackup(options: BackupOptions): Promise<BackupResult
   await fs.mkdir(outputDir, { recursive: true });
 
   const timestamp = clock.now().toISOString().replace(/:/g, "-");
-  const filename = `rook-wiggums-backup-${timestamp}.tar.gz`;
+  const filename = `substrate-backup-${timestamp}.tar.gz`;
   const outputPath = path.join(outputDir, filename);
 
   // Use -C for relative paths so archives are portable across agent spaces

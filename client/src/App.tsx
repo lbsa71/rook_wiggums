@@ -44,7 +44,7 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Rook Wiggums</h1>
+        <h1>Substrate</h1>
         <span className={`ws-status ${connected ? "connected" : "disconnected"}`}>
           {connected ? "Connected" : "Disconnected"}
         </span>

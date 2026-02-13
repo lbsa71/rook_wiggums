@@ -188,7 +188,7 @@ export class BackupScheduler {
 
       const entries = await this.fs.readdir(this.config.backupDir);
       const backups = entries
-        .filter((f) => f.startsWith("rook-wiggums-backup-") && f.endsWith(".tar.gz"))
+        .filter((f) => f.startsWith("substrate-backup-") && f.endsWith(".tar.gz"))
         .sort(); // Lexicographic sort works for ISO timestamps
 
       if (backups.length <= this.config.retentionCount) {

@@ -22,7 +22,7 @@ describe("createBackup", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.outputPath).toMatch(/rook-wiggums-backup-2025-06-15T.*\.tar\.gz$/);
+    expect(result.outputPath).toMatch(/substrate-backup-2025-06-15T.*\.tar\.gz$/);
 
     const calls = runner.getCalls();
     expect(calls).toHaveLength(1);
@@ -129,18 +129,18 @@ describe("createRemoteBackup", () => {
       fs,
       runner,
       clock,
-      remoteSource: "rook@host:.local/share/rook-wiggums/substrate",
+      remoteSource: "user@host:.local/share/substrate/substrate",
       outputDir: "/backups",
     });
 
     expect(result.success).toBe(true);
-    expect(result.outputPath).toMatch(/rook-wiggums-backup-.*\.tar\.gz$/);
+    expect(result.outputPath).toMatch(/substrate-backup-.*\.tar\.gz$/);
 
     const calls = runner.getCalls();
     // 1: rsync, 2: tar, 3: rm cleanup
     expect(calls).toHaveLength(3);
     expect(calls[0].command).toBe("rsync");
-    expect(calls[0].args).toContain("rook@host:.local/share/rook-wiggums/substrate/");
+    expect(calls[0].args).toContain("user@host:.local/share/substrate/substrate/");
     expect(calls[1].command).toBe("tar");
     expect(calls[1].args).toContain("-czf");
     expect(calls[2].command).toBe("rm");
@@ -159,7 +159,7 @@ describe("createRemoteBackup", () => {
       fs,
       runner,
       clock,
-      remoteSource: "rook@host:.local/share/rook-wiggums/substrate",
+      remoteSource: "user@host:.local/share/substrate/substrate",
       outputDir: "/backups",
       identity: "~/.ssh/my_key",
     });
@@ -181,7 +181,7 @@ describe("createRemoteBackup", () => {
       fs,
       runner,
       clock,
-      remoteSource: "rook@host:substrate",
+      remoteSource: "user@host:substrate",
       outputDir: "/backups",
     });
 
@@ -202,7 +202,7 @@ describe("createRemoteBackup", () => {
       fs,
       runner,
       clock,
-      remoteSource: "rook@host:substrate",
+      remoteSource: "user@host:substrate",
       outputDir: "/backups",
     });
 
@@ -222,7 +222,7 @@ describe("createRemoteBackup", () => {
       fs,
       runner,
       clock,
-      remoteSource: "rook@host:substrate",
+      remoteSource: "user@host:substrate",
       outputDir: "/backups",
     });
 
@@ -335,8 +335,8 @@ describe("restoreBackup", () => {
     const runner = new InMemoryProcessRunner();
 
     await fs.mkdir("/backups", { recursive: true });
-    await fs.writeFile("/backups/rook-wiggums-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
-    await fs.writeFile("/backups/rook-wiggums-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
+    await fs.writeFile("/backups/substrate-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
+    await fs.writeFile("/backups/substrate-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
 
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
 
@@ -374,9 +374,9 @@ describe("findLatestBackup", () => {
   it("returns the latest backup by sorted name", async () => {
     const fs = new InMemoryFileSystem();
     await fs.mkdir("/backups", { recursive: true });
-    await fs.writeFile("/backups/rook-wiggums-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
-    await fs.writeFile("/backups/rook-wiggums-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
-    await fs.writeFile("/backups/rook-wiggums-backup-2025-03-10T05-30-00.000Z.tar.gz", "mid");
+    await fs.writeFile("/backups/substrate-backup-2025-01-01T00-00-00.000Z.tar.gz", "old");
+    await fs.writeFile("/backups/substrate-backup-2025-06-15T10-00-00.000Z.tar.gz", "new");
+    await fs.writeFile("/backups/substrate-backup-2025-03-10T05-30-00.000Z.tar.gz", "mid");
 
     const result = await findLatestBackup(fs, "/backups");
 

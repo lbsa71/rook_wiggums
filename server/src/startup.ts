@@ -4,7 +4,7 @@ import { SubstrateConfig } from "./substrate/config";
 import { SubstrateInitializer } from "./substrate/initialization/SubstrateInitializer";
 import { SubstrateValidator } from "./substrate/initialization/SubstrateValidator";
 import { createApplication } from "./loop/createApplication";
-import type { RookConfig } from "./config";
+import type { AppConfig } from "./config";
 
 export interface StartedServer {
   port: number;
@@ -43,7 +43,7 @@ export async function initializeSubstrate(
   console.log("Substrate: validated successfully");
 }
 
-export async function startServer(config: RookConfig): Promise<StartedServer> {
+export async function startServer(config: AppConfig): Promise<StartedServer> {
   const fs = new NodeFileSystem();
 
   await initializeSubstrate(fs, config.substratePath);

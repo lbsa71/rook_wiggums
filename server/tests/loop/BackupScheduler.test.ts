@@ -102,7 +102,7 @@ describe("BackupScheduler", () => {
       const result = await scheduler.runBackup();
 
       expect(result.success).toBe(true);
-      expect(result.backupPath).toContain("/backups/rook-wiggums-backup-");
+      expect(result.backupPath).toContain("/backups/substrate-backup-");
       expect(result.error).toBeUndefined();
     });
 
@@ -119,7 +119,7 @@ describe("BackupScheduler", () => {
       await fs.mkdir("/substrate", { recursive: true });
       await fs.writeFile("/substrate/PLAN.md", "# Plan");
 
-      const backupPath = "/backups/rook-wiggums-backup-2026-02-10T00-00-00.000Z.tar.gz";
+      const backupPath = "/backups/substrate-backup-2026-02-10T00-00-00.000Z.tar.gz";
 
       // Mock tar commands - create backup, then verify
       runner.enqueue({ exitCode: 0, stdout: "", stderr: "" });
@@ -167,9 +167,9 @@ describe("BackupScheduler", () => {
 
       // Create old backups
       await fs.mkdir("/backups", { recursive: true });
-      await fs.writeFile("/backups/rook-wiggums-backup-2026-02-01T00-00-00.000Z.tar.gz", "old1");
-      await fs.writeFile("/backups/rook-wiggums-backup-2026-02-02T00-00-00.000Z.tar.gz", "old2");
-      await fs.writeFile("/backups/rook-wiggums-backup-2026-02-03T00-00-00.000Z.tar.gz", "old3");
+      await fs.writeFile("/backups/substrate-backup-2026-02-01T00-00-00.000Z.tar.gz", "old1");
+      await fs.writeFile("/backups/substrate-backup-2026-02-02T00-00-00.000Z.tar.gz", "old2");
+      await fs.writeFile("/backups/substrate-backup-2026-02-03T00-00-00.000Z.tar.gz", "old3");
 
       // Mock tar commands for 2 new backups
       runner.enqueue({ exitCode: 0, stdout: "", stderr: "" });
@@ -182,7 +182,7 @@ describe("BackupScheduler", () => {
 
       // Check that oldest backups were deleted
       const files = await fs.readdir("/backups");
-      const backupFiles = files.filter(f => f.startsWith("rook-wiggums-backup-"));
+      const backupFiles = files.filter(f => f.startsWith("substrate-backup-"));
       expect(backupFiles.length).toBe(3); // Only 3 should remain
     });
   });

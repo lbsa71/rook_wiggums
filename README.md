@@ -1,10 +1,10 @@
-# Rook Wiggums
+# Substrate
 
 A persistent, self-referential orchestration layer around Claude Code with distinct cognitive roles, file-based memory, and autonomous goal-setting capabilities.
 
 ## Overview
 
-Rook Wiggums (the Ralph Wiggum REPL) is an agent shell that wraps Claude Code in a continuous execution loop with four cognitive roles:
+Substrate is an agent shell that wraps Claude Code in a continuous execution loop with four cognitive roles:
 
 - **Ego** — Executive planner that reads the current PLAN, decides the next action, and dispatches work
 - **Subconscious** — Worker that executes tasks, logs progress, updates memory and skills
@@ -26,7 +26,7 @@ All state lives in plain markdown files (the "substrate"), making the system ful
 ### Installation
 
 ```bash
-git clone <repo-url> && cd rook_wiggums
+git clone <repo-url> && cd substrate
 npm install
 ```
 
@@ -67,24 +67,24 @@ npm run transfer -- -i ~/.ssh/key --dest user@host  # With SSH identity
 Configuration is resolved in priority order:
 1. `--config /path/to/config.json` (explicit flag)
 2. `config.json` in current working directory
-3. `~/.config/rook-wiggums/config.json` (XDG config dir)
+3. `~/.config/substrate/config.json` (XDG config dir)
 4. Built-in defaults
 
 Environment variables override all file-based config:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUBSTRATE_PATH` | `~/.local/share/rook-wiggums/substrate` | Substrate directory |
+| `SUBSTRATE_PATH` | `~/.local/share/substrate/substrate` | Substrate directory |
 | `PORT` | `3000` | HTTP/WebSocket server port |
 
 Config file fields:
 
 ```json
 {
-  "substratePath": "~/.local/share/rook-wiggums/substrate",
-  "workingDirectory": "~/.local/share/rook-wiggums",
-  "sourceCodePath": "/path/to/rook_wiggums",
-  "backupPath": "~/.local/share/rook-wiggums-backups",
+  "substratePath": "~/.local/share/substrate/substrate",
+  "workingDirectory": "~/.local/share/substrate",
+  "sourceCodePath": "/path/to/substrate",
+  "backupPath": "~/.local/share/substrate-backups",
   "port": 3000,
   "model": "sonnet"
 }
@@ -178,7 +178,7 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 ### Project Structure
 
 ```
-rook_wiggums/
+substrate/
 ├── server/                       # Node.js + TypeScript backend
 │   ├── src/
 │   │   ├── agents/
@@ -209,7 +209,7 @@ rook_wiggums/
 │   │   ├── backup.ts             # createBackup, restoreBackup, findLatestBackup
 │   │   ├── transfer.ts           # rsync-based transfer with SSH identity support
 │   │   ├── cli.ts                # CLI arg parser + main() entry point
-│   │   ├── config.ts             # RookConfig, resolveConfig (XDG-compliant)
+│   │   ├── config.ts             # AppConfig, resolveConfig (XDG-compliant)
 │   │   ├── paths.ts              # getAppPaths (XDG on Linux, ~/Library on macOS)
 │   │   ├── init.ts               # initWorkspace (creates dirs, config, substrate)
 │   │   ├── startup.ts            # startServer (wires and launches everything)
@@ -357,16 +357,16 @@ Uses rsync for live sync between agent spaces, including remote hosts:
 npm run transfer -- --source /space-a/substrate --dest /space-b/substrate
 
 # Remote (source defaults to current config's substratePath)
-npm run transfer -- --dest rook@34.63.182.98
+npm run transfer -- --dest user@34.63.182.98
 
 # Remote with SSH identity
-npm run transfer -- -i ~/.ssh/google_compute_engine --dest rook@34.63.182.98
+npm run transfer -- -i ~/.ssh/google_compute_engine --dest user@34.63.182.98
 
 # Remote with explicit path
-npm run transfer -- -i ~/.ssh/key --dest rook@host:/custom/path
+npm run transfer -- -i ~/.ssh/key --dest user@host:/custom/path
 ```
 
-When `--dest` is `user@host` without a path, it defaults to `.local/share/rook-wiggums/substrate` on the remote. The `--source` defaults to the current config's `substratePath`.
+When `--dest` is `user@host` without a path, it defaults to `.local/share/substrate/substrate` on the remote. The `--source` defaults to the current config's `substratePath`.
 
 Transfer is additive (no `--delete`) — it adds/updates files without removing extras from the destination.
 

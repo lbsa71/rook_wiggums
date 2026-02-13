@@ -1,8 +1,8 @@
 {
-  "name": "@rook-wiggums/server",
+  "name": "@substrate/server",
   "version": "0.1.1",
   "private": true,
-  "description": "Rook Wiggums backend execution loop",
+  "description": "Substrate backend execution loop",
   "main": "dist/index.js",
   "scripts": {
     "init": "tsx src/cli.ts init",

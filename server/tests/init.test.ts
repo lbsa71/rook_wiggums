@@ -2,19 +2,19 @@ import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSy
 import { SubstrateConfig } from "../src/substrate/config";
 import { SubstrateFileType } from "../src/substrate/types";
 import { initWorkspace } from "../src/init";
-import type { RookConfig } from "../src/config";
+import type { AppConfig } from "../src/config";
 import type { AppPaths } from "../src/paths";
 
 const TEST_PATHS: AppPaths = {
-  config: "/xdg/config/rook-wiggums",
-  data: "/xdg/data/rook-wiggums",
+  config: "/xdg/config/substrate",
+  data: "/xdg/data/substrate",
 };
 
-const TEST_CONFIG: RookConfig = {
-  substratePath: "/xdg/data/rook-wiggums/substrate",
-  workingDirectory: "/xdg/data/rook-wiggums",
-  sourceCodePath: "/xdg/data/rook-wiggums",
-  backupPath: "/xdg/data/rook-wiggums-backups",
+const TEST_CONFIG: AppConfig = {
+  substratePath: "/xdg/data/substrate/substrate",
+  workingDirectory: "/xdg/data/substrate",
+  sourceCodePath: "/xdg/data/substrate",
+  backupPath: "/xdg/data/substrate-backups",
   port: 3000,
   model: "sonnet",
   mode: "cycle",

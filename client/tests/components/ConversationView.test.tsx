@@ -105,7 +105,7 @@ describe("ConversationView", () => {
       "# Conversation",
       "",
       "[2025-01-01T10:00:00.000Z] [EGO] Can you tell me about yourself?",
-      "[2025-01-01T10:01:00.000Z] [EGO] I'm **Rook** - named after the chess piece.",
+      "[2025-01-01T10:01:00.000Z] [EGO] I'm **Substrate** - a persistent orchestration layer.",
       "",
       "**What drives me:**",
       "- Self-preservation",
@@ -127,7 +127,7 @@ describe("ConversationView", () => {
       const entries = el.querySelectorAll(".conversation-entry");
       expect(entries).toHaveLength(3);
       // Second entry should contain the full multi-line message
-      expect(entries[1].textContent).toContain("Rook");
+      expect(entries[1].textContent).toContain("Substrate");
       expect(entries[1].textContent).toContain("Self-preservation");
       expect(entries[1].textContent).toContain("What would you like to know more about?");
     });

@@ -115,19 +115,19 @@ describe("parseArgs", () => {
     const result = parseArgs([
       "node", "cli.ts", "transfer",
       "-i", "~/.ssh/google_compute_engine",
-      "--dest", "rook@34.63.182.98",
+      "--dest", "user@34.63.182.98",
     ]);
 
     expect(result.command).toBe("transfer");
     expect(result.identity).toBe("~/.ssh/google_compute_engine");
-    expect(result.dest).toBe("rook@34.63.182.98");
+    expect(result.dest).toBe("user@34.63.182.98");
   });
 
   it("parses --identity as alias for -i", () => {
     const result = parseArgs([
       "node", "cli.ts", "transfer",
       "--identity", "/keys/id_rsa",
-      "--dest", "rook@host",
+      "--dest", "user@host",
     ]);
 
     expect(result.identity).toBe("/keys/id_rsa");
@@ -143,18 +143,18 @@ describe("parseArgs", () => {
     const result = parseArgs([
       "node", "cli.ts", "logs",
       "-i", "~/.ssh/google_compute_engine",
-      "--source", "rook@34.63.182.98",
+      "--source", "user@34.63.182.98",
     ]);
 
     expect(result.command).toBe("logs");
     expect(result.identity).toBe("~/.ssh/google_compute_engine");
-    expect(result.source).toBe("rook@34.63.182.98");
+    expect(result.source).toBe("user@34.63.182.98");
   });
 
   it("parses -n flag for line count", () => {
     const result = parseArgs([
       "node", "cli.ts", "logs",
-      "--source", "rook@host",
+      "--source", "user@host",
       "-n", "50",
     ]);
 

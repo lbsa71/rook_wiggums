@@ -1,8 +1,8 @@
 {
-  "name": "@rook-wiggums/client",
+  "name": "@substrate/client",
   "version": "0.1.0",
   "private": true,
-  "description": "Rook Wiggums frontend interface",
+  "description": "Substrate frontend interface",
   "type": "module",
   "scripts": {
     "dev": "vite",

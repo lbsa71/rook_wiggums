@@ -1,12 +1,12 @@
 import * as path from "node:path";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
-import type { RookConfig } from "./config";
+import type { AppConfig } from "./config";
 import type { AppPaths } from "./paths";
 import { initializeSubstrate } from "./startup";
 
 export async function initWorkspace(
   fs: IFileSystem,
-  config: RookConfig,
+  config: AppConfig,
   appPaths: AppPaths
 ): Promise<void> {
   // Create working directory

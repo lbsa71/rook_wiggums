@@ -20,7 +20,7 @@ describe("PromptBuilder", () => {
     checker = new PermissionChecker();
     builder = new PromptBuilder(reader, checker, {
       substratePath: "/substrate",
-      sourceCodePath: "/home/user/rook_wiggums",
+      sourceCodePath: "/home/user/substrate",
     });
 
     await fs.mkdir("/substrate", { recursive: true });
@@ -80,7 +80,7 @@ describe("PromptBuilder", () => {
       const prompt = builder.buildSystemPrompt(AgentRole.EGO);
       expect(prompt).toContain("=== ENVIRONMENT ===");
       expect(prompt).toContain("Substrate directory: /substrate");
-      expect(prompt).toContain("My own source code: /home/user/rook_wiggums");
+      expect(prompt).toContain("My own source code: /home/user/substrate");
     });
   });
 

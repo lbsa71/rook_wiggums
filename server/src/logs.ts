@@ -1,7 +1,7 @@
 import type { IProcessRunner } from "./agents/claude/IProcessRunner";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 
-const DEFAULT_REMOTE_LOG = ".local/share/rook-wiggums/debug.log";
+const DEFAULT_REMOTE_LOG = ".local/share/substrate/debug.log";
 
 export interface RemoteLogOptions {
   runner: IProcessRunner;

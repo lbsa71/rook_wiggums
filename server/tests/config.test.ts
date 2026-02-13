@@ -3,8 +3,8 @@ import { resolveConfig } from "../src/config";
 import type { AppPaths } from "../src/paths";
 
 const TEST_PATHS: AppPaths = {
-  config: "/xdg/config/rook-wiggums",
-  data: "/xdg/data/rook-wiggums",
+  config: "/xdg/config/substrate",
+  data: "/xdg/data/substrate",
 };
 
 describe("resolveConfig", () => {
@@ -17,9 +17,9 @@ describe("resolveConfig", () => {
   it("returns defaults when no config file exists", async () => {
     const config = await resolveConfig(fs, { appPaths: TEST_PATHS, env: {} });
 
-    expect(config.substratePath).toBe("/xdg/data/rook-wiggums/substrate");
-    expect(config.workingDirectory).toBe("/xdg/data/rook-wiggums");
-    expect(config.backupPath).toBe("/xdg/data/rook-wiggums-backups");
+    expect(config.substratePath).toBe("/xdg/data/substrate/substrate");
+    expect(config.workingDirectory).toBe("/xdg/data/substrate");
+    expect(config.backupPath).toBe("/xdg/data/substrate-backups");
     expect(config.port).toBe(3000);
     expect(config.model).toBe("sonnet");
   });
@@ -39,7 +39,7 @@ describe("resolveConfig", () => {
 
     expect(config.substratePath).toBe("/my/substrate");
     expect(config.port).toBe(8080);
-    expect(config.workingDirectory).toBe("/xdg/data/rook-wiggums");
+    expect(config.workingDirectory).toBe("/xdg/data/substrate");
   });
 
   it("errors if explicit configPath is missing", async () => {
@@ -63,7 +63,7 @@ describe("resolveConfig", () => {
     });
 
     expect(config.port).toBe(4000);
-    expect(config.substratePath).toBe("/xdg/data/rook-wiggums/substrate");
+    expect(config.substratePath).toBe("/xdg/data/substrate/substrate");
   });
 
   it("falls back to config-dir config.json when CWD has none", async () => {
@@ -113,8 +113,8 @@ describe("resolveConfig", () => {
     });
 
     expect(config.port).toBe(9000);
-    expect(config.substratePath).toBe("/xdg/data/rook-wiggums/substrate");
-    expect(config.workingDirectory).toBe("/xdg/data/rook-wiggums");
+    expect(config.substratePath).toBe("/xdg/data/substrate/substrate");
+    expect(config.workingDirectory).toBe("/xdg/data/substrate");
   });
 
   it("reads model from config file", async () => {
@@ -133,11 +133,11 @@ describe("resolveConfig", () => {
   it("defaults sourceCodePath to cwd", async () => {
     const config = await resolveConfig(fs, {
       appPaths: TEST_PATHS,
-      cwd: "/home/stefan/rook_wiggums",
+      cwd: "/home/stefan/substrate",
       env: {},
     });
 
-    expect(config.sourceCodePath).toBe("/home/stefan/rook_wiggums");
+    expect(config.sourceCodePath).toBe("/home/stefan/substrate");
   });
 
   it("uses sourceCodePath from config file", async () => {
@@ -158,7 +158,7 @@ describe("resolveConfig", () => {
   it("uses backupPath from config file", async () => {
     await fs.mkdir("/project", { recursive: true });
     await fs.writeFile("/project/config.json", JSON.stringify({
-      backupPath: "/mnt/backups/rook",
+      backupPath: "/mnt/backups/substrate",
     }));
 
     const config = await resolveConfig(fs, {
@@ -167,7 +167,7 @@ describe("resolveConfig", () => {
       env: {},
     });
 
-    expect(config.backupPath).toBe("/mnt/backups/rook");
+    expect(config.backupPath).toBe("/mnt/backups/substrate");
   });
 
   it("env vars override config file values", async () => {

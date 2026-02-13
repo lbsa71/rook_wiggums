@@ -8,8 +8,8 @@ describe("getAppPaths", () => {
       env: {},
     });
 
-    expect(paths.config).toBe("/home/testuser/.config/rook-wiggums");
-    expect(paths.data).toBe("/home/testuser/.local/share/rook-wiggums");
+    expect(paths.config).toBe("/home/testuser/.config/substrate");
+    expect(paths.data).toBe("/home/testuser/.local/share/substrate");
   });
 
   it("respects XDG env var overrides", () => {
@@ -22,8 +22,8 @@ describe("getAppPaths", () => {
       },
     });
 
-    expect(paths.config).toBe("/custom/config/rook-wiggums");
-    expect(paths.data).toBe("/custom/data/rook-wiggums");
+    expect(paths.config).toBe("/custom/config/substrate");
+    expect(paths.data).toBe("/custom/data/substrate");
   });
 
   it("returns Library-based paths on darwin", () => {
@@ -33,8 +33,8 @@ describe("getAppPaths", () => {
       env: {},
     });
 
-    expect(paths.config).toBe("/Users/testuser/Library/Preferences/rook-wiggums");
-    expect(paths.data).toBe("/Users/testuser/Library/Application Support/rook-wiggums");
+    expect(paths.config).toBe("/Users/testuser/Library/Preferences/substrate");
+    expect(paths.data).toBe("/Users/testuser/Library/Application Support/substrate");
   });
 
   it("uses APPDATA and LOCALAPPDATA on win32", () => {
@@ -47,7 +47,7 @@ describe("getAppPaths", () => {
       },
     });
 
-    expect(paths.config).toBe("/appdata/roaming/rook-wiggums");
-    expect(paths.data).toBe("/appdata/local/rook-wiggums");
+    expect(paths.config).toBe("/appdata/roaming/substrate");
+    expect(paths.data).toBe("/appdata/local/substrate");
   });
 });

@@ -127,7 +127,7 @@ describe("transfer", () => {
     await transfer({
       runner,
       sourceSubstrate: "/local/substrate",
-      destSubstrate: "rook@34.63.182.98:.local/share/rook-wiggums/substrate",
+      destSubstrate: "user@34.63.182.98:.local/share/substrate/substrate",
       identity: "~/.ssh/google_compute_engine",
     });
 
@@ -158,9 +158,9 @@ describe("transfer", () => {
     await transfer({
       runner,
       sourceSubstrate: "/local/substrate",
-      destSubstrate: "rook@host:.local/share/rook-wiggums/substrate",
+      destSubstrate: "user@host:.local/share/substrate/substrate",
       sourceConfig: "/local/config",
-      destConfig: "rook@host:.config/rook-wiggums",
+      destConfig: "user@host:.config/substrate",
       identity: "/keys/id_rsa",
     });
 
@@ -176,18 +176,18 @@ describe("resolveRemotePath", () => {
   });
 
   it("returns user@host:path unchanged", () => {
-    expect(resolveRemotePath("rook@host:/custom/substrate")).toBe("rook@host:/custom/substrate");
+    expect(resolveRemotePath("user@host:/custom/substrate")).toBe("user@host:/custom/substrate");
   });
 
   it("appends default substrate path when user@host has no path", () => {
-    expect(resolveRemotePath("rook@34.63.182.98")).toBe(
-      "rook@34.63.182.98:.local/share/rook-wiggums/substrate"
+    expect(resolveRemotePath("user@34.63.182.98")).toBe(
+      "user@34.63.182.98:.local/share/substrate/substrate"
     );
   });
 
   it("handles hostnames with dots", () => {
     expect(resolveRemotePath("user@my.server.com")).toBe(
-      "user@my.server.com:.local/share/rook-wiggums/substrate"
+      "user@my.server.com:.local/share/substrate/substrate"
     );
   });
 });
@@ -198,14 +198,14 @@ describe("resolveRemoteConfigPath", () => {
   });
 
   it("appends default config path for user@host", () => {
-    expect(resolveRemoteConfigPath("rook@34.63.182.98")).toBe(
-      "rook@34.63.182.98:.config/rook-wiggums"
+    expect(resolveRemoteConfigPath("user@34.63.182.98")).toBe(
+      "user@34.63.182.98:.config/substrate"
     );
   });
 
   it("appends default config path even when dest has explicit substrate path", () => {
-    expect(resolveRemoteConfigPath("rook@host:/custom/substrate")).toBe(
-      "rook@host:.config/rook-wiggums"
+    expect(resolveRemoteConfigPath("user@host:/custom/substrate")).toBe(
+      "user@host:.config/substrate"
     );
   });
 });
@@ -216,10 +216,10 @@ describe("extractHost", () => {
   });
 
   it("extracts user@host from user@host", () => {
-    expect(extractHost("rook@34.63.182.98")).toBe("rook@34.63.182.98");
+    expect(extractHost("user@34.63.182.98")).toBe("user@34.63.182.98");
   });
 
   it("extracts user@host from user@host:path", () => {
-    expect(extractHost("rook@host:/custom/path")).toBe("rook@host");
+    expect(extractHost("user@host:/custom/path")).toBe("user@host");
   });
 });
