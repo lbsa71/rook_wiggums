@@ -27,10 +27,16 @@ export class SubstrateFileWriter {
       );
     }
 
+    // Redact secrets if detected, warn but don't block
+    const contentToWrite = validation.redactedContent ?? content;
+    if (validation.warnings.length > 0) {
+      console.warn(`Substrate: redacted secrets on write to ${fileType}: ${validation.warnings.join("; ")}`);
+    }
+
     const release = await this.lock.acquire(fileType);
     try {
       const filePath = this.config.getFilePath(fileType);
-      await this.fs.writeFile(filePath, content);
+      await this.fs.writeFile(filePath, contentToWrite);
     } finally {
       release();
     }

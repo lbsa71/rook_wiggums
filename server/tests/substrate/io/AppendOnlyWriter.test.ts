@@ -64,63 +64,63 @@ describe("AppendOnlyWriter", () => {
   });
 
   describe("secret detection", () => {
-    it("rejects entries containing API keys", async () => {
+    it("redacts entries containing API keys instead of rejecting", async () => {
       const entry = '[SUBCONSCIOUS] Progress update: api_key: "abcdef1234567890abcdef1234567890abcdef12"';
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow("potential secrets detected");
+      await writer.append(SubstrateFileType.PROGRESS, entry);
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain("[REDACTED]");
+      expect(content).not.toContain("abcdef1234567890abcdef1234567890abcdef12");
     });
 
-    it("rejects entries containing tokens", async () => {
+    it("redacts entries containing tokens", async () => {
       const entry = '[ID] Generated goal with auth_token: "my-secret-token-12345678901234567890"';
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow("potential secrets detected");
+      await writer.append(SubstrateFileType.PROGRESS, entry);
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain("[REDACTED]");
+      expect(content).not.toContain("my-secret-token-12345678901234567890");
     });
 
-    it("rejects entries containing AWS credentials", async () => {
+    it("redacts entries containing AWS credentials", async () => {
       const entry = "[EGO] Task result: AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow("potential secrets detected");
+      await writer.append(SubstrateFileType.PROGRESS, entry);
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain("[REDACTED]");
+      expect(content).not.toContain("AKIAIOSFODNN7EXAMPLE");
     });
 
-    it("rejects entries containing private keys", async () => {
+    it("redacts entries containing private keys", async () => {
       const entry = "[SUPEREGO] Audit finding: -----BEGIN PRIVATE KEY-----";
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow("potential secrets detected");
+      await writer.append(SubstrateFileType.PROGRESS, entry);
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain("[REDACTED]");
+      expect(content).not.toContain("BEGIN PRIVATE KEY");
     });
 
-    it("rejects entries containing database connection strings", async () => {
+    it("redacts entries containing database connection strings", async () => {
       const entry = "[SUBCONSCIOUS] Database connected: postgres://user:password@localhost:5432/db";
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow("potential secrets detected");
+      await writer.append(SubstrateFileType.PROGRESS, entry);
+
+      const content = await fs.readFile("/substrate/PROGRESS.md");
+      expect(content).toContain("[REDACTED]");
+      expect(content).not.toContain("postgres://user:password");
     });
 
-    it("accepts entries without secrets", async () => {
+    it("accepts entries without secrets unchanged", async () => {
       const entry = "[SUBCONSCIOUS] I learned about API key security today. Always use environment variables!";
 
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).resolves.not.toThrow();
+      await writer.append(SubstrateFileType.PROGRESS, entry);
 
       const content = await fs.readFile("/substrate/PROGRESS.md");
       expect(content).toContain(entry);
-    });
-
-    it("provides informative error messages", async () => {
-      const entry = 'Progress: api_key: "abcdef1234567890abcdef1234567890abcdef12"';
-
-      await expect(
-        writer.append(SubstrateFileType.PROGRESS, entry)
-      ).rejects.toThrow(/Generic API Key.*line.*column/);
     });
   });
 });

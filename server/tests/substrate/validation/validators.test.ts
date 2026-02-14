@@ -71,74 +71,76 @@ describe("validateSubstrateContent", () => {
   });
 
   describe("secret detection integration", () => {
-    it("rejects content with API keys", () => {
+    it("passes validation but warns and redacts content with API keys", () => {
       const content = '# Plan\n\n## Tasks\n\napi_key: "abcdef1234567890abcdef1234567890abcdef12"';
       const result = validateSubstrateContent(content, SubstrateFileType.PLAN);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Generic API Key"))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes("Generic API Key"))).toBe(true);
+      expect(result.redactedContent).toBeDefined();
+      expect(result.redactedContent).toContain("[REDACTED]");
+      expect(result.redactedContent).not.toContain("abcdef1234567890abcdef1234567890abcdef12");
     });
 
-    it("rejects content with tokens", () => {
+    it("passes validation but warns and redacts content with tokens", () => {
       const content = '# Memory\n\nauth_token: "my-secret-token-12345678901234567890"';
       const result = validateSubstrateContent(content, SubstrateFileType.MEMORY);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Generic Token"))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes("Generic Token"))).toBe(true);
+      expect(result.redactedContent).toContain("[REDACTED]");
     });
 
-    it("rejects content with AWS credentials", () => {
+    it("passes validation but warns and redacts AWS credentials", () => {
       const content = "# Skills\n\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
       const result = validateSubstrateContent(content, SubstrateFileType.SKILLS);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("AWS Access Key ID"))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes("AWS Access Key ID"))).toBe(true);
+      expect(result.redactedContent).toContain("[REDACTED]");
     });
 
-    it("rejects content with private keys", () => {
+    it("passes validation but warns and redacts private keys", () => {
       const content = "# Security\n\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg...";
       const result = validateSubstrateContent(content, SubstrateFileType.SECURITY);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Private Key"))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes("Private Key"))).toBe(true);
+      expect(result.redactedContent).toContain("[REDACTED]");
     });
 
-    it("rejects content with database connection strings", () => {
+    it("passes validation but warns and redacts database connection strings", () => {
       const content = "# Memory\n\nDATABASE_URL=postgres://user:password@localhost:5432/mydb";
       const result = validateSubstrateContent(content, SubstrateFileType.MEMORY);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Database Connection String"))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes("Database Connection String"))).toBe(true);
+      expect(result.redactedContent).toContain("[REDACTED]");
     });
 
-    it("accepts content without secrets", () => {
+    it("returns no warnings or redacted content for clean files", () => {
       const content = "# Memory\n\nI learned about API key security today. Always use environment variables!";
       const result = validateSubstrateContent(content, SubstrateFileType.MEMORY);
 
       expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
+      expect(result.warnings).toHaveLength(0);
+      expect(result.redactedContent).toBeUndefined();
     });
 
-    it("provides detailed error messages with line numbers", () => {
+    it("provides detailed warning messages with line numbers", () => {
       const content = '# Plan\n\n## Tasks\n\napi_key: "abcdef1234567890abcdef1234567890abcdef12"';
       const result = validateSubstrateContent(content, SubstrateFileType.PLAN);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("line"))).toBe(true);
-      expect(result.errors.some(e => e.includes("column"))).toBe(true);
+      expect(result.warnings.some(w => w.includes("line"))).toBe(true);
+      expect(result.warnings.some(w => w.includes("column"))).toBe(true);
     });
 
-    it("redacts secrets in error messages", () => {
+    it("redacts secrets in warning messages", () => {
       const content = '# Memory\n\napi_key: "abcdef1234567890abcdef1234567890abcdef12"';
       const result = validateSubstrateContent(content, SubstrateFileType.MEMORY);
 
-      expect(result.valid).toBe(false);
-      // Should show partial match (last 4 chars visible)
-      expect(result.errors[0]).toContain("ef12");
-      // Should contain redaction asterisks
-      expect(result.errors[0]).toContain("*");
-      // Should NOT show full secret value
-      expect(result.errors[0]).not.toContain("abcdef1234567890abcdef1234567890abcdef12");
+      expect(result.warnings[0]).toContain("*");
+      expect(result.warnings[0]).not.toContain("abcdef1234567890abcdef1234567890abcdef12");
     });
   });
 });

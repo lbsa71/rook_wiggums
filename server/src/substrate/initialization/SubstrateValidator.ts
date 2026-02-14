@@ -12,6 +12,7 @@ export interface SubstrateValidationResult {
   valid: boolean;
   missingFiles: SubstrateFileType[];
   invalidFiles: InvalidFileEntry[];
+  redactedFiles: SubstrateFileType[];
 }
 
 export class SubstrateValidator {
@@ -23,6 +24,7 @@ export class SubstrateValidator {
   async validate(): Promise<SubstrateValidationResult> {
     const missingFiles: SubstrateFileType[] = [];
     const invalidFiles: InvalidFileEntry[] = [];
+    const redactedFiles: SubstrateFileType[] = [];
 
     for (const fileType of Object.values(SubstrateFileType)) {
       const filePath = this.config.getFilePath(fileType);
@@ -37,8 +39,16 @@ export class SubstrateValidator {
 
       const content = await this.fs.readFile(filePath);
       const result = validateSubstrateContent(content, fileType);
+
       if (!result.valid) {
         invalidFiles.push({ fileType, errors: result.errors });
+      }
+
+      // Redact secrets in-place: warn but don't block startup
+      if (result.warnings.length > 0 && result.redactedContent) {
+        console.warn(`Substrate: redacted secrets in ${fileType}: ${result.warnings.join("; ")}`);
+        await this.fs.writeFile(filePath, result.redactedContent);
+        redactedFiles.push(fileType);
       }
     }
 
@@ -46,6 +56,7 @@ export class SubstrateValidator {
       valid: missingFiles.length === 0 && invalidFiles.length === 0,
       missingFiles,
       invalidFiles,
+      redactedFiles,
     };
   }
 }

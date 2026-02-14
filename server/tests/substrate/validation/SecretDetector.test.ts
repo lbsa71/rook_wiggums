@@ -201,6 +201,20 @@ Line 4 is also clean`;
       expect(result.matches[0].column).toBeGreaterThan(1);
     });
 
+    it("does not flag publicKey as a secret", () => {
+      const content = '"publicKey": "302a300506032b6570032100c46059701dc810ed45ec3bed714e84aa46b8e2df043f89e23979ff9067893eb4"';
+      const result = detectSecrets(content);
+
+      expect(result.matches.filter(m => m.type === "Generic API Key")).toHaveLength(0);
+    });
+
+    it("does not flag peer token in JSON config as a secret", () => {
+      const content = '"token": "862eacc7617c1a13d34dd205476344b0e3f21801d7a1881b2f2b170135e9e79e"';
+      const result = detectSecrets(content);
+
+      expect(result.matches.filter(m => m.type === "Generic Token")).toHaveLength(0);
+    });
+
     it("does not flag prose mentioning 'password' without assignment", () => {
       const content = '- **Bluesky posting**: App password configured in ~/.config/bluesky/credentials.json';
       const result = detectSecrets(content);

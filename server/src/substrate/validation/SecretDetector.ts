@@ -28,14 +28,14 @@ const SECRET_PATTERNS: Array<{ type: string; pattern: RegExp; description: strin
   // Generic API keys (long alphanumeric strings that look like keys)
   {
     type: "Generic API Key",
-    pattern: /(?:api[_-]?key|apikey|key)["\s:=]+([a-zA-Z0-9_-]{32,})/gi,
+    pattern: /(?:api[_-]?key|apikey)["\s:=]+([a-zA-Z0-9_-]{32,})/gi,
     description: "Generic API key pattern"
   },
 
   // Generic tokens
   {
     type: "Generic Token",
-    pattern: /(?:token|auth[_-]?token|access[_-]?token)["\s:=]+([a-zA-Z0-9_.-]{20,})/gi,
+    pattern: /(?:auth[_-]?token|access[_-]?token)["\s:=]+([a-zA-Z0-9_.-]{20,})/gi,
     description: "Generic authentication token"
   },
 
@@ -218,6 +218,43 @@ export function formatSecretErrors(result: SecretDetectionResult): string[] {
  * @param secret - The secret to redact
  * @returns Redacted version safe for logging
  */
+/**
+ * Redact all detected secrets in the content, replacing each match with [REDACTED]
+ *
+ * @param content - The original content
+ * @param result - The detection result containing matches to redact
+ * @returns Content with all secret matches replaced by [REDACTED]
+ */
+export function redactSecrets(content: string, result: SecretDetectionResult): string {
+  if (!result.hasSecrets) return content;
+
+  // Sort matches by position descending so replacements don't shift indices
+  const sorted = [...result.matches].sort((a, b) => {
+    const posA = getMatchIndex(content, a);
+    const posB = getMatchIndex(content, b);
+    return posB - posA;
+  });
+
+  let redacted = content;
+  for (const match of sorted) {
+    const idx = getMatchIndex(redacted, match);
+    if (idx >= 0) {
+      redacted = redacted.substring(0, idx) + "[REDACTED]" + redacted.substring(idx + match.match.length);
+    }
+  }
+
+  return redacted;
+}
+
+function getMatchIndex(content: string, match: SecretMatch): number {
+  const lines = content.split('\n');
+  let charCount = 0;
+  for (let i = 0; i < match.line - 1 && i < lines.length; i++) {
+    charCount += lines[i].length + 1;
+  }
+  return charCount + match.column - 1;
+}
+
 function redactSecret(secret: string): string {
   if (secret.length <= 12) {
     return '***REDACTED***';

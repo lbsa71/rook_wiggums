@@ -1,9 +1,12 @@
 import { SubstrateFileType } from "../types";
-import { detectSecrets, formatSecretErrors } from "./SecretDetector";
+import { detectSecrets, formatSecretErrors, redactSecrets } from "./SecretDetector";
 
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  warnings: string[];
+  /** Present only when secrets were detected and redacted */
+  redactedContent?: string;
 }
 
 export function validateSubstrateContent(
@@ -11,6 +14,8 @@ export function validateSubstrateContent(
   fileType: SubstrateFileType
 ): ValidationResult {
   const errors: string[] = [];
+  const warnings: string[] = [];
+  let redactedContent: string | undefined;
 
   if (!content || content.trim().length === 0) {
     errors.push("Content must not be empty");
@@ -28,12 +33,12 @@ export function validateSubstrateContent(
     }
   }
 
-  // Secret detection (Phase 1 security roadmap)
-  // Prevents accidental exposure of API keys, tokens, credentials in substrate files
+  // Secret detection: warn and redact, don't block
   const secretResult = detectSecrets(content);
   if (secretResult.hasSecrets) {
-    errors.push(...formatSecretErrors(secretResult));
+    warnings.push(...formatSecretErrors(secretResult));
+    redactedContent = redactSecrets(content, secretResult);
   }
 
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, errors, warnings, redactedContent };
 }

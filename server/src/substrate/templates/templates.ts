@@ -80,7 +80,14 @@ export const SECURITY_TEMPLATE = `# Security
 
 This file is a short-form index. Each entry should be a brief policy with an @-reference to detailed implementation in the security/ subdirectory.
 
-No security policies defined yet.
+## Credential Hygiene
+
+- **NEVER store credentials, API keys, tokens, or passwords directly in substrate files.** Substrate files are scanned for secrets and any detected values will be automatically redacted to \`[REDACTED]\`.
+- Store sensitive values in dedicated config files outside the substrate (e.g., \`~/.config/<service>/credentials.json\`) with restricted permissions (chmod 600).
+- In substrate files, reference credentials by location only: "API key stored in ~/.config/openai/credentials.json"
+- This applies to ALL substrate files: MEMORY, PLAN, PROGRESS, SKILLS, PEERS, etc.
+
+No other security policies defined yet.
 `;
 
 export const CHARTER_TEMPLATE = `# Charter

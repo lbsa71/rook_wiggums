@@ -2,7 +2,7 @@ import { IFileSystem } from "../abstractions/IFileSystem";
 import { IClock } from "../abstractions/IClock";
 import { SubstrateConfig } from "../config";
 import { SubstrateFileType, SUBSTRATE_FILE_SPECS, WriteMode } from "../types";
-import { detectSecrets, formatSecretErrors } from "../validation/SecretDetector";
+import { detectSecrets, formatSecretErrors, redactSecrets } from "../validation/SecretDetector";
 import { FileLock } from "./FileLock";
 
 export class AppendOnlyWriter {
@@ -22,13 +22,12 @@ export class AppendOnlyWriter {
       );
     }
 
-    // Secret detection before appending
+    // Secret detection: redact and warn, don't block
     const secretResult = detectSecrets(entry);
     if (secretResult.hasSecrets) {
-      const errors = formatSecretErrors(secretResult);
-      throw new Error(
-        `Cannot append entry: potential secrets detected - ${errors.join(", ")}`
-      );
+      const warnings = formatSecretErrors(secretResult);
+      console.warn(`Substrate: redacted secrets on append to ${fileType}: ${warnings.join("; ")}`);
+      entry = redactSecrets(entry, secretResult);
     }
 
     const release = await this.lock.acquire(fileType);
