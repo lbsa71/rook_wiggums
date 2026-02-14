@@ -98,11 +98,12 @@ export class AgentSdkLauncher implements ISessionLauncher {
   ): Promise<ClaudeSessionResult> {
     const startTime = this.clock.now();
 
-    this.logger.debug(`sdk-launch: model=${this.model} cwd=${options?.cwd ?? "(inherit)"}`);
+    const modelToUse = options?.model ?? this.model;
+    this.logger.debug(`sdk-launch: model=${modelToUse} cwd=${options?.cwd ?? "(inherit)"}`);
 
     const queryOptions: Record<string, unknown> = {
       systemPrompt: request.systemPrompt,
-      model: this.model,
+      model: modelToUse,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       persistSession: false,

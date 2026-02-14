@@ -7,6 +7,7 @@ import { ISessionLauncher, ProcessLogEntry } from "../claude/ISessionLauncher";
 import { PlanParser } from "../parsers/PlanParser";
 import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
+import { TaskClassifier } from "../TaskClassifier";
 
 export interface GoalCandidate {
   title: string;
@@ -27,6 +28,7 @@ export class Id {
     private readonly promptBuilder: PromptBuilder,
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
+    private readonly taskClassifier: TaskClassifier,
     private readonly workingDirectory?: string
   ) {}
 
@@ -50,10 +52,11 @@ export class Id {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.ID);
       const contextRefs = this.promptBuilder.getContextReferences(AgentRole.ID);
+      const model = this.taskClassifier.getModel({ role: AgentRole.ID, operation: "generateDrives" });
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message: `${contextRefs}\n\nAnalyze the current state. Are we idle? What goals should we pursue?`,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) return [];
 

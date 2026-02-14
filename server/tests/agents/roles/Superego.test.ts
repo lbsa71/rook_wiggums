@@ -8,6 +8,7 @@ import { FileLock } from "../../../src/substrate/io/FileLock";
 import { SubstrateConfig } from "../../../src/substrate/config";
 import { InMemoryFileSystem } from "../../../src/substrate/abstractions/InMemoryFileSystem";
 import { FixedClock } from "../../../src/substrate/abstractions/FixedClock";
+import { TaskClassifier } from "../../../src/agents/TaskClassifier";
 
 describe("Superego agent", () => {
   let fs: InMemoryFileSystem;
@@ -25,8 +26,9 @@ describe("Superego agent", () => {
     const appendWriter = new AppendOnlyWriter(fs, config, lock, clock);
     const checker = new PermissionChecker();
     const promptBuilder = new PromptBuilder(reader, checker);
+    const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
-    superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, "/workspace");
+    superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, "/workspace");
 
     await fs.mkdir("/substrate", { recursive: true });
     await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild it\n\n## Tasks\n- [ ] Do stuff");

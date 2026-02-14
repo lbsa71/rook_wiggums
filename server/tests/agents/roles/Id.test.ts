@@ -6,6 +6,7 @@ import { SubstrateFileReader } from "../../../src/substrate/io/FileReader";
 import { SubstrateConfig } from "../../../src/substrate/config";
 import { InMemoryFileSystem } from "../../../src/substrate/abstractions/InMemoryFileSystem";
 import { FixedClock } from "../../../src/substrate/abstractions/FixedClock";
+import { TaskClassifier } from "../../../src/agents/TaskClassifier";
 
 describe("Id agent", () => {
   let fs: InMemoryFileSystem;
@@ -21,8 +22,9 @@ describe("Id agent", () => {
     const reader = new SubstrateFileReader(fs, config);
     const checker = new PermissionChecker();
     const promptBuilder = new PromptBuilder(reader, checker);
+    const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
-    id = new Id(reader, checker, promptBuilder, launcher, clock, "/workspace");
+    id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, "/workspace");
 
     await fs.mkdir("/substrate", { recursive: true });
     await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild it\n\n## Tasks\n- [ ] Do stuff");

@@ -9,6 +9,8 @@ export interface AppConfig {
   backupPath: string;
   port: number;
   model: string;
+  strategicModel?: string;
+  tacticalModel?: string;
   mode: "cycle" | "tick";
 }
 
@@ -32,6 +34,8 @@ export async function resolveConfig(
     backupPath: path.join(path.dirname(appPaths.data), "substrate-backups"),
     port: 3000,
     model: "sonnet",
+    strategicModel: "opus",
+    tacticalModel: "sonnet",
     mode: "cycle",
   };
 
@@ -66,6 +70,8 @@ export async function resolveConfig(
     backupPath: fileConfig.backupPath ?? defaults.backupPath,
     port: fileConfig.port ?? defaults.port,
     model: fileConfig.model ?? defaults.model,
+    strategicModel: fileConfig.strategicModel ?? defaults.strategicModel,
+    tacticalModel: fileConfig.tacticalModel ?? defaults.tacticalModel,
     mode: (fileConfig as Partial<AppConfig>).mode ?? defaults.mode,
   };
 

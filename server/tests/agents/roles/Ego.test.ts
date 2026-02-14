@@ -11,6 +11,7 @@ import { InMemoryFileSystem } from "../../../src/substrate/abstractions/InMemory
 import { FixedClock } from "../../../src/substrate/abstractions/FixedClock";
 import { AgentRole } from "../../../src/agents/types";
 import { ProcessLogEntry } from "../../../src/agents/claude/ISessionLauncher";
+import { TaskClassifier } from "../../../src/agents/TaskClassifier";
 
 describe("Ego agent", () => {
   let fs: InMemoryFileSystem;
@@ -29,9 +30,10 @@ describe("Ego agent", () => {
     const appendWriter = new AppendOnlyWriter(fs, config, lock, clock);
     const checker = new PermissionChecker();
     const promptBuilder = new PromptBuilder(reader, checker);
+    const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
     ego = new Ego(
-      reader, writer, appendWriter, checker, promptBuilder, launcher, clock, "/workspace"
+      reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, "/workspace"
     );
 
     await fs.mkdir("/substrate", { recursive: true });
