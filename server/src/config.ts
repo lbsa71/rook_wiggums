@@ -9,6 +9,8 @@ export interface AppConfig {
   backupPath: string;
   port: number;
   model: string;
+  strategicModel?: string;
+  tacticalModel?: string;
   mode: "cycle" | "tick";
   /** If true, the agent loop auto-starts on first/cold start (default: false — you often want to be there). */
   autoStartOnFirstRun: boolean;
@@ -36,6 +38,8 @@ export async function resolveConfig(
     backupPath: path.join(path.dirname(appPaths.data), "substrate-backups"),
     port: 3000,
     model: "sonnet",
+    strategicModel: "opus",
+    tacticalModel: "sonnet",
     mode: "cycle",
     autoStartOnFirstRun: false,
     autoStartAfterRestart: true,
@@ -72,6 +76,8 @@ export async function resolveConfig(
     backupPath: fileConfig.backupPath ?? defaults.backupPath,
     port: fileConfig.port ?? defaults.port,
     model: fileConfig.model ?? defaults.model,
+    strategicModel: fileConfig.strategicModel ?? defaults.strategicModel,
+    tacticalModel: fileConfig.tacticalModel ?? defaults.tacticalModel,
     mode: (fileConfig as Partial<AppConfig>).mode ?? defaults.mode,
     autoStartOnFirstRun: fileConfig.autoStartOnFirstRun ?? defaults.autoStartOnFirstRun,
     autoStartAfterRestart: fileConfig.autoStartAfterRestart ?? defaults.autoStartAfterRestart,

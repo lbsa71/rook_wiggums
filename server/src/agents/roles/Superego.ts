@@ -7,6 +7,7 @@ import { PromptBuilder } from "../prompts/PromptBuilder";
 import { ISessionLauncher, ProcessLogEntry } from "../claude/ISessionLauncher";
 import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
+import { TaskClassifier } from "../TaskClassifier";
 
 export interface Finding {
   severity: "info" | "warning" | "critical";
@@ -37,6 +38,7 @@ export class Superego {
     private readonly promptBuilder: PromptBuilder,
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
+    private readonly taskClassifier: TaskClassifier,
     private readonly workingDirectory?: string
   ) {}
 
@@ -44,10 +46,11 @@ export class Superego {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
       const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUPEREGO);
+      const model = this.taskClassifier.getModel({ role: AgentRole.SUPEREGO, operation: "audit" });
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message: `${contextRefs}\n\nPerform a full audit of all substrate files. Report findings.`,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
         return {
@@ -77,10 +80,11 @@ export class Superego {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
       const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUPEREGO);
+      const model = this.taskClassifier.getModel({ role: AgentRole.SUPEREGO, operation: "evaluateProposals" });
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message: `${contextRefs}\n\nEvaluate these proposals:\n${JSON.stringify(proposals, null, 2)}`,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
         return proposals.map(() => ({

@@ -9,6 +9,7 @@ import { FileLock } from "../substrate/io/FileLock";
 import { PermissionChecker } from "../agents/permissions";
 import { PromptBuilder } from "../agents/prompts/PromptBuilder";
 import { AgentSdkLauncher, SdkQueryFn } from "../agents/claude/AgentSdkLauncher";
+import { TaskClassifier } from "../agents/TaskClassifier";
 import { Ego } from "../agents/roles/Ego";
 import { Subconscious } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
@@ -33,6 +34,8 @@ export interface ApplicationConfig {
   workingDirectory?: string;
   sourceCodePath?: string;
   model?: string;
+  strategicModel?: string;
+  tacticalModel?: string;
   httpPort?: number;
   cycleDelayMs?: number;
   superegoAuditInterval?: number;
@@ -83,11 +86,17 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   });
   const launcher = new AgentSdkLauncher(sdkQuery, clock, config.model, logger);
 
+  // Task classifier for model selection
+  const taskClassifier = new TaskClassifier({
+    strategicModel: config.strategicModel ?? "opus",
+    tacticalModel: config.tacticalModel ?? "sonnet",
+  });
+
   const cwd = config.workingDirectory;
-  const ego = new Ego(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, cwd);
-  const subconscious = new Subconscious(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, cwd);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, cwd);
-  const id = new Id(reader, checker, promptBuilder, launcher, clock, cwd);
+  const ego = new Ego(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
+  const subconscious = new Subconscious(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
+  const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
 
   // Loop layer — build httpServer first for the underlying http.Server,
   // then wsServer, then orchestrator, then wire orchestrator back into httpServer

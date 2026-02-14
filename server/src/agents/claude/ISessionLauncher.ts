@@ -17,6 +17,7 @@ export interface ClaudeSessionResult {
 }
 
 export interface LaunchOptions {
+  model?: string;
   maxRetries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;

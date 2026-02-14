@@ -9,6 +9,7 @@ import { ISessionLauncher, ProcessLogEntry } from "../claude/ISessionLauncher";
 import { PlanParser } from "../parsers/PlanParser";
 import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
+import { TaskClassifier } from "../TaskClassifier";
 
 export interface SubconsciousProposal {
   target: string;
@@ -46,6 +47,7 @@ export class Subconscious {
     private readonly promptBuilder: PromptBuilder,
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
+    private readonly taskClassifier: TaskClassifier,
     private readonly workingDirectory?: string
   ) {}
 
@@ -53,10 +55,11 @@ export class Subconscious {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
       const contextRefs = this.promptBuilder.getContextReferences(AgentRole.SUBCONSCIOUS);
+      const model = this.taskClassifier.getModel({ role: AgentRole.SUBCONSCIOUS, operation: "execute" });
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message: `${contextRefs}\n\nExecute this task:\nID: ${task.taskId}\nDescription: ${task.description}`,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
         const errorDetail = result.rawOutput || result.error || "Claude session error";
@@ -155,10 +158,11 @@ Respond with ONLY a JSON object:
   "needsReassessment": boolean
 }`;
 
+      const model = this.taskClassifier.getModel({ role: AgentRole.SUBCONSCIOUS, operation: "evaluateOutcome" });
       const evalResult = await this.sessionLauncher.launch({
         systemPrompt,
         message: evaluationPrompt,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!evalResult.success) {
         // Default to conservative evaluation on failure

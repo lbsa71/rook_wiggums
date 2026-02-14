@@ -18,6 +18,7 @@ import { AppendOnlyWriter } from "../../src/substrate/io/AppendOnlyWriter";
 import { FileLock } from "../../src/substrate/io/FileLock";
 import { PermissionChecker } from "../../src/agents/permissions";
 import { PromptBuilder } from "../../src/agents/prompts/PromptBuilder";
+import { TaskClassifier } from "../../src/agents/TaskClassifier";
 
 function createDeps() {
   const fs = new InMemoryFileSystem();
@@ -30,11 +31,12 @@ function createDeps() {
   const appendWriter = new AppendOnlyWriter(fs, config, lock, clock);
   const checker = new PermissionChecker();
   const promptBuilder = new PromptBuilder(reader, checker);
+  const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
-  const ego = new Ego(reader, writer, appendWriter, checker, promptBuilder, launcher, clock);
-  const subconscious = new Subconscious(reader, writer, appendWriter, checker, promptBuilder, launcher, clock);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock);
-  const id = new Id(reader, checker, promptBuilder, launcher, clock);
+  const ego = new Ego(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
+  const subconscious = new Subconscious(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
+  const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier);
 
   return { fs, clock, launcher, appendWriter, ego, subconscious, superego, id };
 }

@@ -9,6 +9,7 @@ import { ISessionLauncher, ProcessLogEntry } from "../claude/ISessionLauncher";
 import { PlanParser } from "../parsers/PlanParser";
 import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
+import { TaskClassifier } from "../TaskClassifier";
 
 export interface EgoDecision {
   action: "dispatch" | "update_plan" | "converse" | "idle";
@@ -30,6 +31,7 @@ export class Ego {
     private readonly promptBuilder: PromptBuilder,
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
+    private readonly taskClassifier: TaskClassifier,
     private readonly workingDirectory?: string
   ) {}
 
@@ -37,10 +39,11 @@ export class Ego {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.EGO);
       const contextRefs = this.promptBuilder.getContextReferences(AgentRole.EGO);
+      const model = this.taskClassifier.getModel({ role: AgentRole.EGO, operation: "decide" });
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message: `${contextRefs}\n\nAnalyze the current context. What should we do next?`,
-      }, { onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory });
 
       if (!result.success) {
         return { action: "idle", reason: `Claude session error: ${result.error || "unknown"}` };
@@ -82,10 +85,11 @@ export class Ego {
       `Respond with ONLY your plain text reply — no JSON, no markdown code blocks, no wrapper.\n` +
       `Keep responses concise and conversational.`;
 
+    const model = this.taskClassifier.getModel({ role: AgentRole.EGO, operation: "respondToMessage" });
     const result = await this.sessionLauncher.launch({
       systemPrompt,
       message: `${contextRefs}\n\nUser message: "${message}"`,
-    }, { onLogEntry, cwd: this.workingDirectory });
+    }, { model, onLogEntry, cwd: this.workingDirectory });
 
     if (result.success && result.rawOutput) {
       const response = result.rawOutput.trim();
