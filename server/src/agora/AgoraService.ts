@@ -109,7 +109,12 @@ export class AgoraService {
     try {
       // Dynamic import to avoid ESM/CommonJS issues
       const agora = await import("@rookdaemon/agora");
-      const result = agora.decodeInboundEnvelope(message, this.config.peers);
+      // decodeInboundEnvelope expects peers keyed by publicKey, not by name
+      const peersByPubKey = new Map<string, PeerConfig>();
+      for (const [, peer] of this.config.peers) {
+        peersByPubKey.set(peer.publicKey, peer);
+      }
+      const result = agora.decodeInboundEnvelope(message, peersByPubKey);
 
       if (result.ok) {
         return {
