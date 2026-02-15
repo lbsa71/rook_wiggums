@@ -136,11 +136,9 @@ export class EmailScheduler {
       const lines = progressContent.split("\n");
 
       // Extract recent activity - use flexible year regex to match any ISO timestamp
-      // Matches YYYY-MM-DD format (any 4-digit year)
+      // Matches ISO timestamps (YYYY-MM-DD), checkmarks, or section headers
       const recentLines = lines.slice(-10).filter(l =>
-        l.match(/^\[\d{4}-\d{2}-\d{2}/) || // ISO timestamp (YYYY-MM-DD)
-        l.match(/^- ✅/) ||
-        l.match(/^##/)
+        l.match(/^(\[\d{4}-\d{2}-\d{2}|- ✅|##)/)
       );
 
       const now = this.clock.now();
