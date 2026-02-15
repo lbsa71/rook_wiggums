@@ -168,6 +168,7 @@ Create `~/.config/agora/config.json`:
   "relay": {
     "url": "wss://agora-relay.lbsa71.net",
     "autoConnect": true,
+    "name": "rook",
     "reconnectMaxMs": 300000
   }
 }

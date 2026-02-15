@@ -4,6 +4,7 @@ import type { Envelope } from "./AgoraService";
 export interface RelayClientConfig {
   url: string;
   publicKey: string;
+  name?: string;
   reconnectMaxMs?: number;
 }
 
@@ -79,6 +80,7 @@ export class AgoraRelayClient {
         this.ws.on("close", () => {
           this.isConnecting = false;
           this.isRegistered = false;
+          this.ws = null; // Clear reference to allow reconnection
           this.cleanup();
           
           if (this.shouldReconnect) {
@@ -153,10 +155,15 @@ export class AgoraRelayClient {
       return;
     }
 
-    const registerMsg = {
+    const registerMsg: { type: string; publicKey: string; name?: string } = {
       type: "register",
       publicKey: this.config.publicKey,
     };
+    
+    if (this.config.name) {
+      registerMsg.name = this.config.name;
+    }
+    
     this.ws.send(JSON.stringify(registerMsg));
   }
 
@@ -177,6 +184,22 @@ export class AgoraRelayClient {
         if (this.messageHandler) {
           this.messageHandler(msg.envelope as Envelope);
         }
+        return;
+      }
+
+      if (msg.type === "peer_online") {
+        // Peer came online - log presence change
+        const peerKey = msg.publicKey ? msg.publicKey.substring(0, 8) + "..." : "unknown";
+        const peerName = msg.name || peerKey;
+        console.log(`[Relay] Peer online: ${peerName} (${peerKey})`);
+        return;
+      }
+
+      if (msg.type === "peer_offline") {
+        // Peer went offline - log presence change
+        const peerKey = msg.publicKey ? msg.publicKey.substring(0, 8) + "..." : "unknown";
+        const peerName = msg.name || peerKey;
+        console.log(`[Relay] Peer offline: ${peerName} (${peerKey})`);
         return;
       }
 

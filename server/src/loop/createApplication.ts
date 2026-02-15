@@ -162,13 +162,26 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       // Set up relay message handler to process incoming messages
       agoraService.setRelayMessageHandler(async (envelope) => {
         try {
+          // SECURITY: Verify signature before processing
+          // The relay passes raw envelopes - we must verify them
+          const encodedEnvelope = `[AGORA_ENVELOPE]${JSON.stringify(envelope)}`;
+          const verifyResult = await agoraService.decodeInbound(encodedEnvelope);
+          
+          if (!verifyResult.ok) {
+            logger.debug(`Rejected relay message: ${verifyResult.reason}`);
+            return;
+          }
+          
+          // Use verified envelope from decodeInbound
+          const verifiedEnvelope = verifyResult.envelope!;
+          
           // Log to PROGRESS.md with truncated payload to avoid excessive log size
           const timestamp = clock.now().toISOString();
-          const payloadStr = JSON.stringify(envelope.payload);
+          const payloadStr = JSON.stringify(verifiedEnvelope.payload);
           const truncatedPayload = payloadStr.length > 200 
             ? payloadStr.substring(0, 200) + "..." 
             : payloadStr;
-          const logEntry = `[AGORA-RELAY] Received ${envelope.type} from ${envelope.sender.substring(0, 8)}... — payload: ${truncatedPayload}`;
+          const logEntry = `[AGORA-RELAY] Received ${verifiedEnvelope.type} from ${verifiedEnvelope.sender.substring(0, 8)}... — payload: ${truncatedPayload}`;
           await appendWriter.append(SubstrateFileType.PROGRESS, logEntry);
           
           // Emit WebSocket event for frontend visibility
@@ -176,10 +189,10 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
             type: "agora_message",
             timestamp,
             data: {
-              envelopeId: envelope.id,
-              messageType: envelope.type,
-              sender: envelope.sender,
-              payload: envelope.payload,
+              envelopeId: verifiedEnvelope.id,
+              messageType: verifiedEnvelope.type,
+              sender: verifiedEnvelope.sender,
+              payload: verifiedEnvelope.payload,
               source: "relay",
             },
           });

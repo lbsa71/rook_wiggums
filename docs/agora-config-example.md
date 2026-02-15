@@ -35,6 +35,7 @@ agora keygen
   "relay": {
     "url": "wss://agora-relay.lbsa71.net",
     "autoConnect": true,
+    "name": "rook",
     "reconnectMaxMs": 300000
   }
 }
@@ -56,6 +57,7 @@ A map of peer names to peer configurations:
 Configuration for connecting to an Agora relay server:
 - **url**: WebSocket URL of the relay server (wss:// or ws://)
 - **autoConnect**: Whether to connect to relay on startup (default: true)
+- **name**: Optional agent name for display on relay (e.g., "rook", "bishop")
 - **reconnectMaxMs**: Maximum delay between reconnection attempts (default: 300000 = 5 minutes)
 
 ## Message Flow

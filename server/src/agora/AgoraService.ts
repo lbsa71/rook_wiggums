@@ -29,6 +29,7 @@ export interface PeerConfig {
 export interface RelayConfig {
   url: string;
   autoConnect: boolean;
+  name?: string;
   reconnectMaxMs?: number;
 }
 
@@ -174,6 +175,7 @@ export class AgoraService {
     this.relayClient = new AgoraRelayClient({
       url,
       publicKey: this.config.identity.publicKey,
+      name: this.config.relay?.name,
       reconnectMaxMs: this.config.relay?.reconnectMaxMs,
     });
 
@@ -236,11 +238,12 @@ export class AgoraService {
     // Parse relay configuration if present
     let relay: RelayConfig | undefined;
     if (config.relay && typeof config.relay === "object") {
-      const relayData = config.relay as { url?: string; autoConnect?: boolean; reconnectMaxMs?: number };
+      const relayData = config.relay as { url?: string; autoConnect?: boolean; name?: string; reconnectMaxMs?: number };
       if (relayData.url) {
         relay = {
           url: relayData.url,
           autoConnect: relayData.autoConnect ?? true,
+          name: relayData.name,
           reconnectMaxMs: relayData.reconnectMaxMs,
         };
       }
