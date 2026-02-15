@@ -176,12 +176,32 @@ Respond with ONLY a JSON object:
       }
 
       const parsed = extractJson(evalResult.rawOutput);
+      
+      // Extract raw values from Claude's response
+      const outcomeMatchesIntent = (parsed.outcomeMatchesIntent as boolean | undefined) ?? false;
+      const qualityScore = (parsed.qualityScore as number | undefined) ?? 0;
+      const issuesFound = (parsed.issuesFound as string[] | undefined) ?? [];
+      const recommendedActions = (parsed.recommendedActions as string[] | undefined) ?? [];
+      let needsReassessment = (parsed.needsReassessment as boolean | undefined) ?? false;
+
+      // Post-processing: Enforce logical consistency rules
+      // Rule 1: If quality score is 0, ALWAYS reassess (critical failure)
+      if (qualityScore === 0) {
+        needsReassessment = true;
+      }
+      
+      // Rule 2: If outcome doesn't match intent AND quality is below threshold (70), ALWAYS reassess
+      const QUALITY_THRESHOLD = 70;
+      if (!outcomeMatchesIntent && qualityScore < QUALITY_THRESHOLD) {
+        needsReassessment = true;
+      }
+
       return {
-        outcomeMatchesIntent: (parsed.outcomeMatchesIntent as boolean | undefined) ?? false,
-        qualityScore: (parsed.qualityScore as number | undefined) ?? 0,
-        issuesFound: (parsed.issuesFound as string[] | undefined) ?? [],
-        recommendedActions: (parsed.recommendedActions as string[] | undefined) ?? [],
-        needsReassessment: (parsed.needsReassessment as boolean | undefined) ?? false,
+        outcomeMatchesIntent,
+        qualityScore,
+        issuesFound,
+        recommendedActions,
+        needsReassessment,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
