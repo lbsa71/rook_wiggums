@@ -32,6 +32,7 @@ import { BackupScheduler } from "./BackupScheduler";
 import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { AgoraService } from "../agora/AgoraService";
+import { LoopWatchdog } from "./LoopWatchdog";
 import { getAppPaths } from "../paths";
 
 export interface ApplicationConfig {
@@ -221,6 +222,16 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     );
     orchestrator.setHealthCheckScheduler(healthCheckScheduler);
   }
+
+  // Watchdog — detects stalls and injects gentle reminders
+  const watchdog = new LoopWatchdog({
+    clock,
+    logger,
+    injectMessage: (msg) => orchestrator.injectMessage(msg),
+    stallThresholdMs: 20 * 60 * 1000, // 20 minutes
+  });
+  orchestrator.setWatchdog(watchdog);
+  watchdog.start(5 * 60 * 1000); // Check every 5 minutes
 
   // Tick mode wiring
   if (config.mode === "tick") {

@@ -23,6 +23,7 @@ import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
 import { BackupScheduler } from "./BackupScheduler";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
+import { LoopWatchdog } from "./LoopWatchdog";
 
 export class LoopOrchestrator {
   private state: LoopState = LoopState.STOPPED;
@@ -41,6 +42,9 @@ export class LoopOrchestrator {
 
   // Health check scheduler
   private healthCheckScheduler: HealthCheckScheduler | null = null;
+
+  // Watchdog — detects stalls and injects gentle reminders
+  private watchdog: LoopWatchdog | null = null;
 
   // Tick mode
   private tickPromptBuilder: TickPromptBuilder | null = null;
@@ -77,6 +81,7 @@ export class LoopOrchestrator {
     }
     this.logger.debug("start() called");
     this.transition(LoopState.RUNNING);
+    this.watchdog?.recordActivity();
   }
 
   pause(): void {
@@ -101,6 +106,7 @@ export class LoopOrchestrator {
     }
     this.logger.debug("stop() called — injecting persist message");
     this.injectMessage("Persist all changes and exit. Write any pending updates to PLAN.md, PROGRESS.md, and MEMORY.md, then finish.");
+    this.watchdog?.stop();
     this.transition(LoopState.STOPPED);
   }
 
@@ -118,6 +124,10 @@ export class LoopOrchestrator {
 
   setHealthCheckScheduler(scheduler: HealthCheckScheduler): void {
     this.healthCheckScheduler = scheduler;
+  }
+
+  setWatchdog(watchdog: LoopWatchdog): void {
+    this.watchdog = watchdog;
   }
 
   requestRestart(): void {
@@ -171,6 +181,7 @@ export class LoopOrchestrator {
     this.metrics.totalCycles++;
 
     this.logger.debug(`cycle ${this.cycleNumber}: starting`);
+    this.watchdog?.recordActivity();
 
     const dispatch = await this.ego.dispatchNext();
 
@@ -259,6 +270,7 @@ export class LoopOrchestrator {
       timestamp: this.clock.now().toISOString(),
       data: { cycleNumber: this.cycleNumber, action: result.action },
     });
+    this.watchdog?.recordActivity();
 
     // Superego audit scheduling
     if (this.cycleNumber % this.config.superegoAuditInterval === 0 || this.auditOnNextCycle) {
@@ -343,6 +355,7 @@ export class LoopOrchestrator {
 
     this.tickNumber++;
     this.logger.debug(`tick ${this.tickNumber}: starting`);
+    this.watchdog?.recordActivity();
 
     this.eventSink.emit({
       type: "tick_started",
@@ -415,6 +428,7 @@ export class LoopOrchestrator {
 
   async handleUserMessage(message: string): Promise<void> {
     this.logger.debug(`handleUserMessage: "${message}"`);
+    this.watchdog?.recordActivity();
 
     try {
       const response = await this.ego.respondToMessage(message, this.createLogCallback("EGO", "conversation"));
