@@ -58,7 +58,6 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
 
   return (
     <div className="conversation-view">
-      <h2>Conversation</h2>
       <div className="conversation-entries" data-testid="conversation-entries">
         {entries.length === 0 ? (
           <p>No conversation yet.</p>

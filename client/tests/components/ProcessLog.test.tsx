@@ -18,7 +18,6 @@ function makeProcessOutputEvent(role: string, type: string, content: string, sou
 describe("ProcessLog", () => {
   it("renders with no entries initially", () => {
     render(<ProcessLog lastEvent={null} />);
-    expect(screen.getByText("Process Log")).toBeInTheDocument();
     expect(screen.getByText("No process output yet.")).toBeInTheDocument();
   });
 

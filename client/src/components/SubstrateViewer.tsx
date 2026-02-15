@@ -28,7 +28,6 @@ export function SubstrateViewer() {
 
   return (
     <div className="substrate-viewer">
-      <h2>Substrate Viewer</h2>
       <select
         value={selected}
         onChange={(e) => handleSelect(e.target.value)}

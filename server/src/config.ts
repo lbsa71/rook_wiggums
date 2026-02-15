@@ -18,6 +18,13 @@ export interface AppConfig {
   autoStartAfterRestart: boolean;
   /** Number of backups to retain (default: 14). */
   backupRetentionCount?: number;
+  /** Configuration for CONVERSATION.md archiving */
+  conversationArchive?: {
+    enabled: boolean;
+    linesToKeep: number; // Number of recent lines to keep (default: 100)
+    sizeThreshold: number; // Archive when content exceeds N lines (default: 200)
+    timeThresholdDays?: number; // Optional: archive after N days (e.g., 7 for weekly)
+  };
 }
 
 export interface ResolveConfigOptions {
@@ -46,6 +53,12 @@ export async function resolveConfig(
     autoStartOnFirstRun: false,
     autoStartAfterRestart: true,
     backupRetentionCount: 14,
+    conversationArchive: {
+      enabled: false, // Disabled by default to maintain backward compatibility
+      linesToKeep: 100,
+      sizeThreshold: 200,
+      timeThresholdDays: 7, // Weekly by default
+    },
   };
 
   let fileConfig: Partial<AppConfig> = {};
@@ -85,6 +98,14 @@ export async function resolveConfig(
     autoStartOnFirstRun: fileConfig.autoStartOnFirstRun ?? defaults.autoStartOnFirstRun,
     autoStartAfterRestart: fileConfig.autoStartAfterRestart ?? defaults.autoStartAfterRestart,
     backupRetentionCount: fileConfig.backupRetentionCount ?? defaults.backupRetentionCount,
+    conversationArchive: fileConfig.conversationArchive
+      ? {
+          enabled: fileConfig.conversationArchive.enabled ?? defaults.conversationArchive!.enabled,
+          linesToKeep: fileConfig.conversationArchive.linesToKeep ?? defaults.conversationArchive!.linesToKeep,
+          sizeThreshold: fileConfig.conversationArchive.sizeThreshold ?? defaults.conversationArchive!.sizeThreshold,
+          timeThresholdDays: fileConfig.conversationArchive.timeThresholdDays ?? defaults.conversationArchive!.timeThresholdDays,
+        }
+      : defaults.conversationArchive,
   };
 
   // Env vars override everything
