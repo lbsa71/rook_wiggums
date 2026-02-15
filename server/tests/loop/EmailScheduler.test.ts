@@ -415,7 +415,6 @@ describe("EmailScheduler", () => {
         stateFilePath,
       });
 
-      const status = scheduler.getStatus();
       // State is loaded lazily on first shouldRunEmail call
       await scheduler.shouldRunEmail();
 
