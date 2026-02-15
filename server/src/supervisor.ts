@@ -68,6 +68,7 @@ async function main(): Promise<void> {
         console.error(`[supervisor] Build failed ${consecutiveFailures} times, giving up`);
         process.exit(1);
       }
+      // Log with current delay, then wait and update for next iteration
       console.error(`[supervisor] Build failed (attempt ${consecutiveFailures}/${MAX_BUILD_RETRIES}), retrying in ${currentRetryDelay / 1000}s...`);
       await new Promise((r) => setTimeout(r, currentRetryDelay));
       currentRetryDelay = Math.min(currentRetryDelay * BACKOFF_MULTIPLIER, MAX_RETRY_DELAY_MS);
