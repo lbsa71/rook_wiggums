@@ -2,24 +2,21 @@ import { EmailScheduler } from "../../src/loop/EmailScheduler";
 import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFileSystem";
 import { FixedClock } from "../../src/substrate/abstractions/FixedClock";
 import { InMemoryLogger } from "../../src/logging";
-import { InMemorySessionLauncher } from "../../src/agents/claude/InMemorySessionLauncher";
 
 describe("EmailScheduler", () => {
   let fs: InMemoryFileSystem;
-  let launcher: InMemorySessionLauncher;
   let clock: FixedClock;
   let logger: InMemoryLogger;
 
   beforeEach(() => {
     fs = new InMemoryFileSystem();
-    launcher = new InMemorySessionLauncher();
     clock = new FixedClock(new Date("2026-02-15T00:00:00.000Z"));
     logger = new InMemoryLogger();
   });
 
   describe("shouldRunEmail", () => {
     it("should return true on first email", async () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 }, // 5am CET/CEST
@@ -30,7 +27,7 @@ describe("EmailScheduler", () => {
     });
 
     it("should return false before interval elapsed", async () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -54,7 +51,7 @@ describe("EmailScheduler", () => {
       // Start at 5:30am CET (4:30am UTC in winter)
       clock.setNow(new Date("2026-02-15T04:30:00.000Z"));
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -77,7 +74,7 @@ describe("EmailScheduler", () => {
 
   describe("runEmail", () => {
     it("should generate email successfully", async () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -101,7 +98,7 @@ describe("EmailScheduler", () => {
     });
 
     it("should handle missing progress file", async () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -117,7 +114,7 @@ describe("EmailScheduler", () => {
 
   describe("getStatus", () => {
     it("should return status with no emails sent", () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -132,7 +129,7 @@ describe("EmailScheduler", () => {
     });
 
     it("should return status after sending emails", async () => {
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -159,7 +156,7 @@ describe("EmailScheduler", () => {
         // January 15 is definitely in CET period
         clock.setNow(new Date("2026-01-15T04:00:00.000Z")); // 5am CET = 4am UTC
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -179,7 +176,7 @@ describe("EmailScheduler", () => {
         // November 15 is in CET period (DST ends last Sunday of October)
         clock.setNow(new Date("2026-11-15T04:00:00.000Z")); // 5am CET = 4am UTC
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -201,7 +198,7 @@ describe("EmailScheduler", () => {
         // June 15 is definitely in CEST period
         clock.setNow(new Date("2026-06-15T03:00:00.000Z")); // 5am CEST = 3am UTC
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -221,7 +218,7 @@ describe("EmailScheduler", () => {
         // August 15 is definitely in CEST period
         clock.setNow(new Date("2026-08-15T03:00:00.000Z")); // 5am CEST = 3am UTC
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -243,7 +240,7 @@ describe("EmailScheduler", () => {
         // March 29, 2026 is the last Sunday of March (DST starts)
         clock.setNow(new Date("2026-03-29T03:00:00.000Z")); // 5am CEST = 3am UTC (after DST switch)
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -263,7 +260,7 @@ describe("EmailScheduler", () => {
         // October 25, 2026 is the last Sunday of October (DST ends)
         clock.setNow(new Date("2026-10-25T04:00:00.000Z")); // 5am CET = 4am UTC (after DST ends)
 
-        const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+        const scheduler = new EmailScheduler(fs, clock, logger, {
           substratePath: "/substrate",
           progressFilePath: "/substrate/PROGRESS.md",
           emailTime: { hour: 5, minute: 0 },
@@ -285,7 +282,7 @@ describe("EmailScheduler", () => {
     it("should match timestamps from 2026", async () => {
       clock.setNow(new Date("2026-06-15T03:00:00.000Z"));
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -307,7 +304,7 @@ describe("EmailScheduler", () => {
     it("should match timestamps from 2027", async () => {
       clock.setNow(new Date("2027-06-15T03:00:00.000Z"));
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -329,7 +326,7 @@ describe("EmailScheduler", () => {
     it("should match timestamps from 2030", async () => {
       clock.setNow(new Date("2030-06-15T03:00:00.000Z"));
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -351,7 +348,7 @@ describe("EmailScheduler", () => {
     it("should match timestamps from 2099", async () => {
       clock.setNow(new Date("2099-06-15T03:00:00.000Z"));
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -374,7 +371,7 @@ describe("EmailScheduler", () => {
   describe("State persistence", () => {
     it("should persist state after sending email", async () => {
       const stateFilePath = "/config/email-scheduler-state.json";
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },
@@ -407,7 +404,7 @@ describe("EmailScheduler", () => {
         })
       );
 
-      const scheduler = new EmailScheduler(fs, launcher, clock, logger, {
+      const scheduler = new EmailScheduler(fs, clock, logger, {
         substratePath: "/substrate",
         progressFilePath: "/substrate/PROGRESS.md",
         emailTime: { hour: 5, minute: 0 },

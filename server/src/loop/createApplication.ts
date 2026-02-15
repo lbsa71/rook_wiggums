@@ -223,7 +223,6 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     const stateFilePath = path.join(appPaths.config, "email-scheduler-state.json");
     const emailScheduler = new EmailScheduler(
       fs,
-      launcher,
       clock,
       logger,
       {

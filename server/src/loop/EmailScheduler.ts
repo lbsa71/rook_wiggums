@@ -1,6 +1,5 @@
 import { IClock } from "../substrate/abstractions/IClock";
 import { IFileSystem } from "../substrate/abstractions/IFileSystem";
-import { ISessionLauncher } from "../agents/claude/ISessionLauncher";
 import { ILogger } from "../logging";
 import { toZonedTime, fromZonedTime, formatInTimeZone } from "date-fns-tz";
 
@@ -39,7 +38,6 @@ export class EmailScheduler {
 
   constructor(
     private readonly fs: IFileSystem,
-    private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
     private readonly logger: ILogger,
     private readonly config: EmailSchedulerConfig
