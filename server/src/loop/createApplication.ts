@@ -236,6 +236,11 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   orchestrator.setWatchdog(watchdog);
   watchdog.start(5 * 60 * 1000); // Check every 5 minutes
 
+  // Wire Agora inbox manager into orchestrator if Agora is configured
+  if (agoraInboxManager) {
+    orchestrator.setAgoraInboxManager(agoraInboxManager);
+  }
+
   // Tick mode wiring
   if (config.mode === "tick") {
     const tickPromptBuilder = new TickPromptBuilder(reader, {

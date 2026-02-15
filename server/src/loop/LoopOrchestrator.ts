@@ -24,6 +24,8 @@ import { parseRateLimitReset } from "./rateLimitParser";
 import { BackupScheduler } from "./BackupScheduler";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { LoopWatchdog } from "./LoopWatchdog";
+import { AgoraInboxManager } from "../agora/AgoraInboxManager";
+import { SubstrateFileType } from "../substrate/types";
 
 export class LoopOrchestrator {
   private state: LoopState = LoopState.STOPPED;
@@ -46,6 +48,9 @@ export class LoopOrchestrator {
 
   // Watchdog — detects stalls and injects gentle reminders
   private watchdog: LoopWatchdog | null = null;
+
+  // Agora inbox manager for checking unread messages
+  private agoraInboxManager: AgoraInboxManager | null = null;
 
   // Tick mode
   private tickPromptBuilder: TickPromptBuilder | null = null;
@@ -135,6 +140,10 @@ export class LoopOrchestrator {
     this.watchdog = watchdog;
   }
 
+  setAgoraInboxManager(manager: AgoraInboxManager): void {
+    this.agoraInboxManager = manager;
+  }
+
   requestRestart(): void {
     this.logger.debug("requestRestart() called — shutting down for rebuild");
     this.eventSink.emit({
@@ -187,6 +196,9 @@ export class LoopOrchestrator {
 
     this.logger.debug(`cycle ${this.cycleNumber}: starting`);
     this.watchdog?.recordActivity();
+
+    // Check for unread Agora messages at the start of each cycle
+    await this.checkAgoraInbox();
 
     const dispatch = await this.ego.dispatchNext();
 
@@ -294,6 +306,46 @@ export class LoopOrchestrator {
     }
 
     return result;
+  }
+
+  /**
+   * Check AGORA_INBOX for unread messages and inject them into the agent loop.
+   * Messages are marked as read after being injected.
+   */
+  private async checkAgoraInbox(): Promise<void> {
+    if (!this.agoraInboxManager) {
+      return; // Agora not configured
+    }
+
+    try {
+      const unreadMessages = await this.agoraInboxManager.getUnreadMessages();
+      
+      if (unreadMessages.length === 0) {
+        return;
+      }
+
+      this.logger.debug(`checkAgoraInbox: found ${unreadMessages.length} unread message(s)`);
+
+      // Process each unread message
+      for (const msg of unreadMessages) {
+        const senderShort = msg.sender.substring(0, 8) + "...";
+        const agentPrompt = `[AGORA MESSAGE from ${senderShort}]\nType: ${msg.type}\nEnvelope ID: ${msg.envelopeId}\nTimestamp: ${msg.timestamp}\nPayload: ${JSON.stringify(msg.payload)}\n\nRespond to this message if appropriate. Use AgoraService.send() to reply.`;
+        
+        // Inject into agent loop (adds to pendingMessages or forwards to active session)
+        this.injectMessage(agentPrompt);
+        
+        // Mark as read (will be tracked when agent responds)
+        await this.agoraInboxManager.markAsRead(msg.envelopeId);
+      }
+
+      // Log to PROGRESS
+      await this._appendWriter.append(
+        SubstrateFileType.PROGRESS,
+        `[AGORA] Processed ${unreadMessages.length} unread message(s) from inbox`
+      );
+    } catch (err) {
+      this.logger.debug(`checkAgoraInbox: error — ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async runLoop(): Promise<void> {
