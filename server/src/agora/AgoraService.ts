@@ -1,19 +1,26 @@
-import { readFile } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
-import { AgoraRelayClient } from "./AgoraRelayClient";
+import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 
-// Types for Agora - avoiding direct import due to ESM/CommonJS incompatibility
-export type MessageType = 'announce' | 'discover' | 'request' | 'response' | 'publish' | 'subscribe' | 'verify' | 'ack' | 'error';
-export interface Envelope<T = unknown> {
-  id: string;
-  type: MessageType;
-  sender: string;
-  timestamp: number;
-  inReplyTo?: string;
-  payload: T;
-  signature: string;
+// Re-export Envelope for consumers that import from AgoraService
+export type { Envelope };
+
+/** Minimal type for @rookdaemon/agora RelayClient (used at runtime via dynamic import) */
+interface RelayClientLike {
+  connect(): Promise<void>;
+  disconnect(): void;
+  connected(): boolean;
+  on(event: "message", handler: (envelope: Envelope, from: string, fromName?: string) => void): void;
 }
+
+export type MessageType =
+  | "announce"
+  | "discover"
+  | "request"
+  | "response"
+  | "publish"
+  | "subscribe"
+  | "verify"
+  | "ack"
+  | "error";
 
 export interface AgoraIdentity {
   publicKey: string;
@@ -64,14 +71,15 @@ export interface RelayMessageHandler {
 
 /**
  * AgoraService manages Agora protocol integration:
- * - Loading identity and peer registry
+ * - Loading identity and peer registry (via @rookdaemon/agora loadAgoraConfig when available)
  * - Sending signed envelopes to peers via HTTP webhooks
  * - Decoding and verifying inbound envelopes
- * - WebSocket relay client for remote peer communication
+ * - WebSocket relay client from @rookdaemon/agora for remote peer communication
  */
 export class AgoraService {
   private config: AgoraConfig;
-  private relayClient: AgoraRelayClient | null = null;
+  private relayClient: RelayClientLike | null = null;
+  private relayMessageHandler: RelayMessageHandler | null = null;
 
   constructor(config: AgoraConfig) {
     this.config = config;
@@ -92,10 +100,14 @@ export class AgoraService {
     }
 
     try {
-      // Dynamic import to avoid ESM/CommonJS issues
       const agora = await import("@rookdaemon/agora");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (agora.sendToPeer as any)(
+      const result = await (agora.sendToPeer as (
+        config: { identity: AgoraIdentity; peers: Map<string, PeerConfig> },
+        peerPublicKey: string,
+        type: string,
+        payload: unknown,
+        inReplyTo?: string
+      ) => Promise<SendMessageResult>)(
         {
           identity: this.config.identity,
           peers: this.config.peers,
@@ -122,9 +134,7 @@ export class AgoraService {
    */
   async decodeInbound(message: string): Promise<DecodeInboundResult> {
     try {
-      // Dynamic import to avoid ESM/CommonJS issues
       const agora = await import("@rookdaemon/agora");
-      // decodeInboundEnvelope expects peers keyed by publicKey, not by name
       const peersByPubKey = new Map<string, PeerConfig>();
       for (const [, peer] of this.config.peers) {
         peersByPubKey.set(peer.publicKey, peer);
@@ -150,110 +160,121 @@ export class AgoraService {
     }
   }
 
-  /**
-   * Get list of configured peer names.
-   */
   getPeers(): string[] {
     return Array.from(this.config.peers.keys());
   }
 
-  /**
-   * Get configuration for a specific peer.
-   */
   getPeerConfig(name: string): PeerConfig | undefined {
     return this.config.peers.get(name);
   }
 
   /**
-   * Connect to the relay server
+   * Connect to the relay server using @rookdaemon/agora RelayClient.
    */
   async connectRelay(url: string): Promise<void> {
     if (this.relayClient) {
-      return; // Already connected
+      return;
     }
 
-    this.relayClient = new AgoraRelayClient({
-      url,
+    const { RelayClient } = await import("@rookdaemon/agora");
+    const maxReconnectDelay = this.config.relay?.reconnectMaxMs ?? 300000;
+
+    this.relayClient = new RelayClient({
+      relayUrl: url,
       publicKey: this.config.identity.publicKey,
+      privateKey: this.config.identity.privateKey,
       name: this.config.relay?.name,
-      reconnectMaxMs: this.config.relay?.reconnectMaxMs,
+      pingInterval: 30000,
+      maxReconnectDelay,
+    });
+
+    this.relayClient.on("message", (envelope: Envelope) => {
+      if (this.relayMessageHandler) {
+        this.relayMessageHandler(envelope);
+      }
     });
 
     await this.relayClient.connect();
   }
 
-  /**
-   * Set handler for incoming relay messages
-   */
   setRelayMessageHandler(handler: RelayMessageHandler): void {
-    if (this.relayClient) {
-      this.relayClient.setMessageHandler(handler);
-    }
+    this.relayMessageHandler = handler;
   }
 
-  /**
-   * Disconnect from relay server
-   */
   async disconnectRelay(): Promise<void> {
     if (this.relayClient) {
-      await this.relayClient.disconnect();
+      this.relayClient.disconnect();
       this.relayClient = null;
     }
   }
 
-  /**
-   * Check if relay is connected
-   */
   isRelayConnected(): boolean {
-    return this.relayClient?.isConnected() ?? false;
+    return this.relayClient?.connected() ?? false;
   }
 
   /**
-   * Load Agora configuration from ~/.config/agora/config.json
+   * Load Agora configuration from ~/.config/agora/config.json.
+   * Uses @rookdaemon/agora loadAgoraConfig when available for canonical parsing.
    */
   static async loadConfig(): Promise<AgoraConfig> {
+    try {
+      const agora = await import("@rookdaemon/agora");
+      if (typeof agora.loadAgoraConfig === "function") {
+        const loaded = agora.loadAgoraConfig();
+        const peers = new Map<string, PeerConfig>();
+        for (const [name, peer] of Object.entries(loaded.peers)) {
+          peers.set(name, peer);
+        }
+        return {
+          identity: loaded.identity,
+          peers,
+          relay: loaded.relay,
+        };
+      }
+    } catch {
+      // Fall back to local parsing if agora doesn't export loadAgoraConfig (e.g. older version)
+    }
+
+    const { readFile } = await import("fs/promises");
+    const { homedir } = await import("os");
+    const { join } = await import("path");
     const configPath = join(homedir(), ".config", "agora", "config.json");
     const configData = await readFile(configPath, "utf-8");
-    const config = JSON.parse(configData);
+    const config = JSON.parse(configData) as {
+      identity?: { publicKey: string; privateKey: string };
+      peers?: Record<string, { publicKey: string; url: string; token: string }>;
+      relay?: { url?: string; autoConnect?: boolean; name?: string; reconnectMaxMs?: number };
+    };
 
-    if (!config.identity || !config.identity.publicKey || !config.identity.privateKey) {
+    if (!config.identity?.publicKey || !config.identity?.privateKey) {
       throw new Error("Invalid Agora config: missing identity");
     }
 
-    // Convert peers object to Map
     const peers = new Map<string, PeerConfig>();
     if (config.peers && typeof config.peers === "object") {
       for (const [name, peerData] of Object.entries(config.peers)) {
-        const peer = peerData as { publicKey: string; url: string; token: string };
-        if (peer.publicKey && peer.url && peer.token) {
+        if (peerData?.publicKey && peerData?.url && peerData?.token) {
           peers.set(name, {
-            publicKey: peer.publicKey,
-            url: peer.url,
-            token: peer.token,
+            publicKey: peerData.publicKey,
+            url: peerData.url,
+            token: peerData.token,
           });
         }
       }
     }
 
-    // Parse relay configuration if present
     let relay: RelayConfig | undefined;
-    if (config.relay && typeof config.relay === "object") {
-      const relayData = config.relay as { url?: string; autoConnect?: boolean; name?: string; reconnectMaxMs?: number };
-      if (relayData.url) {
-        relay = {
-          url: relayData.url,
-          autoConnect: relayData.autoConnect ?? true,
-          name: relayData.name,
-          reconnectMaxMs: relayData.reconnectMaxMs,
-        };
-      }
+    if (config.relay && typeof config.relay === "object" && config.relay.url) {
+      relay = {
+        url: config.relay.url,
+        autoConnect: config.relay.autoConnect ?? true,
+        name: config.relay.name,
+        reconnectMaxMs: config.relay.reconnectMaxMs,
+      };
     }
 
     return {
-      identity: {
-        publicKey: config.identity.publicKey,
-        privateKey: config.identity.privateKey,
-      },
+      identity: config.identity,
       peers,
       relay,
     };
