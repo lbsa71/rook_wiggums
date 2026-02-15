@@ -32,7 +32,6 @@ export function PlanView({ lastEvent }: PlanViewProps) {
 
   return (
     <div className="plan-view">
-      <h2>Plan</h2>
       <TaskTree tasks={tasks} />
     </div>
   );

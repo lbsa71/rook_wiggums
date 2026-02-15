@@ -38,7 +38,6 @@ export function ProgressLog({ lastEvent }: ProgressLogProps) {
 
   return (
     <div className="progress-log">
-      <h2>Progress Log</h2>
       <div ref={containerRef} className="progress-entries" data-testid="progress-entries">
         <ProgressTimeline entries={entries} />
       </div>

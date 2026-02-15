@@ -55,7 +55,6 @@ export function ProcessLog({ lastEvent }: ProcessLogProps) {
   return (
     <div className="process-log">
       <div className="process-log-header">
-        <h2>Process Log</h2>
         <button className="process-log-clear" onClick={handleClear}>Clear</button>
       </div>
       <div className="process-log-entries" data-testid="process-log-entries">
