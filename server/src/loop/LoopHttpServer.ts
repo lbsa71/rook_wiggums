@@ -379,7 +379,16 @@ export class LoopHttpServer {
 
   /**
    * Shared method to process inbound Agora messages.
-   * Called by webhook handler and future relay client.
+   * Called by webhook handler and future relay client (see rookdaemon/substrate#28).
+   * 
+   * Message processing pipeline:
+   * 1. Log to PROGRESS.md
+   * 2. Persist to AGORA_INBOX.md (structured queue with Unread/Read sections)
+   * 3. Emit WebSocket event for frontend visibility
+   * 4. Inject into agent loop via injectMessage()
+   * 
+   * When the relay client is implemented, it should call this same method
+   * to ensure consistent message handling across delivery mechanisms.
    */
   private async processInboundAgoraMessage(envelope: Envelope): Promise<void> {
     if (!this.appendWriter || !this.clock || !this.agoraInboxManager) {

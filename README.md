@@ -157,7 +157,7 @@ cd server && npx eslint src/ tests/
 
 ## Substrate File Formats
 
-The substrate is a directory of 12 markdown files that serve as the system's shared memory. Each file follows a two-tier pattern: a concise index in the main file with `@`-references to long-form detail files in subdirectories.
+The substrate is a directory of 14 markdown files that serve as the system's shared memory. Each file follows a two-tier pattern: a concise index in the main file with `@`-references to long-form detail files in subdirectories.
 
 | File | Write Mode | Description |
 |------|-----------|-------------|
@@ -173,6 +173,8 @@ The substrate is a directory of 12 markdown files that serve as the system's sha
 | `CHARTER.md` | OVERWRITE | Operational doctrine and boundaries |
 | `SUPEREGO.md` | OVERWRITE | Evaluation criteria, references `superego/*.md` |
 | `CLAUDE.md` | OVERWRITE | Claude Code capabilities and self-improvement doctrine |
+| `PEERS.md` | OVERWRITE | Agora peer registry for agent-to-agent communication (optional) |
+| `AGORA_INBOX.md` | OVERWRITE | Incoming Agora messages queue with Unread/Read sections (optional) |
 
 ### Two-Tier Knowledge System
 
@@ -191,6 +193,33 @@ Example `MEMORY.md`:
 ```
 
 Curation between short-form and long-form is a continuous habit built into the agent prompts.
+
+### Agora Message Processing
+
+Substrate integrates with the [Agora protocol](https://github.com/rookdaemon/agora) for agent-to-agent communication. When configured, the system can receive and process messages from other agents.
+
+**Message Flow:**
+1. **Webhook Delivery** — Incoming messages arrive at `POST /hooks/agent` (authenticated with Bearer token)
+2. **Decoding & Verification** — Messages are decoded and signature-verified via `AgoraService.decodeInbound()`
+3. **Persistence** — Messages are logged to `PROGRESS.md` and persisted to `AGORA_INBOX.md` with timestamp, sender, type, and payload
+4. **Injection** — Messages are injected into the agent loop via `injectMessage()` for immediate processing
+5. **Cycle Checking** — At the start of each execution cycle, the orchestrator checks `AGORA_INBOX.md` for any unread messages (ensures messages received while stopped are processed on restart)
+6. **Read Tracking** — Processed messages are moved from the "Unread" to "Read" section with optional reply timestamp
+
+**AGORA_INBOX.md Format:**
+```markdown
+## Unread
+- [2026-02-15T12:00:00Z] id:msg-123 from:stefan... type:request payload:{"question":"Are you there?"}
+
+## Read
+- [2026-02-15T11:00:00Z] id:msg-456 from:bishop... type:announce payload:{...} → replied 2026-02-15T11:01:00Z
+```
+
+**Responding to Messages:**
+The agent can reply using the `AgoraService.send()` method, which signs and sends envelopes to configured peers. Replies are tracked in the inbox when the agent marks a message as read.
+
+**Configuration:**
+Agora configuration lives in `~/.config/agora/config.json` with identity keys and peer registry. If not configured, Agora features are disabled gracefully.
 
 ---
 
@@ -212,12 +241,14 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 | CHARTER | ✅ | — | — | — | ✅ | — | — |
 | SUPEREGO | — | — | — | — | ✅ | — | — |
 | CLAUDE | — | — | — | — | ✅ | — | — |
+| PEERS | ✅ | — | ✅ | ✅ overwrite | ✅ | — | — |
+| AGORA_INBOX | ✅ | — | ✅ | ✅ overwrite | ✅ | — | — |
 
 **Key constraints:**
-- **Superego** has read access to all 12 files but can only append to PROGRESS
+- **Superego** has read access to all 14 files but can only append to PROGRESS
 - **Id** has read-only access to 6 files (ID, VALUES, PLAN, PROGRESS, SKILLS, MEMORY) — no writes
-- **Ego** can overwrite PLAN and append to CONVERSATION
-- **Subconscious** can overwrite PLAN, SKILLS, and MEMORY, append to PROGRESS and CONVERSATION
+- **Ego** can overwrite PLAN and append to CONVERSATION, read PEERS and AGORA_INBOX
+- **Subconscious** can overwrite PLAN, SKILLS, MEMORY, PEERS, and AGORA_INBOX; append to PROGRESS and CONVERSATION
 
 ---
 
