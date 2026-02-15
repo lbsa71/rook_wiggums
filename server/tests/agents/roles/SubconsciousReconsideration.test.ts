@@ -258,5 +258,214 @@ describe("Subconscious reconsideration", () => {
       expect(outcome.recommendedActions).toEqual([]); // Default empty array
       expect(outcome.needsReassessment).toBe(false); // Conservative default
     });
+
+    describe("edge case validation - logical consistency enforcement", () => {
+      it("MUST set needsReassessment=true when qualityScore is 0 even if Claude says false", async () => {
+        // This is the core bug: Claude returns needsReassessment=false with qualityScore=0
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: false,
+          qualityScore: 0,
+          issuesFound: ["Task failed completely"],
+          recommendedActions: ["Retry the task"],
+          needsReassessment: false, // WRONG - Claude made a mistake
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "failure",
+          summary: "Task failed",
+          progressEntry: "Could not complete task",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-bug-1", description: "Test task" },
+          taskResult
+        );
+
+        // Post-processing should override Claude's needsReassessment=false
+        expect(outcome.qualityScore).toBe(0);
+        expect(outcome.outcomeMatchesIntent).toBe(false);
+        expect(outcome.needsReassessment).toBe(true); // Fixed by post-processing
+      });
+
+      it("MUST set needsReassessment=true when outcomeMatchesIntent=false and qualityScore < 70", async () => {
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: false,
+          qualityScore: 50,
+          issuesFound: ["Multiple issues"],
+          recommendedActions: ["Fix issues"],
+          needsReassessment: false, // WRONG - should be true
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "partial",
+          summary: "Partially done",
+          progressEntry: "Some progress made",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-bug-2", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.outcomeMatchesIntent).toBe(false);
+        expect(outcome.qualityScore).toBe(50);
+        expect(outcome.needsReassessment).toBe(true); // Fixed by post-processing
+      });
+
+      it("allows needsReassessment=false when outcomeMatchesIntent=true and qualityScore >= 70", async () => {
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: true,
+          qualityScore: 85,
+          issuesFound: [],
+          recommendedActions: [],
+          needsReassessment: false,
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "success",
+          summary: "Task succeeded",
+          progressEntry: "All good",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-ok-1", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.outcomeMatchesIntent).toBe(true);
+        expect(outcome.qualityScore).toBe(85);
+        expect(outcome.needsReassessment).toBe(false); // Correctly stays false
+      });
+
+      it("allows needsReassessment=true even with high quality (manual override case)", async () => {
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: true,
+          qualityScore: 90,
+          issuesFound: ["Architecture needs review"],
+          recommendedActions: ["Consider refactoring"],
+          needsReassessment: true, // Valid manual override
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "success",
+          summary: "Done but needs review",
+          progressEntry: "Complete",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-ok-2", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.qualityScore).toBe(90);
+        expect(outcome.needsReassessment).toBe(true); // Respects Claude's decision
+      });
+
+      it("sets needsReassessment=true when outcomeMatchesIntent=false and qualityScore=0 (combined bug case)", async () => {
+        // This is the exact pattern from PROGRESS.md bugs
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: false,
+          qualityScore: 0,
+          issuesFound: [],
+          recommendedActions: [],
+          needsReassessment: false, // WRONG
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "failure",
+          summary: "Complete failure",
+          progressEntry: "Nothing worked",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-bug-3", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.outcomeMatchesIntent).toBe(false);
+        expect(outcome.qualityScore).toBe(0);
+        expect(outcome.needsReassessment).toBe(true); // Fixed by post-processing
+      });
+
+      it("sets needsReassessment=true when outcomeMatchesIntent=false even with borderline quality", async () => {
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: false,
+          qualityScore: 69, // Just below threshold
+          issuesFound: ["Scope mismatch"],
+          recommendedActions: ["Realign task"],
+          needsReassessment: false,
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "partial",
+          summary: "Did something else",
+          progressEntry: "Wrong direction",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-bug-4", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.outcomeMatchesIntent).toBe(false);
+        expect(outcome.qualityScore).toBe(69);
+        expect(outcome.needsReassessment).toBe(true); // Fixed by post-processing
+      });
+
+      it("allows needsReassessment=false when outcomeMatchesIntent=false BUT qualityScore >= 70", async () => {
+        // Edge case: outcome doesn't match but quality is acceptable
+        // This could be valid if the task was redefined during execution
+        const evaluation = JSON.stringify({
+          outcomeMatchesIntent: false,
+          qualityScore: 80,
+          issuesFound: ["Original goal changed mid-execution"],
+          recommendedActions: ["Update plan to reflect actual work"],
+          needsReassessment: false,
+        });
+        launcher.enqueueSuccess(evaluation);
+
+        const taskResult: TaskResult = {
+          result: "success",
+          summary: "Pivoted to better solution",
+          progressEntry: "Achieved different but better outcome",
+          skillUpdates: null,
+          memoryUpdates: null,
+          proposals: [],
+        };
+
+        const outcome = await subconscious.evaluateOutcome(
+          { taskId: "task-edge-1", description: "Test task" },
+          taskResult
+        );
+
+        expect(outcome.outcomeMatchesIntent).toBe(false);
+        expect(outcome.qualityScore).toBe(80);
+        expect(outcome.needsReassessment).toBe(false); // Respects high quality
+      });
+    });
   });
 });
