@@ -292,16 +292,11 @@ export class LoopOrchestrator {
           this.eventSink.emit({
             type: "idle_handler",
             timestamp: this.clock.now().toISOString(),
-            data: { action: result.action, goalCount: result.goalCount, lowConfidenceGoals: result.lowConfidenceGoals },
+            data: { action: result.action, goalCount: result.goalCount },
           });
           if (result.action === "plan_created") {
             this.metrics.consecutiveIdleCycles = 0;
             continue;
-          }
-          if (result.action === "low_confidence_pause") {
-            this.logger.debug("runLoop: pausing — low confidence goals require creator approval");
-            this.pause();
-            break;
           }
         }
         this.logger.debug("runLoop: stopping — idle threshold exceeded with no plan created");

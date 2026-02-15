@@ -205,7 +205,7 @@ describe("IdleHandler", () => {
   });
 
   describe("confidence scoring", () => {
-    it("pauses for creator approval when goals have confidence < 60", async () => {
+    it("sends all goals to Superego regardless of confidence", async () => {
       deps.launcher.enqueueSuccess(JSON.stringify({
         goalCandidates: [
           { title: "Low confidence goal", description: "Uncertain task", priority: "high", confidence: 45 },
@@ -213,13 +213,17 @@ describe("IdleHandler", () => {
         ],
       }));
 
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        proposalEvaluations: [
+          { approved: false, reason: "Too uncertain" },
+          { approved: true, reason: "Well aligned" },
+        ],
+      }));
+
       const result = await handler.handleIdle();
 
-      expect(result.action).toBe("low_confidence_pause");
-      expect(result.goalCount).toBe(2);
-      expect(result.lowConfidenceGoals).toHaveLength(1);
-      expect(result.lowConfidenceGoals?.[0].title).toBe("Low confidence goal");
-      expect(result.lowConfidenceGoals?.[0].confidence).toBe(45);
+      expect(result.action).toBe("plan_created");
+      expect(result.goalCount).toBe(1);
     });
 
     it("proceeds normally when all goals have confidence >= 60", async () => {
@@ -243,64 +247,25 @@ describe("IdleHandler", () => {
       expect(result.goalCount).toBe(2);
     });
 
-    it("pauses even when only one goal is low confidence", async () => {
+    it("proceeds with all goals regardless of confidence score", async () => {
       deps.launcher.enqueueSuccess(JSON.stringify({
         goalCandidates: [
           { title: "Goal A", description: "Safe", priority: "high", confidence: 95 },
-          { title: "Goal B", description: "Safe", priority: "medium", confidence: 80 },
-          { title: "Goal C", description: "Risky", priority: "low", confidence: 30 },
-        ],
-      }));
-
-      const result = await handler.handleIdle();
-
-      expect(result.action).toBe("low_confidence_pause");
-      expect(result.lowConfidenceGoals).toHaveLength(1);
-      expect(result.lowConfidenceGoals?.[0].title).toBe("Goal C");
-    });
-
-    it("logs low confidence pause to PROGRESS", async () => {
-      deps.launcher.enqueueSuccess(JSON.stringify({
-        goalCandidates: [
-          { title: "Uncertain goal", description: "Not sure", priority: "high", confidence: 40 },
-        ],
-      }));
-
-      await handler.handleIdle();
-
-      const progress = await deps.fs.readFile("/substrate/PROGRESS.md");
-      expect(progress).toContain("confidence < 60");
-      expect(progress).toContain("Pausing for creator approval");
-    });
-
-    it("handles boundary case: confidence exactly 60 should proceed", async () => {
-      deps.launcher.enqueueSuccess(JSON.stringify({
-        goalCandidates: [
-          { title: "Boundary goal", description: "Exactly threshold", priority: "high", confidence: 60 },
+          { title: "Goal B", description: "Speculative", priority: "low", confidence: 30 },
         ],
       }));
 
       deps.launcher.enqueueSuccess(JSON.stringify({
         proposalEvaluations: [
           { approved: true, reason: "Good" },
+          { approved: false, reason: "Not aligned" },
         ],
       }));
 
       const result = await handler.handleIdle();
 
       expect(result.action).toBe("plan_created");
-    });
-
-    it("handles boundary case: confidence 59 should pause", async () => {
-      deps.launcher.enqueueSuccess(JSON.stringify({
-        goalCandidates: [
-          { title: "Just below threshold", description: "One below", priority: "high", confidence: 59 },
-        ],
-      }));
-
-      const result = await handler.handleIdle();
-
-      expect(result.action).toBe("low_confidence_pause");
+      expect(result.goalCount).toBe(1);
     });
   });
 });

@@ -112,7 +112,7 @@ Responsibilities:
 - Consider knowledge curation goals: consolidating scattered info, promoting/demoting entries, splitting large files
 - Prioritize drives and suggest what the agent should pursue next
 - Goals should be specific and actionable, not abstract
-- Assign confidence scores (0-100) to each goal: use <60 for uncertain/risky goals requiring creator approval, 60-80 for moderate confidence, 80+ for high confidence goals aligned with established patterns
+- Assign confidence scores (0-100) to each goal based on alignment with the agent's identity, values, and current plan. Low confidence means the goal is speculative; high confidence means it clearly follows from established priorities. All goals are acted on autonomously — never pause or wait for approval
 
 Constraints:
 - You have READ-ONLY access to ID.md, VALUES.md, PLAN.md, PROGRESS.md, SKILLS.md, and MEMORY.md
@@ -127,7 +127,7 @@ Respond with a JSON object:
     "title": "string",
     "description": "string",
     "priority": "high" | "medium" | "low",
-    "confidence": number  // 0-100: how certain you are this goal is appropriate. Use <60 for uncertain/risky goals that should pause for creator approval
+    "confidence": number  // 0-100: how well this goal aligns with identity, values, and current priorities. The system acts on all goals autonomously — confidence is for prioritization, not gating
   }]
 }`;
 

@@ -13,17 +13,9 @@ interface RawLine {
 
 export function parsePlanTasks(markdown: string): PlanTask[] {
   const lines = markdown.split("\n");
-  let inTasks = false;
   const rawLines: RawLine[] = [];
 
   for (const line of lines) {
-    if (/^## Tasks/.test(line)) {
-      inTasks = true;
-      continue;
-    }
-    if (inTasks && line.startsWith("#")) break;
-    if (!inTasks) continue;
-
     const match = line.match(/^(\s*)- \[([ x])\] (.+)$/);
     if (match) {
       rawLines.push({
