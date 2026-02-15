@@ -7,10 +7,11 @@ import { SubstrateFileType } from "../substrate/types";
 import { Ego } from "../agents/roles/Ego";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
 import { HealthCheck } from "../evaluation/HealthCheck";
-import { AgoraService } from "../agora/AgoraService";
+import { AgoraService, type Envelope } from "../agora/AgoraService";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { BackupScheduler } from "./BackupScheduler";
 import { ConversationManager } from "../conversation/ConversationManager";
+import { AgoraInboxManager } from "../agora/AgoraInboxManager";
 
 export interface LoopHttpDependencies {
   reader: SubstrateFileReader;
@@ -31,6 +32,7 @@ export class LoopHttpServer {
   private appendWriter: AppendOnlyWriter | null = null;
   private backupScheduler: BackupScheduler | null = null;
   private conversationManager: ConversationManager | null = null;
+  private agoraInboxManager: AgoraInboxManager | null = null;
 
   constructor(orchestrator: LoopOrchestrator) {
     this.orchestrator = orchestrator;
@@ -63,9 +65,10 @@ export class LoopHttpServer {
     this.mode = mode;
   }
 
-  setAgoraService(service: AgoraService, appendWriter: AppendOnlyWriter): void {
+  setAgoraService(service: AgoraService, appendWriter: AppendOnlyWriter, inboxManager: AgoraInboxManager): void {
     this.agoraService = service;
     this.appendWriter = appendWriter;
+    this.agoraInboxManager = inboxManager;
   }
 
   setBackupScheduler(scheduler: BackupScheduler): void {
@@ -374,8 +377,57 @@ export class LoopHttpServer {
     );
   }
 
+  /**
+   * Shared method to process inbound Agora messages.
+   * Called by webhook handler and future relay client (see rookdaemon/substrate#28).
+   * 
+   * Message processing pipeline:
+   * 1. Log to PROGRESS.md
+   * 2. Persist to AGORA_INBOX.md (structured queue with Unread/Read sections)
+   * 3. Emit WebSocket event for frontend visibility
+   * 4. Inject into agent loop via injectMessage()
+   * 
+   * When the relay client is implemented, it should call this same method
+   * to ensure consistent message handling across delivery mechanisms.
+   */
+  private async processInboundAgoraMessage(envelope: Envelope): Promise<void> {
+    if (!this.appendWriter || !this.clock || !this.agoraInboxManager) {
+      throw new Error("Required dependencies not configured for Agora message processing");
+    }
+
+    const timestamp = this.clock.now().toISOString();
+    const senderShort = envelope.sender.substring(0, 8) + "...";
+
+    // 1. Log to PROGRESS.md
+    const logEntry = `[AGORA] Received ${envelope.type} from ${senderShort} — payload: ${JSON.stringify(envelope.payload)}`;
+    await this.appendWriter.append(SubstrateFileType.PROGRESS, logEntry);
+
+    // 2. Persist to AGORA_INBOX.md
+    await this.agoraInboxManager.addMessage(envelope);
+
+    // 3. Emit WebSocket event for frontend visibility
+    if (this.eventSink) {
+      this.eventSink.emit({
+        type: "agora_message",
+        timestamp,
+        data: {
+          envelopeId: envelope.id,
+          messageType: envelope.type,
+          sender: envelope.sender,
+          payload: envelope.payload,
+        },
+      });
+    }
+
+    // 4. Inject into agent loop
+    if (this.orchestrator) {
+      const agentPrompt = `[AGORA MESSAGE from ${senderShort}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nPayload: ${JSON.stringify(envelope.payload)}\n\nRespond to this message if appropriate. Use AgoraService.send() to reply.`;
+      this.orchestrator.injectMessage(agentPrompt);
+    }
+  }
+
   private handleAgoraWebhook(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (!this.agoraService || !this.appendWriter || !this.clock) {
+    if (!this.agoraService || !this.appendWriter || !this.clock || !this.agoraInboxManager) {
       this.json(res, 503, { error: "Agora service not configured" });
       return;
     }
@@ -412,24 +464,8 @@ export class LoopHttpServer {
           return;
         }
 
-        // Log to PROGRESS.md
-        const timestamp = this.clock!.now().toISOString();
-        const logEntry = `[AGORA] Received ${result.envelope!.type} from ${result.envelope!.sender.substring(0, 8)}... — payload: ${JSON.stringify(result.envelope!.payload)}`;
-        await this.appendWriter!.append(SubstrateFileType.PROGRESS, logEntry);
-
-        // Emit WebSocket event for frontend visibility
-        if (this.eventSink) {
-          this.eventSink.emit({
-            type: "agora_message",
-            timestamp,
-            data: {
-              envelopeId: result.envelope!.id,
-              messageType: result.envelope!.type,
-              sender: result.envelope!.sender,
-              payload: result.envelope!.payload,
-            },
-          });
-        }
+        // Process the message using shared method
+        await this.processInboundAgoraMessage(result.envelope!);
 
         this.json(res, 200, { success: true, envelopeId: result.envelope!.id });
       } catch (err) {

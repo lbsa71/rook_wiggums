@@ -32,6 +32,7 @@ import { BackupScheduler } from "./BackupScheduler";
 import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { AgoraService } from "../agora/AgoraService";
+import { AgoraInboxManager } from "../agora/AgoraInboxManager";
 import { LoopWatchdog } from "./LoopWatchdog";
 import { getAppPaths } from "../paths";
 
@@ -149,9 +150,11 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
 
   // Agora service for agent-to-agent communication
   let agoraService: AgoraService | null = null;
+  let agoraInboxManager: AgoraInboxManager | null = null;
   try {
     const agoraConfig = await AgoraService.loadConfig();
     agoraService = new AgoraService(agoraConfig);
+    agoraInboxManager = new AgoraInboxManager(fs, substrateConfig, lock, clock);
   } catch (err) {
     // If Agora config doesn't exist, log and continue without Agora capability
     logger.debug("Agora not configured: " + (err instanceof Error ? err.message : String(err)));
@@ -168,8 +171,8 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   httpServer.setOrchestrator(orchestrator);
   httpServer.setDependencies({ reader, ego });
   httpServer.setEventSink(wsServer, clock);
-  if (agoraService) {
-    httpServer.setAgoraService(agoraService, appendWriter);
+  if (agoraService && agoraInboxManager) {
+    httpServer.setAgoraService(agoraService, appendWriter, agoraInboxManager);
   }
 
   // Create metrics store for quantitative drift monitoring
@@ -232,6 +235,11 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   });
   orchestrator.setWatchdog(watchdog);
   watchdog.start(5 * 60 * 1000); // Check every 5 minutes
+
+  // Wire Agora inbox manager into orchestrator if Agora is configured
+  if (agoraInboxManager) {
+    orchestrator.setAgoraInboxManager(agoraInboxManager);
+  }
 
   // Tick mode wiring
   if (config.mode === "tick") {
