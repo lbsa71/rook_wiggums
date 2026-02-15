@@ -162,9 +162,13 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       // Set up relay message handler to process incoming messages
       agoraService.setRelayMessageHandler(async (envelope) => {
         try {
-          // Log to PROGRESS.md
+          // Log to PROGRESS.md with truncated payload to avoid excessive log size
           const timestamp = clock.now().toISOString();
-          const logEntry = `[AGORA-RELAY] Received ${envelope.type} from ${envelope.sender.substring(0, 8)}... — payload: ${JSON.stringify(envelope.payload)}`;
+          const payloadStr = JSON.stringify(envelope.payload);
+          const truncatedPayload = payloadStr.length > 200 
+            ? payloadStr.substring(0, 200) + "..." 
+            : payloadStr;
+          const logEntry = `[AGORA-RELAY] Received ${envelope.type} from ${envelope.sender.substring(0, 8)}... — payload: ${truncatedPayload}`;
           await appendWriter.append(SubstrateFileType.PROGRESS, logEntry);
           
           // Emit WebSocket event for frontend visibility

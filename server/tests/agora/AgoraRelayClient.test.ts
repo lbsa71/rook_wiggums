@@ -14,6 +14,12 @@ describe("AgoraRelayClient", () => {
     reconnectMaxMs: 60000,
   };
 
+  // Helper to extract event handler from mock calls
+  const getEventHandler = (eventName: string): ((data?: unknown) => void) | undefined => {
+    const call = mockWs.on.mock.calls.find(c => c[0] === eventName);
+    return call?.[1] as ((data?: unknown) => void) | undefined;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     
@@ -40,8 +46,8 @@ describe("AgoraRelayClient", () => {
       const connectPromise = client.connect();
       
       // Simulate WebSocket open event
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
-      openHandler();
+      const openHandler = getEventHandler("open");
+      openHandler?.();
       
       await connectPromise;
       
@@ -51,8 +57,8 @@ describe("AgoraRelayClient", () => {
     it("should send registration message on connect", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
-      openHandler();
+      const openHandler = getEventHandler("open");
+      openHandler?.();
       
       await connectPromise;
       
@@ -67,7 +73,7 @@ describe("AgoraRelayClient", () => {
     it("should not reconnect if already connected", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -87,7 +93,7 @@ describe("AgoraRelayClient", () => {
     it("should close WebSocket connection", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -102,7 +108,7 @@ describe("AgoraRelayClient", () => {
       
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -110,7 +116,7 @@ describe("AgoraRelayClient", () => {
       await client.disconnect();
       
       // Simulate close event
-      const closeHandler = mockWs.on.mock.calls.find(call => call[0] === "close")?.[1] as () => void;
+      const closeHandler = getEventHandler("close");
       closeHandler();
       
       // Clear WebSocket constructor calls
@@ -128,7 +134,7 @@ describe("AgoraRelayClient", () => {
     it("should mark as registered on 'registered' message", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -137,7 +143,7 @@ describe("AgoraRelayClient", () => {
       expect(client.isConnected()).toBe(false);
       
       // Simulate registered message
-      const messageHandler = mockWs.on.mock.calls.find(call => call[0] === "message")?.[1] as (data: Buffer) => void;
+      const messageHandler = getEventHandler("message");
       messageHandler(Buffer.from(JSON.stringify({ type: "registered" })));
       
       // Now should be connected
@@ -147,7 +153,7 @@ describe("AgoraRelayClient", () => {
     it("should call message handler on incoming message", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -165,7 +171,7 @@ describe("AgoraRelayClient", () => {
       client.setMessageHandler(handler);
       
       // Simulate incoming message
-      const messageHandler = mockWs.on.mock.calls.find(call => call[0] === "message")?.[1] as (data: Buffer) => void;
+      const messageHandler = getEventHandler("message");
       messageHandler(Buffer.from(JSON.stringify({
         type: "message",
         envelope: testEnvelope,
@@ -179,13 +185,13 @@ describe("AgoraRelayClient", () => {
       
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
       
       // Simulate error message
-      const messageHandler = mockWs.on.mock.calls.find(call => call[0] === "message")?.[1] as (data: Buffer) => void;
+      const messageHandler = getEventHandler("message");
       messageHandler(Buffer.from(JSON.stringify({
         type: "error",
         message: "Test error",
@@ -201,13 +207,13 @@ describe("AgoraRelayClient", () => {
     it("should send message through relay when connected", async () => {
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
       
       // Mark as registered
-      const messageHandler = mockWs.on.mock.calls.find(call => call[0] === "message")?.[1] as (data: Buffer) => void;
+      const messageHandler = getEventHandler("message");
       messageHandler(Buffer.from(JSON.stringify({ type: "registered" })));
       
       const testEnvelope: Envelope = {
@@ -245,7 +251,7 @@ describe("AgoraRelayClient", () => {
       
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
@@ -254,7 +260,7 @@ describe("AgoraRelayClient", () => {
       await client.disconnect();
       
       // Simulate close event
-      const closeHandler = mockWs.on.mock.calls.find(call => call[0] === "close")?.[1] as () => void;
+      const closeHandler = getEventHandler("close");
       closeHandler();
       
       // Clear WebSocket constructor calls
@@ -285,7 +291,7 @@ describe("AgoraRelayClient", () => {
       
       const connectPromise = client.connect();
       
-      const openHandler = mockWs.on.mock.calls.find(call => call[0] === "open")?.[1] as () => void;
+      const openHandler = getEventHandler("open");
       openHandler();
       
       await connectPromise;
