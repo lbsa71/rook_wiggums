@@ -16,6 +16,8 @@ export interface AppConfig {
   autoStartOnFirstRun: boolean;
   /** If true (default), the agent loop auto-starts when the server was restarted (e.g. after Restart button or rebuild). */
   autoStartAfterRestart: boolean;
+  /** Number of backups to retain (default: 14). */
+  backupRetentionCount?: number;
   /** Configuration for CONVERSATION.md archiving */
   conversationArchive?: {
     enabled: boolean;
@@ -50,6 +52,7 @@ export async function resolveConfig(
     mode: "cycle",
     autoStartOnFirstRun: false,
     autoStartAfterRestart: true,
+    backupRetentionCount: 14,
     conversationArchive: {
       enabled: false, // Disabled by default to maintain backward compatibility
       linesToKeep: 100,
@@ -94,7 +97,8 @@ export async function resolveConfig(
     mode: (fileConfig as Partial<AppConfig>).mode ?? defaults.mode,
     autoStartOnFirstRun: fileConfig.autoStartOnFirstRun ?? defaults.autoStartOnFirstRun,
     autoStartAfterRestart: fileConfig.autoStartAfterRestart ?? defaults.autoStartAfterRestart,
-    conversationArchive: fileConfig.conversationArchive 
+    backupRetentionCount: fileConfig.backupRetentionCount ?? defaults.backupRetentionCount,
+    conversationArchive: fileConfig.conversationArchive
       ? {
           enabled: fileConfig.conversationArchive.enabled ?? defaults.conversationArchive!.enabled,
           linesToKeep: fileConfig.conversationArchive.linesToKeep ?? defaults.conversationArchive!.linesToKeep,
