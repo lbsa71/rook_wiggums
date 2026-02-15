@@ -23,6 +23,7 @@ import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
 import { BackupScheduler } from "./BackupScheduler";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
+import { EmailScheduler } from "./EmailScheduler";
 
 export class LoopOrchestrator {
   private state: LoopState = LoopState.STOPPED;
@@ -41,6 +42,9 @@ export class LoopOrchestrator {
 
   // Health check scheduler
   private healthCheckScheduler: HealthCheckScheduler | null = null;
+
+  // Email scheduler
+  private emailScheduler: EmailScheduler | null = null;
 
   // Tick mode
   private tickPromptBuilder: TickPromptBuilder | null = null;
@@ -118,6 +122,10 @@ export class LoopOrchestrator {
 
   setHealthCheckScheduler(scheduler: HealthCheckScheduler): void {
     this.healthCheckScheduler = scheduler;
+  }
+
+  setEmailScheduler(scheduler: EmailScheduler): void {
+    this.emailScheduler = scheduler;
   }
 
   requestRestart(): void {
@@ -274,6 +282,11 @@ export class LoopOrchestrator {
     // Health check scheduling
     if (this.healthCheckScheduler && this.healthCheckScheduler.shouldRunCheck()) {
       await this.runScheduledHealthCheck();
+    }
+
+    // Email scheduling
+    if (this.emailScheduler && this.emailScheduler.shouldSendEmail()) {
+      await this.runScheduledEmail();
     }
 
     return result;
@@ -609,6 +622,51 @@ export class LoopOrchestrator {
         data: {
           cycleNumber: this.cycleNumber,
           success: false,
+          error: errorMsg,
+        },
+      });
+    }
+  }
+
+  private async runScheduledEmail(): Promise<void> {
+    this.logger.debug(`email: starting scheduled digest (cycle ${this.cycleNumber})`);
+    try {
+      const result = await this.emailScheduler!.sendEmail();
+      if (result.success) {
+        this.logger.debug(`email: digest sent successfully`);
+        this.eventSink.emit({
+          type: "email_sent",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: true,
+            emailType: "daily_digest",
+            messagePreview: result.messagePreview,
+          },
+        });
+      } else {
+        this.logger.debug(`email: send failed — ${result.error}`);
+        this.eventSink.emit({
+          type: "email_sent",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: false,
+            emailType: "daily_digest",
+            error: result.error,
+          },
+        });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`email: unexpected error — ${errorMsg}`);
+      this.eventSink.emit({
+        type: "email_sent",
+        timestamp: this.clock.now().toISOString(),
+        data: {
+          cycleNumber: this.cycleNumber,
+          success: false,
+          emailType: "daily_digest",
           error: errorMsg,
         },
       });

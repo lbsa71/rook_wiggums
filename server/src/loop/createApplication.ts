@@ -30,7 +30,9 @@ import { createSdkSessionFactory } from "../session/SdkSessionAdapter";
 import { BackupScheduler } from "./BackupScheduler";
 import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
+import { EmailScheduler } from "./EmailScheduler";
 import { AgoraService } from "../agora/AgoraService";
+import { getAppPaths } from "../paths";
 
 export interface ApplicationConfig {
   substratePath: string;
@@ -50,6 +52,11 @@ export interface ApplicationConfig {
   backupRetentionCount?: number;
   enableHealthChecks?: boolean;
   healthCheckIntervalMs?: number;
+  enableEmails?: boolean;
+  emailAddress?: string;
+  emailSendTimeHour?: number;
+  emailSendTimeMinute?: number;
+  emailTimezone?: string;
 }
 
 export interface Application {
@@ -188,6 +195,27 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       }
     );
     orchestrator.setHealthCheckScheduler(healthCheckScheduler);
+  }
+
+  // Email scheduler setup
+  if (config.enableEmails !== false) { // Default enabled
+    const appPaths = getAppPaths();
+    const trackingFilePath = path.join(appPaths.config, "last-daily-email.txt");
+    const runner = new NodeProcessRunner();
+    const emailScheduler = new EmailScheduler(
+      fs,
+      runner,
+      clock,
+      logger,
+      {
+        emailAddress: config.emailAddress ?? "lbsa71@hotmail.com",
+        sendTimeHour: config.emailSendTimeHour ?? 5, // 5:00 AM
+        sendTimeMinute: config.emailSendTimeMinute ?? 0,
+        timezone: config.emailTimezone ?? "Europe/Stockholm", // CET
+        trackingFilePath,
+      }
+    );
+    orchestrator.setEmailScheduler(emailScheduler);
   }
 
   // Tick mode wiring
