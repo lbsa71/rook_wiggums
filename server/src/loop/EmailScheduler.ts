@@ -165,17 +165,6 @@ export class EmailScheduler {
   }
 
   /**
-   * Convert UTC time to CET/CEST with proper DST handling
-   * Uses date-fns-tz to correctly handle timezone transitions
-   */
-  private getCETTime(utcDate: Date): Date {
-    // Use Europe/Paris timezone which follows CET/CEST rules
-    // CET (winter): UTC+1 (late October to late March)
-    // CEST (summer): UTC+2 (late March to late October)
-    return toZonedTime(utcDate, "Europe/Paris");
-  }
-
-  /**
    * Calculate the next scheduled email time after a given date
    */
   private getNextScheduledTime(after: Date): Date {
