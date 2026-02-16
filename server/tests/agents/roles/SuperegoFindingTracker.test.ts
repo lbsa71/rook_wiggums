@@ -52,7 +52,6 @@ describe("SuperegoFindingTracker", () => {
 
     it("uses only first 200 chars of message for signature", () => {
       const tracker = new SuperegoFindingTracker();
-      const shortMessage = "a".repeat(100);
       const longMessage1 = "a".repeat(250);
       const longMessage2 = "a".repeat(300);
 
