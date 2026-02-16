@@ -206,4 +206,24 @@ export class ConversationManager {
   resetArchiveTimer(): void {
     this.lastArchiveTime = null;
   }
+
+  /**
+   * Get last maintenance timestamp (compaction or archive, whichever is more recent).
+   * Returns null if no maintenance has occurred since process start.
+   */
+  getLastMaintenanceTime(): Date | null {
+    // Return the most recent of compaction or archive time
+    if (!this.lastCompactionTime && !this.lastArchiveTime) {
+      return null;
+    }
+    if (!this.lastCompactionTime) {
+      return this.lastArchiveTime;
+    }
+    if (!this.lastArchiveTime) {
+      return this.lastCompactionTime;
+    }
+    return this.lastCompactionTime > this.lastArchiveTime 
+      ? this.lastCompactionTime 
+      : this.lastArchiveTime;
+  }
 }

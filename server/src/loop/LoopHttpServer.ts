@@ -436,7 +436,7 @@ export class LoopHttpServer {
           status: this.getTaskClassifierStatus(classificationStats.tacticalPct),
           total_operations: classificationStats.totalOperations,
         },
-        lastCompaction: null, // TODO: Get from ConversationManager or PROGRESS.md
+        lastCompaction: this.conversationManager?.getLastMaintenanceTime()?.toISOString() ?? null,
         alerts,
       };
 

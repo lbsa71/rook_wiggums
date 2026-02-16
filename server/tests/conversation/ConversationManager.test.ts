@@ -359,3 +359,140 @@ describe("ConversationManager with archiving", () => {
     expect(archiver.archiveCalls).toHaveLength(0);
   });
 });
+
+describe("ConversationManager.getLastMaintenanceTime", () => {
+  let fs: InMemoryFileSystem;
+  let clock: FixedClock;
+  let config: SubstrateConfig;
+  let reader: SubstrateFileReader;
+  let appendWriter: AppendOnlyWriter;
+  let checker: PermissionChecker;
+  let compactor: MockCompactor;
+  let archiver: MockArchiver;
+  let manager: ConversationManager;
+  let lock: FileLock;
+
+  beforeEach(async () => {
+    fs = new InMemoryFileSystem();
+    clock = new FixedClock(new Date("2025-01-01T12:00:00.000Z"));
+    config = new SubstrateConfig("/test/substrate");
+    lock = new FileLock();
+    reader = new SubstrateFileReader(fs, config);
+    appendWriter = new AppendOnlyWriter(fs, config, lock, clock);
+    checker = new PermissionChecker();
+    compactor = new MockCompactor();
+    archiver = new MockArchiver();
+
+    // Initialize CONVERSATION.md
+    await fs.writeFile("/test/substrate/CONVERSATION.md", "# Conversation\n\n");
+  });
+
+  it("should return null initially when no maintenance has occurred", () => {
+    manager = new ConversationManager(
+      reader, fs, config, lock, appendWriter, checker, compactor, clock
+    );
+
+    const lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toBeNull();
+  });
+
+  it("should return lastCompactionTime after forceCompaction", async () => {
+    manager = new ConversationManager(
+      reader, fs, config, lock, appendWriter, checker, compactor, clock
+    );
+
+    await manager.append(AgentRole.EGO, "Message");
+    
+    compactor.setResponse("# Conversation\n\nCompacted\n\n");
+    const compactionTime = new Date("2025-01-01T13:00:00.000Z");
+    clock.setNow(compactionTime);
+    await manager.forceCompaction(AgentRole.EGO);
+
+    const lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toEqual(compactionTime);
+  });
+
+  it("should return lastArchiveTime after forceArchive", async () => {
+    const archiveConfig: ConversationArchiveConfig = {
+      enabled: true,
+      linesToKeep: 5,
+      sizeThreshold: 100,
+    };
+
+    manager = new ConversationManager(
+      reader, fs, config, lock, appendWriter, checker, compactor, clock,
+      archiver, archiveConfig
+    );
+
+    await manager.append(AgentRole.EGO, "Message");
+    
+    archiver.setResponse(1, "/test/substrate/archive/conversation/test.md");
+    const archiveTime = new Date("2025-01-01T14:00:00.000Z");
+    clock.setNow(archiveTime);
+    await manager.forceArchive();
+
+    const lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toEqual(archiveTime);
+  });
+
+  it("should return the more recent timestamp when both compaction and archive exist", async () => {
+    const archiveConfig: ConversationArchiveConfig = {
+      enabled: true,
+      linesToKeep: 5,
+      sizeThreshold: 100,
+    };
+
+    manager = new ConversationManager(
+      reader, fs, config, lock, appendWriter, checker, compactor, clock,
+      archiver, archiveConfig
+    );
+
+    await manager.append(AgentRole.EGO, "Message");
+
+    // First compaction at 13:00
+    compactor.setResponse("# Conversation\n\nCompacted\n\n");
+    clock.setNow(new Date("2025-01-01T13:00:00.000Z"));
+    await manager.forceCompaction(AgentRole.EGO);
+
+    let lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toEqual(new Date("2025-01-01T13:00:00.000Z"));
+
+    // Then archive at 14:00 (more recent)
+    archiver.setResponse(1, "/test/substrate/archive/conversation/test.md");
+    const archiveTime = new Date("2025-01-01T14:00:00.000Z");
+    clock.setNow(archiveTime);
+    await manager.forceArchive();
+
+    lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toEqual(archiveTime);
+  });
+
+  it("should return compaction time when it's more recent than archive", async () => {
+    const archiveConfig: ConversationArchiveConfig = {
+      enabled: true,
+      linesToKeep: 5,
+      sizeThreshold: 100,
+    };
+
+    manager = new ConversationManager(
+      reader, fs, config, lock, appendWriter, checker, compactor, clock,
+      archiver, archiveConfig
+    );
+
+    await manager.append(AgentRole.EGO, "Message");
+
+    // First archive at 13:00
+    archiver.setResponse(1, "/test/substrate/archive/conversation/test.md");
+    clock.setNow(new Date("2025-01-01T13:00:00.000Z"));
+    await manager.forceArchive();
+
+    // Then compaction at 14:00 (more recent)
+    compactor.setResponse("# Conversation\n\nCompacted\n\n");
+    const compactionTime = new Date("2025-01-01T14:00:00.000Z");
+    clock.setNow(compactionTime);
+    await manager.forceCompaction(AgentRole.EGO);
+
+    const lastMaintenance = manager.getLastMaintenanceTime();
+    expect(lastMaintenance).toEqual(compactionTime);
+  });
+});
