@@ -59,23 +59,40 @@ send_failure_notification() {
     
     log "Sending failure notification email to ${USER_EMAIL}"
     
+    # Collect diagnostics with explicit error handling
+    local journal_output
+    journal_output=$(journalctl -u substrate.service -n 50 --no-pager 2>&1) || journal_output="Failed to retrieve journal"
+    
+    local build_status
+    if build_status=$(cd "${SUBSTRATE_DIR}/server" && npx tsc --noEmit 2>&1); then
+        build_status="Build check passed"
+    else
+        build_status="Build check failed: ${build_status}"
+    fi
+    
+    local disk_info
+    disk_info=$(df -h "${HOME}" 2>&1) || disk_info="Failed to retrieve disk info"
+    
+    local recovery_log
+    recovery_log=$(journalctl -u substrate-recovery.service -n 100 --no-pager 2>&1) || recovery_log="Failed to retrieve recovery log"
+    
     # Build email subject and body
     local subject="[SUBSTRATE] Recovery failed after ${attempts} attempts"
     local body="Substrate process has crashed ${attempts} times and automatic recovery has failed.
 
 Recent journal entries:
-$(journalctl -u substrate.service -n 50 --no-pager 2>&1)
+${journal_output}
 
 Build status:
-$(cd "${SUBSTRATE_DIR}/server" && npx tsc --noEmit 2>&1 || echo "Build check failed")
+${build_status}
 
 Disk space:
-$(df -h "${HOME}" 2>&1)
+${disk_info}
 
 Please SSH in and investigate manually.
 
 Recovery attempt log:
-$(journalctl -u substrate-recovery.service -n 100 --no-pager 2>&1)
+${recovery_log}
 "
     
     # Try to send email using gog if available

@@ -3,7 +3,7 @@ Description=Substrate - Self-Referential AI Agent Orchestration Shell
 Documentation=https://github.com/rookdaemon/substrate
 After=network-online.target
 Wants=network-online.target
-OnFailure=substrate-recovery.service
+OnFailure=substrate-recovery@%i.service
 
 [Service]
 Type=simple
