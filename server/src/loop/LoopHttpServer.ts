@@ -17,6 +17,7 @@ import { SubstrateSizeTracker } from "../evaluation/SubstrateSizeTracker";
 import { DelegationTracker } from "../evaluation/DelegationTracker";
 import { shortKey } from "../agora/utils";
 import { TinyBus } from "../tinybus/core/TinyBus";
+import { createMessage } from "../tinybus/core/Message";
 import { createTinyBusMcpServer } from "../mcp/TinyBusMcpServer";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -313,17 +314,36 @@ export class LoopHttpServer {
               data: { role: "USER", message: parsed.message },
             });
           }
-          // Fire-and-forget: launch a separate Ego session to respond
-          this.orchestrator.handleUserMessage(parsed.message!).catch((err) => {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            if (this.eventSink && this.clock) {
-              this.eventSink.emit({
-                type: "conversation_response",
-                timestamp: this.clock.now().toISOString(),
-                data: { error: errMsg },
-              });
-            }
-          });
+          // Fire-and-forget: route chat message through TinyBus
+          if (this.tinyBus) {
+            const chatMessage = createMessage({
+              type: "chat",
+              source: "ui",
+              payload: { text: parsed.message },
+            });
+            this.tinyBus.publish(chatMessage).catch((err) => {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (this.eventSink && this.clock) {
+                this.eventSink.emit({
+                  type: "conversation_response",
+                  timestamp: this.clock.now().toISOString(),
+                  data: { error: errMsg },
+                });
+              }
+            });
+          } else {
+            // Fallback to direct call if TinyBus not available
+            this.orchestrator.handleUserMessage(parsed.message!).catch((err) => {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (this.eventSink && this.clock) {
+                this.eventSink.emit({
+                  type: "conversation_response",
+                  timestamp: this.clock.now().toISOString(),
+                  data: { error: errMsg },
+                });
+              }
+            });
+          }
           this.json(res, 200, { success: true });
         },
         (err) => {

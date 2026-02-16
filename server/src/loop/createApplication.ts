@@ -42,7 +42,7 @@ import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "imp
 import { AgoraInboxManager } from "../agora/AgoraInboxManager";
 import { LoopWatchdog } from "./LoopWatchdog";
 import { getAppPaths } from "../paths";
-import { TinyBus, MemoryProvider, SessionInjectionProvider } from "../tinybus";
+import { TinyBus, MemoryProvider, SessionInjectionProvider, ChatMessageProvider } from "../tinybus";
 
 // Type for AgoraService from @rookdaemon/agora (ESM module, imported dynamically)
 interface AgoraServiceType {
@@ -269,6 +269,13 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     (message: string) => orchestrator.injectMessage(message)
   );
   tinyBus.registerProvider(sessionProvider);
+  
+  // 3. Chat message provider - handles UI chat messages
+  const chatProvider = new ChatMessageProvider(
+    "chat-handler",
+    (message: string) => orchestrator.handleUserMessage(message)
+  );
+  tinyBus.registerProvider(chatProvider);
   
   // Start TinyBus
   await tinyBus.start();
