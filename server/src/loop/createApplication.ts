@@ -52,6 +52,7 @@ export interface ApplicationConfig {
   httpPort?: number;
   cycleDelayMs?: number;
   superegoAuditInterval?: number;
+  autonomyReminderInterval?: number;
   maxConsecutiveIdleCycles?: number;
   mode?: "cycle" | "tick";
   sdkQueryFn?: SdkQueryFn;
@@ -163,6 +164,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   const loopConfig = defaultLoopConfig({
     cycleDelayMs: config.cycleDelayMs,
     superegoAuditInterval: config.superegoAuditInterval,
+    autonomyReminderInterval: config.autonomyReminderInterval,
     maxConsecutiveIdleCycles: config.maxConsecutiveIdleCycles,
   });
 
