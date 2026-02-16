@@ -23,7 +23,7 @@ interface ProcessLogProps {
 
 export function ProcessLog({ lastEvent }: ProcessLogProps) {
   const [entries, setEntries] = useState<ProcessEntry[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const entriesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (lastEvent?.type !== "process_output") return;
@@ -47,7 +47,8 @@ export function ProcessLog({ lastEvent }: ProcessLogProps) {
   }, [lastEvent]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = entriesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [entries]);
 
   const handleClear = () => setEntries([]);
@@ -57,7 +58,7 @@ export function ProcessLog({ lastEvent }: ProcessLogProps) {
       <div className="process-log-header">
         <button className="process-log-clear" onClick={handleClear}>Clear</button>
       </div>
-      <div className="process-log-entries" data-testid="process-log-entries">
+      <div className="process-log-entries" data-testid="process-log-entries" ref={entriesRef}>
         {entries.length === 0 ? (
           <p>No process output yet.</p>
         ) : (
@@ -75,7 +76,6 @@ export function ProcessLog({ lastEvent }: ProcessLogProps) {
             );
           })
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   );

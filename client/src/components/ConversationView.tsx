@@ -39,7 +39,7 @@ function parseEntries(raw: string): ConversationEntry[] {
 
 export function ConversationView({ lastEvent, refreshKey }: ConversationViewProps) {
   const [entries, setEntries] = useState<ConversationEntry[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const entriesRef = useRef<HTMLDivElement>(null);
 
   const fetchConversation = () => {
     apiGet<SubstrateContent>("/api/substrate/CONVERSATION")
@@ -58,12 +58,13 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
   }, [lastEvent]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = entriesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [entries]);
 
   return (
     <div className="conversation-view">
-      <div className="conversation-entries" data-testid="conversation-entries">
+      <div className="conversation-entries" data-testid="conversation-entries" ref={entriesRef}>
         {entries.length === 0 ? (
           <p>No conversation yet.</p>
         ) : (
@@ -76,7 +77,6 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
