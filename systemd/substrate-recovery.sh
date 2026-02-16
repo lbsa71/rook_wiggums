@@ -64,10 +64,14 @@ send_failure_notification() {
     journal_output=$(journalctl -u substrate.service -n 50 --no-pager 2>&1) || journal_output="Failed to retrieve journal"
     
     local build_status
-    if build_status=$(cd "${SUBSTRATE_DIR}/server" && npx tsc --noEmit 2>&1); then
-        build_status="Build check passed"
+    if [[ -d "${SUBSTRATE_DIR}/server" ]]; then
+        if build_status=$(cd "${SUBSTRATE_DIR}/server" && npx tsc --noEmit 2>&1); then
+            build_status="Build check passed"
+        else
+            build_status="Build check failed: ${build_status}"
+        fi
     else
-        build_status="Build check failed: ${build_status}"
+        build_status="Build check failed: ${SUBSTRATE_DIR}/server directory not found"
     fi
     
     local disk_info
