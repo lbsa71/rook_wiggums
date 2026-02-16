@@ -147,6 +147,7 @@ export class AgentSdkLauncher implements ISessionLauncher {
     let errorMessage: string | undefined;
 
     const timeoutMs = options?.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
+    let timeoutHandle: NodeJS.Timeout | null = null;
 
     try {
       const stream = this.queryFn({ prompt: request.message, options: queryOptions });
@@ -161,7 +162,7 @@ export class AgentSdkLauncher implements ISessionLauncher {
       }
 
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Session timed out after ${timeoutMs}ms`)), timeoutMs);
+        timeoutHandle = setTimeout(() => reject(new Error(`Session timed out after ${timeoutMs}ms`)), timeoutMs);
       });
 
       // Race iteration against timeout
@@ -192,6 +193,10 @@ export class AgentSdkLauncher implements ISessionLauncher {
       errorMessage = err instanceof Error ? err.message : String(err);
       this.logger.debug(`sdk-launch: error — ${errorMessage}`);
     } finally {
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
       if (this.activeChannel && !this.activeChannel.isClosed()) {
         this.activeChannel.close();
       }
