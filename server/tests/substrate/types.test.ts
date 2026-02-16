@@ -67,6 +67,7 @@ describe("SUBSTRATE_FILE_SPECS", () => {
       SubstrateFileType.PEERS,
       SubstrateFileType.AGORA_INBOX,
       SubstrateFileType.ESCALATE_TO_STEFAN,
+      SubstrateFileType.RESTART_CONTEXT,
     ];
     for (const type of Object.values(SubstrateFileType)) {
       if (optionalTypes.includes(type)) {

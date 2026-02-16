@@ -21,6 +21,7 @@ import { SessionManager, SessionConfig } from "../session/SessionManager";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
+import { RateLimitStateManager } from "./RateLimitStateManager";
 import { BackupScheduler } from "./BackupScheduler";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { EmailScheduler } from "./EmailScheduler";
@@ -61,6 +62,9 @@ export class LoopOrchestrator {
 
   // Agora inbox manager for checking unread messages
   private agoraInboxManager: AgoraInboxManager | null = null;
+
+  // Rate limit state manager for hibernation context
+  private rateLimitStateManager: RateLimitStateManager | null = null;
 
   // SUPEREGO finding tracker for recurring finding escalation
   private findingTracker: SuperegoFindingTracker = new SuperegoFindingTracker();
@@ -163,6 +167,10 @@ export class LoopOrchestrator {
 
   setAgoraInboxManager(manager: AgoraInboxManager): void {
     this.agoraInboxManager = manager;
+  }
+
+  setRateLimitStateManager(manager: RateLimitStateManager): void {
+    this.rateLimitStateManager = manager;
   }
 
   requestRestart(): void {
@@ -422,6 +430,14 @@ export class LoopOrchestrator {
         const waitMs = rateLimitReset.getTime() - this.clock.now().getTime();
         this.rateLimitUntil = rateLimitReset.toISOString();
         this.logger.debug(`runLoop: rate limited — backing off ${waitMs}ms until ${this.rateLimitUntil}`);
+        
+        // Save state before hibernation
+        if (this.rateLimitStateManager) {
+          const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
+          await this.rateLimitStateManager.saveStateBeforeSleep(rateLimitReset, currentTaskId);
+          this.logger.debug(`runLoop: state saved for rate limit hibernation`);
+        }
+        
         this.eventSink.emit({
           type: "idle",
           timestamp: this.clock.now().toISOString(),

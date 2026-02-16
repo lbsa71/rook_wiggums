@@ -21,6 +21,7 @@ import { Id } from "../agents/roles/Id";
 import { FileLogger } from "../logging";
 import { NodeTimer } from "./NodeTimer";
 import { LoopOrchestrator } from "./LoopOrchestrator";
+import { RateLimitStateManager } from "./RateLimitStateManager";
 import { IdleHandler } from "./IdleHandler";
 import { LoopHttpServer } from "./LoopHttpServer";
 import { LoopWebSocketServer } from "./LoopWebSocketServer";
@@ -267,6 +268,13 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
 
   orchestrator.setLauncher(launcher);
   orchestrator.setShutdown((code) => process.exit(code));
+  
+  // Rate limit state manager setup
+  const rateLimitStateManager = new RateLimitStateManager(
+    fs, substrateConfig, lock, clock, appendWriter, writer, reader
+  );
+  orchestrator.setRateLimitStateManager(rateLimitStateManager);
+  
   if (config.mode === "tick") {
     httpServer.setMode("tick");
   }

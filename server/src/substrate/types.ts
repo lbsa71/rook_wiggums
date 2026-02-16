@@ -14,6 +14,7 @@ export enum SubstrateFileType {
   PEERS = "PEERS",
   AGORA_INBOX = "AGORA_INBOX",
   ESCALATE_TO_STEFAN = "ESCALATE_TO_STEFAN",
+  RESTART_CONTEXT = "RESTART_CONTEXT",
 }
 
 export enum WriteMode {
@@ -43,4 +44,5 @@ export const SUBSTRATE_FILE_SPECS: Record<SubstrateFileType, SubstrateFileSpec> 
   [SubstrateFileType.PEERS]: { fileName: "PEERS.md", writeMode: WriteMode.OVERWRITE, required: false },
   [SubstrateFileType.AGORA_INBOX]: { fileName: "AGORA_INBOX.md", writeMode: WriteMode.OVERWRITE, required: false },
   [SubstrateFileType.ESCALATE_TO_STEFAN]: { fileName: "ESCALATE_TO_STEFAN.md", writeMode: WriteMode.APPEND, required: false },
+  [SubstrateFileType.RESTART_CONTEXT]: { fileName: "restart-context.md", writeMode: WriteMode.OVERWRITE, required: false },
 };
