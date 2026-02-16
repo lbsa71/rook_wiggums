@@ -1,0 +1,19 @@
+[Unit]
+Description=Substrate Recovery Service - Automatic Crash Diagnosis and Repair
+Documentation=https://github.com/rookdaemon/substrate
+After=substrate.service
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=/home/%i/substrate
+Environment="PATH=/usr/bin:/usr/local/bin:/home/%i/.nvm/versions/node/v20.0.0/bin:/home/%i/.local/bin"
+ExecStartPre=/bin/sleep 60
+ExecStart=/home/%i/substrate/systemd/substrate-recovery.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=substrate-recovery
+
+# Don't restart the recovery service itself
+RemainAfterExit=no

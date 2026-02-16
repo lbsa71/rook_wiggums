@@ -209,6 +209,27 @@ cd client && npx vitest run
 cd server && npx eslint src/ tests/
 ```
 
+### Deployment
+
+For production deployment with automatic crash recovery, see [**Systemd Deployment Guide**](docs/systemd-deployment.md).
+
+Features:
+- **Automatic Recovery** — Claude AI diagnoses and fixes crashes
+- **Smart Retry** — Max 3 attempts with email alerts
+- **Service Management** — Standard systemd commands
+- **Security Hardening** — Sandboxed execution environment
+
+Quick install:
+```bash
+# Copy service files
+cp systemd/*.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+
+# Start and enable
+systemctl --user start substrate@$(whoami).service
+systemctl --user enable substrate@$(whoami).service
+```
+
 ---
 
 ## Substrate File Formats
