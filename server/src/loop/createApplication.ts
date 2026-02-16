@@ -185,12 +185,14 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       await service.connectRelay(agoraConfig.relay.url);
       logger.debug(`Connected to Agora relay at ${agoraConfig.relay.url}`);
 
+      // Import Agora library once for signature verification
+      const agora = await import("@rookdaemon/agora");
+
       // Set up relay message handler to process incoming messages
       service.setRelayMessageHandler(async (envelope) => {
         try {
           // SECURITY: Verify signature before processing
           // The relay passes raw envelopes - we must verify them
-          const agora = await import("@rookdaemon/agora");
           const verifyResult = agora.verifyEnvelope(envelope);
 
           if (!verifyResult.valid) {

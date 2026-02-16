@@ -9,6 +9,9 @@
  * 
  * @param publicKey - The full public key hex string
  * @returns The last 8 characters of the key followed by "..."
+ * 
+ * Note: For keys shorter than 8 characters, returns the entire key with "...".
+ * This is an edge case since all Ed25519 public keys are 66 characters long.
  */
 export function shortKey(publicKey: string): string {
   return publicKey.slice(-8) + "...";
