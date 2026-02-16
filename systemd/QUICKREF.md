@@ -10,20 +10,23 @@ cd ~/substrate
 npm install
 cd server && npm run build
 
-# 2. Copy service files
+# 2. Create Node.js default symlink (version-agnostic)
+ln -sf ~/.nvm/versions/node/v20.11.1 ~/.nvm/versions/node/default
+
+# 3. Copy service files
 mkdir -p ~/.config/systemd/user
 cp ~/substrate/systemd/substrate.service ~/.config/systemd/user/substrate@.service
 cp ~/substrate/systemd/substrate-recovery.service ~/.config/systemd/user/substrate-recovery@.service
 
-# 3. Configure environment (optional)
+# 4. Configure environment (optional)
 mkdir -p ~/.config/systemd/user/substrate@.service.d
 cat > ~/.config/systemd/user/substrate@.service.d/override.conf <<'EOF'
 [Service]
 Environment="SUBSTRATE_ADMIN_EMAIL=your@email.com"
-Environment="PATH=/usr/bin:/usr/local/bin:$HOME/.nvm/versions/node/v20.11.1/bin"
+Environment="NODE_ENV=production"
 EOF
 
-# 4. Reload and start
+# 5. Reload and start
 systemctl --user daemon-reload
 systemctl --user start substrate@$(whoami).service
 systemctl --user enable substrate@$(whoami).service

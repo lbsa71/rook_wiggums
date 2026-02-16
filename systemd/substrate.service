@@ -10,7 +10,7 @@ Type=simple
 User=%i
 WorkingDirectory=/home/%i/substrate/server
 Environment="NODE_ENV=production"
-Environment="PATH=/usr/bin:/usr/local/bin:/home/%i/.nvm/versions/node/v20.0.0/bin"
+Environment="PATH=/usr/bin:/usr/local/bin:/home/%i/.nvm/versions/node/default/bin:/home/%i/.local/bin"
 ExecStart=/usr/bin/node /home/%i/substrate/server/dist/supervisor.js
 Restart=on-failure
 RestartSec=5s

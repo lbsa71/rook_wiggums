@@ -221,8 +221,10 @@ Features:
 
 Quick install:
 ```bash
-# Copy service files
-cp systemd/*.service ~/.config/systemd/user/
+# Copy service files (note the @ suffix for template units)
+mkdir -p ~/.config/systemd/user
+cp systemd/substrate.service ~/.config/systemd/user/substrate@.service
+cp systemd/substrate-recovery.service ~/.config/systemd/user/substrate-recovery@.service
 systemctl --user daemon-reload
 
 # Start and enable

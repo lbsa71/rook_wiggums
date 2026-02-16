@@ -40,6 +40,9 @@ See [docs/systemd-deployment.md](../docs/systemd-deployment.md) for complete ins
 Quick start:
 
 ```bash
+# Create Node.js default symlink (version-agnostic approach)
+ln -sf ~/.nvm/versions/node/v20.11.1 ~/.nvm/versions/node/default
+
 # Copy service files to user systemd directory
 mkdir -p ~/.config/systemd/user
 cp substrate.service ~/.config/systemd/user/substrate@.service
@@ -77,15 +80,22 @@ Set these in a systemd override file or in the service file:
 
 - `SUBSTRATE_ADMIN_EMAIL` — Email address for failure notifications (default: `stefan@example.com`)
 - `NODE_ENV` — Node environment (default: `production`)
-- `PATH` — Must include Node.js binary directory
+- `PATH` — Service files use `node/default/bin` (create symlink to avoid hardcoding versions)
 
-Example override:
+The service files use a version-agnostic PATH with a `default` symlink:
+```bash
+# Create symlink to current Node version
+ln -sf ~/.nvm/versions/node/v20.11.1 ~/.nvm/versions/node/default
+```
+
+Example override (if you need to customize PATH or other settings):
 ```bash
 mkdir -p ~/.config/systemd/user/substrate@.service.d
 cat > ~/.config/systemd/user/substrate@.service.d/override.conf <<'EOF'
 [Service]
 Environment="SUBSTRATE_ADMIN_EMAIL=your-email@example.com"
-Environment="PATH=/usr/bin:/usr/local/bin:/home/yourusername/.nvm/versions/node/v20.11.1/bin"
+# Optional: Override PATH if not using default symlink
+# Environment="PATH=/usr/bin:/usr/local/bin:/home/yourusername/.nvm/versions/node/v20.11.1/bin"
 EOF
 systemctl --user daemon-reload
 ```

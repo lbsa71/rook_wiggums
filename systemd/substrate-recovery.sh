@@ -147,6 +147,10 @@ Work in ${SUBSTRATE_DIR} directory."
         # Run Claude with a working directory and capture output
         cd "${SUBSTRATE_DIR}"
         
+        # Note: Using --dangerously-skip-permissions is necessary for automated recovery
+        # as Claude needs to modify files, run builds, and restart services.
+        # This runs with user-level permissions only (not root).
+        # Security is enforced by systemd's sandboxing (NoNewPrivileges, ProtectSystem=strict).
         if claude -p "${prompt}" --dangerously-skip-permissions 2>&1 | tee /tmp/substrate-recovery-output.log; then
             log "Claude recovery completed successfully"
             rm -f "${RECOVERY_MARKER}"

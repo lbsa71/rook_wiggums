@@ -76,7 +76,15 @@ sudo loginctl enable-linger $(whoami)
 
 ### 4. Configure Environment Variables
 
-Create or edit `~/.config/systemd/user/substrate@.service.d/override.conf`:
+The service files use a default Node.js path (`node/default/bin`) which you should create as a symlink:
+
+```bash
+# Create a 'default' symlink to your current Node version
+# This avoids hardcoding version numbers in service files
+ln -sf ~/.nvm/versions/node/v20.11.1 ~/.nvm/versions/node/default
+```
+
+Then create or edit `~/.config/systemd/user/substrate@.service.d/override.conf` for additional customization:
 
 ```bash
 mkdir -p ~/.config/systemd/user/substrate@.service.d
@@ -84,15 +92,15 @@ cat > ~/.config/systemd/user/substrate@.service.d/override.conf <<'EOF'
 [Service]
 Environment="SUBSTRATE_ADMIN_EMAIL=your-email@example.com"
 Environment="NODE_ENV=production"
-# Adjust PATH to match your Node.js installation
-Environment="PATH=/usr/bin:/usr/local/bin:/home/yourusername/.nvm/versions/node/v20.11.1/bin"
+# Optional: Override PATH if you need different Node installation
+# Environment="PATH=/usr/bin:/usr/local/bin:/home/yourusername/.nvm/versions/node/v20.11.1/bin"
 EOF
 ```
 
 Replace:
 - `your-email@example.com` with your actual email
-- `/home/yourusername` with your actual home directory
-- Node version path with your actual Node.js installation
+- `/home/yourusername` with your actual home directory (if overriding PATH)
+- Node version path with your actual Node.js installation (if overriding PATH)
 
 Reload after editing:
 ```bash
