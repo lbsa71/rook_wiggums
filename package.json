@@ -1,6 +1,6 @@
 {
   "name": "substrate",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Self-Referential Agent Shell",
   "workspaces": [
@@ -25,6 +25,6 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@rookdaemon/agora": "^0.2.6"
+    "@rookdaemon/agora": "^0.2.7"
   }
 }
