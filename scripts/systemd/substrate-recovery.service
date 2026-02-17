@@ -11,6 +11,10 @@ User=rook
 Group=rook
 WorkingDirectory=/home/rook/substrate
 
+# PATH: Use default node symlink for version-agnostic deployment
+Environment="PATH=/home/rook/.nvm/versions/node/default/bin:/home/rook/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/rook"
+
 # Run the recovery script
 ExecStart=/home/rook/substrate/scripts/recovery.sh
 

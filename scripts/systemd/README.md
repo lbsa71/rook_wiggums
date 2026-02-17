@@ -167,13 +167,24 @@ echo "Test" | mail -s "Test" lbsa71@hotmail.com
 
 ### Path Issues
 
-Ensure the `PATH` environment variable in `substrate.service` includes your Node.js installation:
+Ensure the `PATH` environment variable in both `substrate.service` and `substrate-recovery.service` includes your Node.js installation:
 ```bash
 # Find node path
 which node
 
 # Update Environment="PATH=..." in substrate.service
+# Update Environment="PATH=..." in substrate-recovery.service
 ```
+
+Both service files use the same PATH by default:
+```
+Environment="PATH=/home/rook/.nvm/versions/node/default/bin:/home/rook/.local/bin:/usr/local/bin:/usr/bin:/bin"
+```
+
+The recovery service needs access to:
+- `claude` CLI (for diagnostics)
+- `node` and `npm` (for Claude's diagnostic commands)
+- Standard system utilities (`mail`, `sendmail`, etc.)
 
 ## Configuration
 
