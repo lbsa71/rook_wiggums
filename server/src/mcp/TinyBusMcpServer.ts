@@ -5,11 +5,22 @@ import { z } from "zod";
 import * as http from "node:http";
 import { TinyBus } from "../tinybus/core/TinyBus";
 import { createMessage } from "../tinybus/core/Message";
+import type { IAgoraService } from "../agora/IAgoraService";
+
+export interface McpServerOptions {
+  tinyBus: TinyBus;
+  agoraService?: IAgoraService | null;
+}
 
 /**
  * Create an MCP server for TinyBus
  */
-export function createTinyBusMcpServer(tinyBus: TinyBus): McpServer {
+export function createTinyBusMcpServer(options: McpServerOptions): McpServer;
+/** @deprecated Pass McpServerOptions instead */
+export function createTinyBusMcpServer(tinyBus: TinyBus): McpServer;
+export function createTinyBusMcpServer(arg: TinyBus | McpServerOptions): McpServer {
+  const tinyBus = arg instanceof TinyBus ? arg : arg.tinyBus;
+  const agoraService = arg instanceof TinyBus ? null : (arg.agoraService ?? null);
   const server = new McpServer({
     name: "granules",
     version: "1.0.0",
@@ -157,6 +168,26 @@ export function createTinyBusMcpServer(tinyBus: TinyBus): McpServer {
       }
     }
   );
+
+  // Register list_peers tool (only when Agora service is available)
+  if (agoraService) {
+    server.tool(
+      "list_peers",
+      "List all configured Agora peers",
+      {},
+      async () => {
+        const peers = agoraService.getPeers();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ peers }),
+            },
+          ],
+        };
+      }
+    );
+  }
 
   return server;
 }

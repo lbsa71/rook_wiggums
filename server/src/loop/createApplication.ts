@@ -317,7 +317,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   httpServer.setLogger(logger);
   
   // Set up TinyBus MCP server
-  await httpServer.setTinyBus(tinyBus);
+  httpServer.setTinyBus(tinyBus);
   
   if (agoraService && agoraMessageHandler) {
     httpServer.setAgoraMessageHandler(agoraMessageHandler, agoraService);

@@ -17,7 +17,6 @@ import { TinyBus } from "../tinybus/core/TinyBus";
 import { createMessage } from "../tinybus/core/Message";
 import { createTinyBusMcpServer } from "../mcp/TinyBusMcpServer";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { IAgoraService } from "../agora/IAgoraService";
 import type { ILogger } from "../logging";
@@ -47,8 +46,6 @@ export class LoopHttpServer {
   private sizeTracker: SubstrateSizeTracker | null = null;
   private delegationTracker: DelegationTracker | null = null;
   private tinyBus: TinyBus | null = null;
-  private mcpServer: McpServer | null = null;
-  private mcpTransport: StreamableHTTPServerTransport | null = null;
 
   constructor(orchestrator: LoopOrchestrator) {
     this.orchestrator = orchestrator;
@@ -108,14 +105,8 @@ export class LoopHttpServer {
     this.delegationTracker = delegationTracker;
   }
 
-  async setTinyBus(tinyBus: TinyBus): Promise<void> {
+  setTinyBus(tinyBus: TinyBus): void {
     this.tinyBus = tinyBus;
-    // Create MCP server and transport
-    this.mcpServer = createTinyBusMcpServer(tinyBus);
-    this.mcpTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // Stateless mode
-    });
-    await this.mcpServer.connect(this.mcpTransport);
   }
 
   listen(port: number): Promise<number> {
@@ -142,14 +133,9 @@ export class LoopHttpServer {
     const url = req.url ?? "";
     const method = req.method ?? "";
 
-    // Handle MCP requests
-    if ((url === "/mcp" || url === "/") && this.mcpTransport && this.mcpServer) {
-      this.mcpTransport.handleRequest(req, res).catch((error) => {
-        console.error("Error handling MCP request:", error);
-        if (!res.headersSent) {
-          this.json(res, 500, { error: String(error) });
-        }
-      });
+    // Handle MCP requests — SDK 1.26+ stateless mode requires a fresh transport per request
+    if ((url === "/mcp" || url === "/") && this.tinyBus) {
+      this.handleMcpRequest(req, res);
       return;
     }
 
@@ -266,6 +252,23 @@ export class LoopHttpServer {
 
       default:
         this.json(res, 404, { error: "Not found" });
+    }
+  }
+
+  private async handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      const mcpServer = createTinyBusMcpServer({ tinyBus: this.tinyBus!, agoraService: this.agoraService });
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // Stateless mode
+      });
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res);
+      await mcpServer.close();
+    } catch (error) {
+      console.error("Error handling MCP request:", error);
+      if (!res.headersSent) {
+        this.json(res, 500, { error: String(error) });
+      }
     }
   }
 
