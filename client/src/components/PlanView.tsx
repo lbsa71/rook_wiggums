@@ -25,7 +25,8 @@ export function PlanView({ lastEvent }: PlanViewProps) {
   useEffect(() => { fetchPlan(); }, []);
 
   useEffect(() => {
-    if (lastEvent?.type === "cycle_complete") {
+    if (lastEvent?.type === "cycle_complete" || 
+        (lastEvent?.type === "file_changed" && lastEvent.data.fileType === "PLAN")) {
       fetchPlan();
     }
   }, [lastEvent]);

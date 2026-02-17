@@ -257,15 +257,17 @@ Substrate integrates with the [Agora protocol](https://github.com/rookdaemon/ago
 **Message Flow:**
 1. **Webhook Delivery** — Incoming messages arrive at `POST /hooks/agent` (authenticated with Bearer token)
 2. **Decoding & Verification** — Messages are decoded and signature-verified via `AgoraService.decodeInbound()`
-3. **Persistence** — Messages are written to `CONVERSATION.md` with format: `[AGORA] [timestamp] [UNPROCESSED?] Type: {type} From: {senderShort} Envelope: {envelopeId} Payload: {payload}`
-4. **Unprocessed Markers** — Messages received while the process is STOPPED or PAUSED are marked with `[UNPROCESSED]` prefix
+3. **Persistence** — Messages are written to `CONVERSATION.md` in a user-friendly format with markdown formatting
+4. **Unprocessed Markers** — Messages received while the process is STOPPED or PAUSED are marked with `**[UNPROCESSED]**` badge
 5. **Injection** — Messages are injected directly into the orchestrator via `injectMessage()` for immediate processing (bypasses TinyBus)
 6. **Auto-Inclusion** — `CONVERSATION.md` is automatically included in all session prompts, so the agent sees unprocessed messages naturally
-7. **Marker Cleanup** — The agent removes `[UNPROCESSED]` markers after processing messages (via HABITS guidance)
+7. **Marker Cleanup** — The agent removes `**[UNPROCESSED]**` markers after processing messages (via HABITS guidance)
 
 **CONVERSATION.md Format:**
 ```markdown
-[SUBCONSCIOUS] [AGORA] [2026-02-15T12:00:00Z] [UNPROCESSED] Type: request From: ...cdefabcd Envelope: msg-123 Payload: {"question":"Are you there?"}
+[2026-02-15T12:00:00.000Z] [SUBCONSCIOUS] 📨 **Agora message** from `...cdefabcd` (request) **[UNPROCESSED]**
+
+**question**: Are you there?
 ```
 
 **Responding to Messages:**

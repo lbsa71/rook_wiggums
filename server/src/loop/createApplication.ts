@@ -48,6 +48,7 @@ import { ConversationProvider } from "../tinybus/providers/ConversationProvider"
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { AgoraOutboundProvider } from "../agora/AgoraOutboundProvider";
 import { IAgoraService } from "../agora/IAgoraService";
+import { FileWatcher } from "../substrate/watcher/FileWatcher";
 
 // Note: AgoraServiceType is now IAgoraService interface in agora/IAgoraService.ts
 
@@ -94,6 +95,7 @@ export interface Application {
   orchestrator: LoopOrchestrator;
   httpServer: LoopHttpServer;
   wsServer: LoopWebSocketServer;
+  fileWatcher: FileWatcher;
   logPath: string;
   mode: "cycle" | "tick";
   start(port?: number, forceStart?: boolean): Promise<number>;
@@ -190,6 +192,9 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   const httpServer = new LoopHttpServer(null as unknown as LoopOrchestrator);
   const wsServer = new LoopWebSocketServer(httpServer.getServer());
   const timer = new NodeTimer();
+
+  // File watcher for substrate files - emits file_changed events via websocket
+  const fileWatcher = new FileWatcher(substrateConfig, wsServer, clock);
 
   // Create TinyBus instance for message routing
   const tinyBus = new TinyBus();
@@ -448,10 +453,13 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     orchestrator,
     httpServer,
     wsServer,
+    fileWatcher,
     logPath,
     async start(port?: number, forceStart?: boolean): Promise<number> {
       const p = port ?? config.httpPort ?? 3000;
       const boundPort = await httpServer.listen(p);
+      // Start file watcher to emit file_changed events
+      fileWatcher.start();
       if (forceStart) {
         orchestrator.start();
         if (mode === "tick") {
@@ -464,6 +472,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     },
     async stop(): Promise<void> {
       try { orchestrator.stop(); } catch { /* already stopped */ }
+      fileWatcher.stop();
       await wsServer.close();
       await httpServer.close();
     },

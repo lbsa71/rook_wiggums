@@ -27,7 +27,8 @@ export function ProgressLog({ lastEvent }: ProgressLogProps) {
   useEffect(() => { fetchProgress(); }, []);
 
   useEffect(() => {
-    if (lastEvent?.type === "cycle_complete") {
+    if (lastEvent?.type === "cycle_complete" || 
+        (lastEvent?.type === "file_changed" && lastEvent.data.fileType === "PROGRESS")) {
       fetchProgress();
     }
   }, [lastEvent]);

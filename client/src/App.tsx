@@ -135,7 +135,7 @@ export function App() {
           collapseDirection="up"
           className="panel-substrate"
         >
-          <SubstrateViewer />
+          <SubstrateViewer lastEvent={lastEvent} />
         </CollapsiblePanel>
       </main>
 

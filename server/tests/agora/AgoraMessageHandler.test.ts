@@ -125,9 +125,10 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
       expect(entry.role).toBe(AgentRole.SUBCONSCIOUS);
-      expect(entry.entry).toContain("[AGORA]");
-      expect(entry.entry).toContain("Type: request");
-      expect(entry.entry).toContain("Envelope: envelope-123");
+      expect(entry.entry).toContain("📨");
+      expect(entry.entry).toContain("Agora message");
+      expect(entry.entry).toContain("request");
+      expect(entry.entry).toContain("question");
       expect(entry.entry).not.toContain("[UNPROCESSED]");
     });
 
@@ -148,7 +149,7 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("[UNPROCESSED]");
+      expect(entry.entry).toContain("**[UNPROCESSED]**");
     });
 
     it("should add [UNPROCESSED] marker when PAUSED", async () => {
@@ -168,7 +169,7 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("[UNPROCESSED]");
+      expect(entry.entry).toContain("**[UNPROCESSED]**");
     });
 
     it("should add [UNPROCESSED] marker when rate-limited", async () => {
@@ -189,7 +190,7 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("[UNPROCESSED]");
+      expect(entry.entry).toContain("**[UNPROCESSED]**");
     });
 
     it("should inject message into orchestrator", async () => {

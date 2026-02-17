@@ -10,6 +10,8 @@ interface SubstrateContent {
 interface ConversationEntry {
   role: string;
   message: string;
+  isAgora?: boolean;
+  isTinyBus?: boolean;
 }
 
 interface ConversationViewProps {
@@ -28,7 +30,15 @@ function parseEntries(raw: string): ConversationEntry[] {
     const match = line.match(ENTRY_RE);
     if (match) {
       if (current) entries.push(current);
-      current = { role: match[1], message: line.replace(ENTRY_RE, "") };
+      const message = line.replace(ENTRY_RE, "");
+      const isAgora = message.includes("📨") && message.includes("Agora message");
+      const isTinyBus = message.includes("🔔") && message.includes("TinyBus message");
+      current = { 
+        role: match[1], 
+        message,
+        isAgora,
+        isTinyBus,
+      };
     } else if (current) {
       current.message += "\n" + line;
     }
@@ -52,7 +62,9 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
   useEffect(() => { fetchConversation(); }, [refreshKey]);
 
   useEffect(() => {
-    if (lastEvent?.type === "cycle_complete" || lastEvent?.type === "conversation_response") {
+    if (lastEvent?.type === "cycle_complete" || 
+        lastEvent?.type === "conversation_response" ||
+        (lastEvent?.type === "file_changed" && lastEvent.data.fileType === "CONVERSATION")) {
       fetchConversation();
     }
   }, [lastEvent]);
@@ -69,7 +81,10 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
           <p>No conversation yet.</p>
         ) : (
           entries.map((entry, i) => (
-            <div key={i} className="conversation-entry">
+            <div 
+              key={i} 
+              className={`conversation-entry ${entry.isAgora ? "agora-message" : ""} ${entry.isTinyBus ? "tinybus-message" : ""}`}
+            >
               <span className={`role-dot role-${entry.role.toLowerCase()}`} title={entry.role} />
               <div className="conversation-message">
                 <Markdown>{entry.message}</Markdown>

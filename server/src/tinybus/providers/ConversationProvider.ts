@@ -62,14 +62,33 @@ export class ConversationProvider implements Provider {
     if (isEffectivelyPaused) {
       try {
         // Write to CONVERSATION.md with [UNPROCESSED] marker
-        const timestamp = this.clock.now().toISOString();
+        // Format a user-friendly message (timestamp is added by AppendOnlyWriter, role by ConversationManager)
         const source = message.source || "unknown";
-        const payloadStr = typeof message.payload === "string" 
-          ? message.payload 
-          : JSON.stringify(message.payload);
+        let formattedPayload: string;
         
-        const unprocessedMarker = "[UNPROCESSED] ";
-        const conversationEntry = `[TINYBUS] [${timestamp}] ${unprocessedMarker}Type: ${message.type} Source: ${source} Payload: ${payloadStr}`;
+        if (typeof message.payload === "string") {
+          formattedPayload = message.payload;
+        } else {
+          try {
+            // Try to format JSON payload nicely
+            const payloadObj = message.payload as Record<string, unknown>;
+            const keys = Object.keys(payloadObj);
+            if (keys.length <= 5 && keys.every(k => {
+              const v = payloadObj[k];
+              return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null;
+            })) {
+              formattedPayload = Object.entries(payloadObj)
+                .map(([k, v]) => `**${k}**: ${v === null ? "null" : typeof v === "string" ? v : JSON.stringify(v)}`)
+                .join("\n");
+            } else {
+              formattedPayload = JSON.stringify(message.payload, null, 2);
+            }
+          } catch {
+            formattedPayload = JSON.stringify(message.payload);
+          }
+        }
+        
+        const conversationEntry = `🔔 **TinyBus message** (${message.type}) from \`${source}\` **[UNPROCESSED]**\n\n${formattedPayload}`;
 
         // Write to CONVERSATION.md (using SUBCONSCIOUS role as it handles message processing)
         await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);

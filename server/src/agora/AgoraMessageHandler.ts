@@ -49,14 +49,34 @@ export class AgoraMessageHandler {
     // Check if effectively paused (explicitly paused OR rate-limited)
     const state = this.getState();
     const isUnprocessed = state === LoopState.STOPPED || state === LoopState.PAUSED || this.isRateLimited();
-    const unprocessedMarker = isUnprocessed ? "[UNPROCESSED] " : "";
 
     if (isUnprocessed) {
       this.logger.debug(`[AGORA] Message marked as UNPROCESSED (state=${state}, rateLimited=${this.isRateLimited()})`);
     }
 
-    // Format: [AGORA] [timestamp] [UNPROCESSED?] Type: {type} From: {senderShort} Envelope: {envelopeId} Payload: {payload}
-    const conversationEntry = `[AGORA] [${timestamp}] ${unprocessedMarker}Type: ${envelope.type} From: ${senderShort} Envelope: ${envelope.id} Payload: ${payloadStr}`;
+    // Format a user-friendly message (timestamp is added by AppendOnlyWriter, role by ConversationManager)
+    // Try to format payload nicely if it's a simple object or string
+    let formattedPayload = payloadStr;
+    try {
+      const parsed = JSON.parse(payloadStr);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        // If it's a simple object with readable fields, format it nicely
+        const keys = Object.keys(parsed);
+        if (keys.length <= 5 && keys.every(k => typeof parsed[k] === "string" || typeof parsed[k] === "number" || typeof parsed[k] === "boolean")) {
+          formattedPayload = Object.entries(parsed)
+            .map(([k, v]) => `**${k}**: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+            .join("\n");
+        } else {
+          formattedPayload = JSON.stringify(parsed, null, 2);
+        }
+      }
+    } catch {
+      // If payload isn't valid JSON or is a string, use as-is
+      formattedPayload = payloadStr;
+    }
+
+    const unprocessedBadge = isUnprocessed ? " **[UNPROCESSED]**" : "";
+    const conversationEntry = `📨 **Agora message** from \`${senderShort}\` (${envelope.type})${unprocessedBadge}\n\n${formattedPayload}`;
 
     // Write to CONVERSATION.md (using SUBCONSCIOUS role as it handles message processing)
     try {
