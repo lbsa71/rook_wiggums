@@ -197,7 +197,17 @@ export class LoopHttpServer {
         break;
 
       case "POST /api/loop/stop":
-        this.tryStateTransition(res, () => this.orchestrator.stop());
+        try {
+          // Send response first, then stop (which will exit the process)
+          this.json(res, 200, { state: LoopState.STOPPED, message: "Stopping gracefully" });
+          // Use setImmediate to ensure response is sent before process exits
+          setImmediate(() => {
+            this.orchestrator.stop();
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          this.json(res, 409, { error: message });
+        }
         break;
 
       case "POST /api/conversation/send":
