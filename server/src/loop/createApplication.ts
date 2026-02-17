@@ -47,6 +47,7 @@ import { TinyBus, MemoryProvider, SessionInjectionProvider, ChatMessageProvider 
 import { ConversationProvider } from "../tinybus/providers/ConversationProvider";
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { AgoraOutboundProvider } from "../agora/AgoraOutboundProvider";
+import { AgoraInboxManager } from "../agora/AgoraInboxManager";
 import { IAgoraService } from "../agora/IAgoraService";
 import { FileWatcher } from "../substrate/watcher/FileWatcher";
 
@@ -86,6 +87,11 @@ export interface ApplicationConfig {
   metrics?: {
     enabled: boolean;
     intervalMs?: number; // Default: 604800000 (7 days)
+  };
+  agora?: {
+    security?: {
+      unknownSenderPolicy?: 'allow' | 'quarantine' | 'reject'; // default: 'quarantine'
+    };
   };
   conversationIdleTimeoutMs?: number; // Default: 60000 (60s)
   abandonedProcessGraceMs?: number; // Default: 600000 (10 min)
@@ -236,6 +242,14 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
 
   // Create AgoraMessageHandler now that orchestrator exists
   if (agoraService && agoraConfig) {
+    // Create AgoraInboxManager for quarantine support
+    const agoraInboxManager = new AgoraInboxManager(
+      fs,
+      substrateConfig,
+      lock,
+      clock
+    );
+
     agoraMessageHandler = new AgoraMessageHandler(
       agoraService,
       conversationManager,
@@ -244,7 +258,9 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       clock,
       () => orchestrator.getState(), // getState callback
       () => orchestrator.getRateLimitUntil() !== null, // isRateLimited callback
-      logger
+      logger,
+      config.agora?.security?.unknownSenderPolicy ?? 'quarantine', // Default to quarantine
+      agoraInboxManager // for quarantine support
     );
 
     // Set up relay message handler if relay is configured

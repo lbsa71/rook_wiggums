@@ -8,6 +8,9 @@ import { AgentRole } from "../agents/types";
 import { shortKey } from "./utils";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../logging";
+import type { AgoraInboxManager } from "./AgoraInboxManager";
+
+export type UnknownSenderPolicy = 'allow' | 'quarantine' | 'reject';
 
 /**
  * AgoraMessageHandler - Handles inbound Agora messages
@@ -18,6 +21,7 @@ import type { ILogger } from "../logging";
  * - Inject messages directly into orchestrator (bypasses TinyBus)
  * - Emit WebSocket events for frontend visibility
  * - Deduplicate envelopes to prevent replay attacks
+ * - Enforce peer allowlist via unknownSenderPolicy
  */
 export class AgoraMessageHandler {
   private processedEnvelopeIds: Set<string> = new Set();
@@ -31,7 +35,9 @@ export class AgoraMessageHandler {
     private readonly clock: IClock,
     private readonly getState: () => LoopState,
     private readonly isRateLimited: () => boolean = () => false,
-    private readonly logger: ILogger
+    private readonly logger: ILogger,
+    private readonly unknownSenderPolicy: UnknownSenderPolicy = 'quarantine',
+    private readonly inboxManager: AgoraInboxManager | null = null
   ) {}
 
   /**
@@ -44,10 +50,10 @@ export class AgoraMessageHandler {
       this.logger.debug(`[AGORA] Duplicate envelope ${envelopeId} — skipping`);
       return true;
     }
-    
+
     // Add to set
     this.processedEnvelopeIds.add(envelopeId);
-    
+
     // Bound size: if over limit, remove oldest entry
     if (this.processedEnvelopeIds.size > this.MAX_DEDUP_SIZE) {
       const oldest = this.processedEnvelopeIds.values().next().value;
@@ -55,8 +61,28 @@ export class AgoraMessageHandler {
         this.processedEnvelopeIds.delete(oldest);
       }
     }
-    
+
     return false;
+  }
+
+  /**
+   * Find peer in registry by public key
+   * Returns peer name if found, undefined otherwise
+   */
+  private findPeerByPublicKey(publicKey: string): string | undefined {
+    if (!this.agoraService) {
+      return undefined;
+    }
+
+    const peers = this.agoraService.getPeers();
+    for (const peerName of peers) {
+      const peerConfig = this.agoraService.getPeerConfig(peerName);
+      if (peerConfig && peerConfig.publicKey === publicKey) {
+        return peerName;
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -70,18 +96,11 @@ export class AgoraMessageHandler {
       return `${relayNameHint}...${keySuffix.slice(3)}`; // Remove "..." prefix from shortKey
     }
 
-    if (!this.agoraService) {
-      return shortKey(senderPublicKey);
-    }
-
     // Try to find peer name by matching public key in local registry
-    const peers = this.agoraService.getPeers();
-    for (const peerName of peers) {
-      const peerConfig = this.agoraService.getPeerConfig(peerName);
-      if (peerConfig && peerConfig.publicKey === senderPublicKey) {
-        // Found matching peer - return name...shortKey format
-        return `${peerName}...${shortKey(senderPublicKey).slice(3)}`; // Remove "..." prefix from shortKey
-      }
+    const peerName = this.findPeerByPublicKey(senderPublicKey);
+    if (peerName) {
+      // Found matching peer - return name...shortKey format
+      return `${peerName}...${shortKey(senderPublicKey).slice(3)}`; // Remove "..." prefix from shortKey
     }
 
     // No matching peer found - return short key only
@@ -99,6 +118,23 @@ export class AgoraMessageHandler {
     const payloadStr = JSON.stringify(envelope.payload);
 
     this.logger.debug(`[AGORA] Received ${source} message: envelopeId=${envelope.id} type=${envelope.type} from=${senderDisplayName}`);
+
+    // Security check: enforce peer allowlist
+    const senderPublicKey = envelope.sender;
+    const knownPeer = this.findPeerByPublicKey(senderPublicKey);
+
+    if (!knownPeer) {
+      if (this.unknownSenderPolicy === 'quarantine') {
+        // Log to quarantine section but do NOT inject into agent loop
+        this.logger.debug(`[AGORA] Message from unknown sender ${shortKey(senderPublicKey)} — quarantined`);
+        await this.writeQuarantinedMessage(envelope, source);
+        return;
+      } else if (this.unknownSenderPolicy === 'reject') {
+        this.logger.debug(`[AGORA] Rejected message from unknown sender ${shortKey(senderPublicKey)}`);
+        return;
+      }
+      // 'allow' = existing behavior, fall through
+    }
 
     // Determine if we should add [UNPROCESSED] marker
     // Check if effectively paused (explicitly paused OR rate-limited)
@@ -174,6 +210,25 @@ export class AgoraMessageHandler {
       this.logger.debug(`[AGORA] Injected message into orchestrator: envelopeId=${envelope.id}`);
     } catch (err) {
       this.logger.debug(`[AGORA] Failed to inject message into orchestrator: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Write a quarantined message to AGORA_INBOX.md
+   * These messages are not injected into the agent loop
+   */
+  private async writeQuarantinedMessage(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<void> {
+    if (!this.inboxManager) {
+      this.logger.debug(`[AGORA] No inbox manager configured, cannot quarantine message`);
+      return;
+    }
+
+    try {
+      await this.inboxManager.addQuarantinedMessage(envelope, source);
+      this.logger.debug(`[AGORA] Quarantined message written: envelopeId=${envelope.id}`);
+    } catch (err) {
+      this.logger.debug(`[AGORA] Failed to write quarantined message: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     }
   }

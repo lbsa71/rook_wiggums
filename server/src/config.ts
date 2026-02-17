@@ -36,6 +36,12 @@ export interface AppConfig {
     sendTimeHour: number; // Hour of day to send email in CET/CEST (0-23, default: 5 for 5am)
     sendTimeMinute: number; // Minute of hour to send email (0-59, default: 0)
   };
+  /** Configuration for Agora security */
+  agora?: {
+    security?: {
+      unknownSenderPolicy?: 'allow' | 'quarantine' | 'reject'; // default: 'quarantine'
+    };
+  };
 }
 
 export interface ResolveConfigOptions {
@@ -77,6 +83,11 @@ export async function resolveConfig(
       intervalHours: 24, // Daily by default
       sendTimeHour: 5, // 5am CET/CEST
       sendTimeMinute: 0,
+    },
+    agora: {
+      security: {
+        unknownSenderPolicy: 'quarantine', // Quarantine by default for security
+      },
     },
   };
 
@@ -135,6 +146,15 @@ export async function resolveConfig(
           sendTimeMinute: fileConfig.email.sendTimeMinute ?? defaults.email!.sendTimeMinute,
         }
       : defaults.email,
+    agora: fileConfig.agora
+      ? {
+          security: fileConfig.agora.security
+            ? {
+                unknownSenderPolicy: fileConfig.agora.security.unknownSenderPolicy ?? defaults.agora!.security!.unknownSenderPolicy,
+              }
+            : defaults.agora!.security,
+        }
+      : defaults.agora,
   };
 
   // Env vars override everything

@@ -155,6 +155,12 @@ No unread messages.
 ## Read
 
 No read messages yet.
+
+## Quarantine (Unknown Senders)
+
+*Messages from unregistered senders. Review and add sender to peer registry to unquarantine.*
+
+No quarantined messages.
 `;
 
 export const ESCALATE_TO_STEFAN_TEMPLATE = `# Escalate to Stefan

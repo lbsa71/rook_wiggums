@@ -122,7 +122,9 @@ describe("Agora Message Integration", () => {
       clock,
       () => orchestrator.getState(),
       () => false,
-      logger
+      logger,
+      'allow', // Allow all messages for integration tests
+      null // No inbox manager needed for integration tests
     );
 
     httpServer = new LoopHttpServer(orchestrator);

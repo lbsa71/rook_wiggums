@@ -182,4 +182,59 @@ export class AgoraInboxManager {
       read: false,
     };
   }
+
+  /**
+   * Add a quarantined message to the Quarantine section.
+   * These messages are from unknown senders and are not processed by the agent.
+   */
+  async addQuarantinedMessage(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<void> {
+    const release = await this.lock.acquire(SubstrateFileType.AGORA_INBOX);
+    try {
+      const filePath = this.config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const content = await this.fs.readFile(filePath);
+      
+      const timestamp = this.clock.now().toISOString();
+      const senderShort = shortKey(envelope.sender);
+      const payloadStr = JSON.stringify(envelope.payload, null, 2);
+      
+      // Parse current content
+      const lines = content.split("\n");
+      const quarantineIndex = lines.findIndex(line => line.trim() === "## Quarantine (Unknown Senders)");
+      
+      if (quarantineIndex === -1) {
+        throw new Error("Invalid AGORA_INBOX.md format: missing Quarantine section");
+      }
+      
+      // Build quarantine entry
+      const quarantineEntry = [
+        ``,
+        `### [QUARANTINED] from ...${senderShort.slice(3)} (${timestamp} via ${source})`,
+        ``,
+        `**Envelope ID:** ${envelope.id}`,
+        `**Payload:** ${payloadStr}`,
+      ];
+      
+      // Find where to insert (after quarantine header and description line)
+      let insertIndex = quarantineIndex + 1;
+      // Skip the description line
+      if (insertIndex < lines.length && lines[insertIndex].trim().startsWith("*")) {
+        insertIndex++;
+      }
+      // Skip empty line
+      if (insertIndex < lines.length && lines[insertIndex].trim() === "") {
+        insertIndex++;
+      }
+      // Skip "No quarantined messages" placeholder
+      if (insertIndex < lines.length && lines[insertIndex].trim() === "No quarantined messages.") {
+        lines.splice(insertIndex, 1); // Remove placeholder
+      }
+      
+      // Insert quarantine entry
+      lines.splice(insertIndex, 0, ...quarantineEntry);
+      
+      await this.fs.writeFile(filePath, lines.join("\n"));
+    } finally {
+      release();
+    }
+  }
 }

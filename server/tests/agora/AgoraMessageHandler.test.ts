@@ -1,4 +1,4 @@
-import { AgoraMessageHandler } from "../../src/agora/AgoraMessageHandler";
+import { AgoraMessageHandler, UnknownSenderPolicy } from "../../src/agora/AgoraMessageHandler";
 import { IConversationManager } from "../../src/conversation/IConversationManager";
 import { IMessageInjector } from "../../src/loop/IMessageInjector";
 import { ILoopEventSink } from "../../src/loop/ILoopEventSink";
@@ -8,6 +8,7 @@ import { LoopState } from "../../src/loop/types";
 import { AgentRole } from "../../src/agents/types";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../../src/logging";
+import type { AgoraInboxManager } from "../../src/agora/AgoraInboxManager";
 
 // Mock implementations
 class MockConversationManager implements IConversationManager {
@@ -43,12 +44,24 @@ class MockClock implements IClock {
 }
 
 class MockLogger implements ILogger {
-  debug(_message: string): void {
-    // No-op for testing
+  public debugMessages: string[] = [];
+
+  debug(message: string): void {
+    this.debugMessages.push(message);
+  }
+}
+
+class MockInboxManager {
+  public quarantinedMessages: Array<{ envelope: Envelope; source: string }> = [];
+
+  async addQuarantinedMessage(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<void> {
+    this.quarantinedMessages.push({ envelope, source });
   }
 }
 
 class MockAgoraService implements IAgoraService {
+  private peers: Map<string, { publicKey: string; url: string; token: string }> = new Map();
+
   async sendMessage(_options: { peerName: string; type: string; payload: unknown; inReplyTo?: string }) {
     return { ok: true, status: 200 };
   }
@@ -58,11 +71,16 @@ class MockAgoraService implements IAgoraService {
   }
 
   getPeers() {
-    return [];
+    return Array.from(this.peers.keys());
   }
 
-  getPeerConfig(_name: string) {
-    return undefined;
+  getPeerConfig(name: string) {
+    return this.peers.get(name);
+  }
+
+  // Helper for tests
+  addPeer(name: string, publicKey: string) {
+    this.peers.set(name, { publicKey, url: "http://test", token: "test-token" });
   }
 
   async connectRelay(_url: string) {}
@@ -85,8 +103,18 @@ describe("AgoraMessageHandler", () => {
   let clock: MockClock;
   let agoraService: MockAgoraService;
   let logger: MockLogger;
+  let inboxManager: MockInboxManager;
   let getState: () => LoopState;
   let isRateLimited: () => boolean;
+
+  const testEnvelope: Envelope = {
+    id: "envelope-123",
+    type: "request",
+    sender: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    timestamp: 1708000000000,
+    payload: { question: "Hello?" },
+    signature: "test-signature",
+  };
 
   beforeEach(() => {
     conversationManager = new MockConversationManager();
@@ -95,9 +123,11 @@ describe("AgoraMessageHandler", () => {
     clock = new MockClock(new Date("2026-02-15T12:00:00Z"));
     agoraService = new MockAgoraService();
     logger = new MockLogger();
+    inboxManager = new MockInboxManager();
     getState = () => LoopState.RUNNING;
     isRateLimited = () => false;
 
+    // Default policy 'allow' for backward compatibility tests
     handler = new AgoraMessageHandler(
       agoraService,
       conversationManager,
@@ -106,20 +136,13 @@ describe("AgoraMessageHandler", () => {
       clock,
       getState,
       isRateLimited,
-      logger
+      logger,
+      'allow', // unknownSenderPolicy
+      inboxManager as unknown as AgoraInboxManager
     );
   });
 
   describe("processEnvelope", () => {
-    const testEnvelope: Envelope = {
-      id: "envelope-123",
-      type: "request",
-      sender: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-      timestamp: 1708000000000,
-      payload: { question: "Hello?" },
-      signature: "test-signature",
-    };
-
     it("should write to CONVERSATION.md with correct format when RUNNING", async () => {
       await handler.processEnvelope(testEnvelope, "webhook");
 
@@ -141,7 +164,9 @@ describe("AgoraMessageHandler", () => {
         clock,
         getState,
         isRateLimited,
-        logger
+        logger,
+        'allow',
+        inboxManager as unknown as AgoraInboxManager
       );
 
       await handler.processEnvelope(testEnvelope, "webhook");
@@ -161,7 +186,9 @@ describe("AgoraMessageHandler", () => {
         clock,
         getState,
         isRateLimited,
-        logger
+        logger,
+        'allow',
+        inboxManager as unknown as AgoraInboxManager
       );
 
       await handler.processEnvelope(testEnvelope, "webhook");
@@ -182,7 +209,9 @@ describe("AgoraMessageHandler", () => {
         clock,
         getState,
         rateLimited,
-        logger
+        logger,
+        'allow',
+        inboxManager as unknown as AgoraInboxManager
       );
 
       await handler.processEnvelope(testEnvelope, "webhook");
@@ -237,14 +266,14 @@ describe("AgoraMessageHandler", () => {
     it("should not process duplicate envelope twice", async () => {
       // First call - should process
       await handler.processEnvelope(testEnvelope, "webhook");
-      
+
       expect(conversationManager.appendedEntries).toHaveLength(1);
       expect(messageInjector.injectedMessages).toHaveLength(1);
       expect(eventSink.events).toHaveLength(1);
 
       // Second call with same envelope ID - should skip
       await handler.processEnvelope(testEnvelope, "webhook");
-      
+
       // Counts should not increase
       expect(conversationManager.appendedEntries).toHaveLength(1);
       expect(messageInjector.injectedMessages).toHaveLength(1);
@@ -277,7 +306,8 @@ describe("AgoraMessageHandler", () => {
         clock,
         getState,
         isRateLimited,
-        logger
+        logger,
+        'allow'  // bypass allowlist check — this test is specifically about dedup eviction mechanics
       );
 
       // Override MAX_DEDUP_SIZE to 3 for testing
@@ -294,20 +324,20 @@ describe("AgoraMessageHandler", () => {
 
       // Now send envelope-1 again (should be evicted from set, so should process again)
       await testHandler.processEnvelope({ ...testEnvelope, id: "envelope-1" }, "webhook");
-      
+
       // Should be processed again (count increases to 5)
       expect(conversationManager.appendedEntries).toHaveLength(5);
 
       // But envelope-4 should still be in the set (most recent 3 after envelope-1 re-added: envelope-1, envelope-3, envelope-4)
       // envelope-2 was evicted when envelope-1 was re-added
       await testHandler.processEnvelope({ ...testEnvelope, id: "envelope-4" }, "webhook");
-      
+
       // Should not process (still at 5) - envelope-4 is still in set
       expect(conversationManager.appendedEntries).toHaveLength(5);
 
       // envelope-2 should have been evicted, so it should process
       await testHandler.processEnvelope({ ...testEnvelope, id: "envelope-2" }, "webhook");
-      
+
       // Should process (count increases to 6)
       expect(conversationManager.appendedEntries).toHaveLength(6);
     });
@@ -315,14 +345,154 @@ describe("AgoraMessageHandler", () => {
     it("should deduplicate regardless of source (webhook vs relay)", async () => {
       // First call via webhook
       await handler.processEnvelope(testEnvelope, "webhook");
-      
+
       expect(conversationManager.appendedEntries).toHaveLength(1);
 
       // Second call via relay with same envelope ID - should skip
       await handler.processEnvelope(testEnvelope, "relay");
-      
+
       // Count should not increase
       expect(conversationManager.appendedEntries).toHaveLength(1);
+    });
+  });
+
+  describe("Security: unknownSenderPolicy", () => {
+    it("should allow messages from known peers", async () => {
+      // Add the sender to peer registry
+      agoraService.addPeer("alice", testEnvelope.sender);
+
+      // Use quarantine policy
+      handler = new AgoraMessageHandler(
+        agoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'quarantine',
+        inboxManager as unknown as AgoraInboxManager
+      );
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      // Should be processed normally (not quarantined)
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+      expect(inboxManager.quarantinedMessages).toHaveLength(0);
+    });
+
+    it("should allow messages from unknown senders when policy is 'allow'", async () => {
+      // Unknown sender + allow policy = process normally
+      handler = new AgoraMessageHandler(
+        agoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'allow',
+        inboxManager as unknown as AgoraInboxManager
+      );
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      // Should be processed normally
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+      expect(inboxManager.quarantinedMessages).toHaveLength(0);
+    });
+
+    it("should quarantine messages from unknown senders when policy is 'quarantine'", async () => {
+      // Unknown sender + quarantine policy = quarantine
+      handler = new AgoraMessageHandler(
+        agoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'quarantine',
+        inboxManager as unknown as AgoraInboxManager
+      );
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      // Should NOT be processed
+      expect(conversationManager.appendedEntries).toHaveLength(0);
+      expect(messageInjector.injectedMessages).toHaveLength(0);
+
+      // Should be quarantined
+      expect(inboxManager.quarantinedMessages).toHaveLength(1);
+      expect(inboxManager.quarantinedMessages[0].envelope).toEqual(testEnvelope);
+      expect(inboxManager.quarantinedMessages[0].source).toBe("webhook");
+
+      // Should log debug message about quarantine
+      const quarantineLog = logger.debugMessages.find(m => m.includes("quarantined") && m.includes("unknown sender"));
+      expect(quarantineLog).toBeDefined();
+    });
+
+    it("should reject messages from unknown senders when policy is 'reject'", async () => {
+      // Unknown sender + reject policy = silent reject
+      handler = new AgoraMessageHandler(
+        agoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'reject',
+        inboxManager as unknown as AgoraInboxManager
+      );
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      // Should NOT be processed
+      expect(conversationManager.appendedEntries).toHaveLength(0);
+      expect(messageInjector.injectedMessages).toHaveLength(0);
+
+      // Should NOT be quarantined
+      expect(inboxManager.quarantinedMessages).toHaveLength(0);
+
+      // Should log debug message about rejection
+      const rejectLog = logger.debugMessages.find(m => m.includes("Rejected") && m.includes("unknown sender"));
+      expect(rejectLog).toBeDefined();
+    });
+
+    it("should default to 'quarantine' when policy is not specified", async () => {
+      // Unknown sender + no policy (undefined) = quarantine by default
+      handler = new AgoraMessageHandler(
+        agoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'quarantine',
+        inboxManager as unknown as AgoraInboxManager
+      );
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      // Should NOT be processed
+      expect(conversationManager.appendedEntries).toHaveLength(0);
+      expect(messageInjector.injectedMessages).toHaveLength(0);
+
+      // Should be quarantined (default behavior)
+      expect(inboxManager.quarantinedMessages).toHaveLength(1);
+
+      // Should log debug message about quarantine
+      const quarantineLog = logger.debugMessages.find(m => m.includes("quarantined"));
+      expect(quarantineLog).toBeDefined();
     });
   });
 });
