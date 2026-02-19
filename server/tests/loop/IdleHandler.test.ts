@@ -29,7 +29,7 @@ function createTestDeps() {
   const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
   const ego = new Ego(reader, writer, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer);
   const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier);
 
   return { fs, clock, launcher, appendWriter, ego, superego, id };

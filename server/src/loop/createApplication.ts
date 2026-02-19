@@ -197,7 +197,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
 
   const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
   const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer, cwd);
   const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
 
   // Loop layer — build httpServer first for the underlying http.Server,

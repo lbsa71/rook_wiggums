@@ -49,7 +49,7 @@ function createFullDeps() {
 
   const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier);
   const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer);
   const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier);
   
   const rateLimitStateManager = new RateLimitStateManager(

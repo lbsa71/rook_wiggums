@@ -1,8 +1,9 @@
-import { Superego } from "../../../src/agents/roles/Superego";
+import { Superego, ProposalEvaluation } from "../../../src/agents/roles/Superego";
 import { PermissionChecker } from "../../../src/agents/permissions";
 import { PromptBuilder } from "../../../src/agents/prompts/PromptBuilder";
 import { InMemorySessionLauncher } from "../../../src/agents/claude/InMemorySessionLauncher";
 import { SubstrateFileReader } from "../../../src/substrate/io/FileReader";
+import { SubstrateFileWriter } from "../../../src/substrate/io/FileWriter";
 import { AppendOnlyWriter } from "../../../src/substrate/io/AppendOnlyWriter";
 import { FileLock } from "../../../src/substrate/io/FileLock";
 import { SubstrateConfig } from "../../../src/substrate/config";
@@ -24,12 +25,13 @@ describe("Superego agent", () => {
     const config = new SubstrateConfig("/substrate");
     const reader = new SubstrateFileReader(fs, config);
     const lock = new FileLock();
+    const writer = new SubstrateFileWriter(fs, config, lock);
     const appendWriter = new AppendOnlyWriter(fs, config, lock, clock);
     const checker = new PermissionChecker();
     const promptBuilder = new PromptBuilder(reader, checker);
     const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
 
-    superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, "/workspace");
+    superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer, "/workspace");
 
     await fs.mkdir("/substrate", { recursive: true });
     await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild it\n\n## Tasks\n- [ ] Do stuff");
@@ -352,6 +354,89 @@ describe("Superego agent", () => {
       // No escalation should occur
       const escalateContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
       expect(escalateContent).not.toContain("Auto-Escalated");
+    });
+  });
+
+  describe("applyProposals", () => {
+    it("writes approved HABITS proposal to HABITS.md", async () => {
+      const proposals = [{ target: "HABITS", content: "# Habits\n\nNew habit: review daily" }];
+      const evaluations = [{ approved: true, reason: "Good habit" }];
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const habits = await fs.readFile("/substrate/HABITS.md");
+      expect(habits).toBe("# Habits\n\nNew habit: review daily");
+    });
+
+    it("writes approved SECURITY proposal to SECURITY.md", async () => {
+      const proposals = [{ target: "SECURITY", content: "# Security\n\nUpdated policy" }];
+      const evaluations = [{ approved: true, reason: "Policy improvement" }];
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const security = await fs.readFile("/substrate/SECURITY.md");
+      expect(security).toBe("# Security\n\nUpdated policy");
+    });
+
+    it("logs rejected proposals to PROGRESS.md with reason", async () => {
+      const proposals = [{ target: "HABITS", content: "# Habits\n\nBad habit" }];
+      const evaluations = [{ approved: false, reason: "Violates core values" }];
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const progress = await fs.readFile("/substrate/PROGRESS.md");
+      expect(progress).toContain("[SUPEREGO] Proposal for HABITS rejected: Violates core values");
+    });
+
+    it("does not modify target file for rejected proposals", async () => {
+      const original = await fs.readFile("/substrate/HABITS.md");
+      const proposals = [{ target: "HABITS", content: "# Habits\n\nBad habit" }];
+      const evaluations = [{ approved: false, reason: "Rejected" }];
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const habits = await fs.readFile("/substrate/HABITS.md");
+      expect(habits).toBe(original);
+    });
+
+    it("handles mixed approved and rejected proposals", async () => {
+      const proposals = [
+        { target: "HABITS", content: "# Habits\n\nGood habit" },
+        { target: "SECURITY", content: "# Security\n\nBad policy" },
+      ];
+      const evaluations = [
+        { approved: true, reason: "Approved" },
+        { approved: false, reason: "Too permissive" },
+      ];
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const habits = await fs.readFile("/substrate/HABITS.md");
+      expect(habits).toBe("# Habits\n\nGood habit");
+
+      const security = await fs.readFile("/substrate/SECURITY.md");
+      expect(security).toBe("# Security\n\nStay safe"); // unchanged
+
+      const progress = await fs.readFile("/substrate/PROGRESS.md");
+      expect(progress).toContain("[SUPEREGO] Proposal for SECURITY rejected: Too permissive");
+    });
+
+    it("logs a warning when a proposal has no evaluation", async () => {
+      const proposals = [{ target: "HABITS", content: "# Habits\n\nSome habit" }];
+      const evaluations: ProposalEvaluation[] = []; // no evaluation for first proposal
+
+      await superego.applyProposals(proposals, evaluations);
+
+      const progress = await fs.readFile("/substrate/PROGRESS.md");
+      expect(progress).toContain("[SUPEREGO] Proposal for HABITS has no evaluation — skipped");
+    });
+
+    it("ignores proposals for unknown targets", async () => {
+      const proposals = [{ target: "UNKNOWN_FILE", content: "some content" }];
+      const evaluations = [{ approved: true, reason: "Approved" }];
+
+      // Should not throw
+      await superego.applyProposals(proposals, evaluations);
     });
   });
 });

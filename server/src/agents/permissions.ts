@@ -50,6 +50,8 @@ export const ROLE_PERMISSIONS: Record<AgentRole, FilePermission[]> = {
   [AgentRole.SUPEREGO]: [
     // Superego needs full context for auditing - all files EAGER
     ...Object.values(SubstrateFileType).map((ft) => read(ft, SubstrateFileLoadStrategy.EAGER)),
+    write(SubstrateFileType.HABITS),
+    write(SubstrateFileType.SECURITY),
     append(SubstrateFileType.PROGRESS),
     append(SubstrateFileType.ESCALATE_TO_STEFAN),
   ],
