@@ -88,12 +88,14 @@ describe("ROLE_PERMISSIONS", () => {
     ]);
   });
 
-  it("gives Superego no write access", () => {
+  it("gives Superego write access only to HABITS and SECURITY", () => {
     const perms = ROLE_PERMISSIONS[AgentRole.SUPEREGO];
-    const writeFiles = perms.filter(
-      (p) => p.accessLevel === FileAccessLevel.WRITE
-    );
-    expect(writeFiles).toHaveLength(0);
+    const writeFiles = perms
+      .filter((p) => p.accessLevel === FileAccessLevel.WRITE)
+      .map((p) => p.fileType);
+    expect(writeFiles).toContain(SubstrateFileType.HABITS);
+    expect(writeFiles).toContain(SubstrateFileType.SECURITY);
+    expect(writeFiles).toHaveLength(2);
   });
 
   it("gives Id read access to ID, VALUES, PLAN, PROGRESS, SKILLS, MEMORY", () => {

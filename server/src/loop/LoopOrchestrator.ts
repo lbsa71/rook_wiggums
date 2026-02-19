@@ -322,7 +322,8 @@ export class LoopOrchestrator implements IMessageInjector {
 
       if (taskResult.proposals.length > 0) {
         this.logger.debug(`cycle ${this.cycleNumber}: evaluating ${taskResult.proposals.length} proposal(s)`);
-        await this.superego.evaluateProposals(taskResult.proposals, this.createLogCallback("SUPEREGO"));
+        const evaluations = await this.superego.evaluateProposals(taskResult.proposals, this.createLogCallback("SUPEREGO"));
+        await this.superego.applyProposals(taskResult.proposals, evaluations);
       }
 
       // Reconsideration phase: evaluate outcome quality and need for reassessment

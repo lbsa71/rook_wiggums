@@ -1,6 +1,7 @@
 import { IClock } from "../../substrate/abstractions/IClock";
 import { SubstrateFileType } from "../../substrate/types";
 import { SubstrateFileReader } from "../../substrate/io/FileReader";
+import { SubstrateFileWriter } from "../../substrate/io/FileWriter";
 import { AppendOnlyWriter } from "../../substrate/io/AppendOnlyWriter";
 import { PermissionChecker } from "../permissions";
 import { PromptBuilder } from "../prompts/PromptBuilder";
@@ -40,6 +41,7 @@ export class Superego {
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
     private readonly taskClassifier: TaskClassifier,
+    private readonly writer: SubstrateFileWriter,
     private readonly workingDirectory?: string
   ) {}
 
@@ -145,6 +147,38 @@ export class Superego {
   async logAudit(entry: string): Promise<void> {
     this.checker.assertCanAppend(AgentRole.SUPEREGO, SubstrateFileType.PROGRESS);
     await this.appendWriter.append(SubstrateFileType.PROGRESS, `[SUPEREGO] ${entry}`);
+  }
+
+  /**
+   * Apply approved proposals to their target files and log rejections to PROGRESS.md.
+   * Approved proposals targeting HABITS or SECURITY are written to the respective files.
+   * Rejected proposals are logged with the reason.
+   */
+  async applyProposals(proposals: Proposal[], evaluations: ProposalEvaluation[]): Promise<void> {
+    const targetMap: Record<string, SubstrateFileType> = {
+      HABITS: SubstrateFileType.HABITS,
+      SECURITY: SubstrateFileType.SECURITY,
+    };
+
+    for (let i = 0; i < proposals.length; i++) {
+      const proposal = proposals[i];
+      const evaluation = evaluations[i];
+
+      if (!evaluation) {
+        await this.logAudit(`Proposal for ${proposal.target} has no evaluation — skipped`);
+        continue;
+      }
+
+      if (evaluation.approved) {
+        const fileType = targetMap[proposal.target.toUpperCase()];
+        if (fileType) {
+          this.checker.assertCanWrite(AgentRole.SUPEREGO, fileType);
+          await this.writer.write(fileType, proposal.content);
+        }
+      } else {
+        await this.logAudit(`Proposal for ${proposal.target} rejected: ${evaluation.reason}`);
+      }
+    }
   }
 
   /**
