@@ -20,6 +20,8 @@ export interface AppConfig {
   backupRetentionCount?: number;
   /** Number of cycles between SUPEREGO audits (default: 20). Can be overridden by SUPEREGO_AUDIT_INTERVAL env var. */
   superegoAuditInterval?: number;
+  /** Delay between loop cycles in ms (default: 30000). For primarily reactive agents, consider 60000 or more. */
+  cycleDelayMs?: number;
   /** Configuration for CONVERSATION.md archiving */
   conversationArchive?: {
     enabled: boolean;
@@ -74,6 +76,7 @@ export async function resolveConfig(
     autoStartAfterRestart: true,
     backupRetentionCount: 14,
     superegoAuditInterval: 20,
+    cycleDelayMs: 30000,
     conversationArchive: {
       enabled: false, // Disabled by default to maintain backward compatibility
       linesToKeep: 100,
@@ -136,6 +139,7 @@ export async function resolveConfig(
     autoStartAfterRestart: fileConfig.autoStartAfterRestart ?? defaults.autoStartAfterRestart,
     backupRetentionCount: fileConfig.backupRetentionCount ?? defaults.backupRetentionCount,
     superegoAuditInterval: fileConfig.superegoAuditInterval ?? defaults.superegoAuditInterval,
+    cycleDelayMs: fileConfig.cycleDelayMs ?? defaults.cycleDelayMs,
     conversationArchive: fileConfig.conversationArchive
       ? {
           enabled: fileConfig.conversationArchive.enabled ?? defaults.conversationArchive!.enabled,

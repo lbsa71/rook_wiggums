@@ -80,6 +80,7 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     mode: config.mode,
     backupRetentionCount: config.backupRetentionCount,
     superegoAuditInterval: config.superegoAuditInterval,
+    cycleDelayMs: config.cycleDelayMs,
   });
 
   console.log(`Debug log: ${app.logPath}`);
