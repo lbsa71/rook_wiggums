@@ -40,6 +40,7 @@ import { MetricsScheduler } from "./MetricsScheduler";
 import { TaskClassificationMetrics } from "../evaluation/TaskClassificationMetrics";
 import { SubstrateSizeTracker } from "../evaluation/SubstrateSizeTracker";
 import { DelegationTracker } from "../evaluation/DelegationTracker";
+import { SelfImprovementMetricsCollector } from "../evaluation/SelfImprovementMetrics";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { AgoraService } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { LoopWatchdog } from "./LoopWatchdog";
@@ -502,6 +503,28 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       delegationTracker
     );
     orchestrator.setMetricsScheduler(metricsScheduler);
+
+    // Wire up monthly self-improvement metrics collection
+    const serverSrcPath = config.sourceCodePath
+      ? path.join(config.sourceCodePath, "server", "src")
+      : path.join(config.substratePath, "..", "..", "server", "src");
+    const selfImprovementCollector = new SelfImprovementMetricsCollector(
+      fs,
+      config.substratePath,
+      serverSrcPath,
+      clock,
+      reportStore
+    );
+    metricsScheduler.setSelfImprovementCollector(
+      selfImprovementCollector,
+      30 * 24 * 60 * 60 * 1000, // 30 days
+      () => {
+        const m = orchestrator.getMetrics();
+        return {
+          idleRate: m.totalCycles > 0 ? m.idleCycles / m.totalCycles : 0,
+        };
+      }
+    );
   }
 
   // Watchdog — detects stalls and injects gentle reminders
