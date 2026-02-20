@@ -30,6 +30,7 @@ import { LoopWatchdog } from "./LoopWatchdog";
 import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { IMessageInjector } from "./IMessageInjector";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
+import { DriveQualityTracker } from "../evaluation/DriveQualityTracker";
 
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
@@ -64,6 +65,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Governance report store for persisting audit reports
   private reportStore: GovernanceReportStore | null = null;
+
+  // Drive quality tracker for Id learning loop
+  private driveQualityTracker: DriveQualityTracker | null = null;
 
   // SUPEREGO finding tracker for recurring finding escalation
   private findingTracker: SuperegoFindingTracker = new SuperegoFindingTracker();
@@ -209,6 +213,10 @@ export class LoopOrchestrator implements IMessageInjector {
     this.reportStore = store;
   }
 
+  setDriveQualityTracker(tracker: DriveQualityTracker): void {
+    this.driveQualityTracker = tracker;
+  }
+
   requestRestart(): void {
     this.logger.debug("requestRestart() called — exiting for supervisor restart");
     this.eventSink.emit({
@@ -336,6 +344,9 @@ export class LoopOrchestrator implements IMessageInjector {
           await this.subconscious.logConversation(taskResult.summary);
         }
       }
+
+      // Drive learning: if task was Id-generated, record a quality rating for future drive improvement
+      await this.recordDriveRatingIfApplicable(dispatch.description, taskResult);
 
       if (taskResult.proposals.length > 0) {
         this.logger.debug(`cycle ${this.cycleNumber}: evaluating ${taskResult.proposals.length} proposal(s)`);
@@ -997,6 +1008,31 @@ export class LoopOrchestrator implements IMessageInjector {
   }
 
 
+
+  private async recordDriveRatingIfApplicable(description: string, taskResult: TaskResult): Promise<void> {
+    if (!this.driveQualityTracker) return;
+
+    const match = description.match(/\[ID-generated (\d{4}-\d{2}-\d{2})\]/);
+    if (!match) return;
+
+    const generatedAt = match[1];
+    const rating = Subconscious.computeDriveRating(taskResult);
+    const category = DriveQualityTracker.inferCategory(description);
+
+    try {
+      await this.driveQualityTracker.recordRating({
+        task: description,
+        generatedAt,
+        completedAt: this.clock.now().toISOString(),
+        rating,
+        category,
+      });
+      this.logger.debug(`drive-quality: recorded rating ${rating}/10 for "${category}" task`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`drive-quality: failed to record rating — ${msg}`);
+    }
+  }
 
   private async runReconsideration(
     dispatch: { taskId: string; description: string },

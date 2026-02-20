@@ -52,6 +52,7 @@ import { AgoraInboxManager } from "../agora/AgoraInboxManager";
 import { IAgoraService } from "../agora/IAgoraService";
 import { FileWatcher } from "../substrate/watcher/FileWatcher";
 import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
+import { DriveQualityTracker } from "../evaluation/DriveQualityTracker";
 
 // Note: AgoraServiceType is now IAgoraService interface in agora/IAgoraService.ts
 
@@ -195,10 +196,14 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
     archiver, archiveConfig
   );
 
+  // Drive quality tracker — persists Id drive ratings for learning loop
+  const driveRatingsPath = path.resolve(config.substratePath, "..", "data", "drive-ratings.jsonl");
+  const driveQualityTracker = new DriveQualityTracker(fs, driveRatingsPath);
+
   const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
   const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
   const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer, cwd);
-  const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
+  const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, cwd, driveQualityTracker);
 
   // Loop layer — build httpServer first for the underlying http.Server,
   // then wsServer, then orchestrator, then wire orchestrator back into httpServer
@@ -372,6 +377,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   const reportStore = new GovernanceReportStore(fs, reportsDir, clock);
   httpServer.setReportStore(reportStore);
   orchestrator.setReportStore(reportStore);
+  orchestrator.setDriveQualityTracker(driveQualityTracker);
 
   orchestrator.setLauncher(launcher);
   // Set shutdown function that closes resources before exiting
