@@ -37,6 +37,7 @@ import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { EmailScheduler } from "./EmailScheduler";
 import { MetricsScheduler } from "./MetricsScheduler";
+import { ValidationScheduler } from "./ValidationScheduler";
 import { TaskClassificationMetrics } from "../evaluation/TaskClassificationMetrics";
 import { SubstrateSizeTracker } from "../evaluation/SubstrateSizeTracker";
 import { DelegationTracker } from "../evaluation/DelegationTracker";
@@ -87,6 +88,10 @@ export interface ApplicationConfig {
   };
   metrics?: {
     enabled: boolean;
+    intervalMs?: number; // Default: 604800000 (7 days)
+  };
+  validation?: {
+    enabled?: boolean;
     intervalMs?: number; // Default: 604800000 (7 days)
   };
   agora?: {
@@ -502,6 +507,23 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
       delegationTracker
     );
     orchestrator.setMetricsScheduler(metricsScheduler);
+  }
+
+  // Validation scheduler setup
+  if (config.validation?.enabled !== false) { // Default enabled
+    const appPaths = getAppPaths();
+    const stateFilePath = path.join(appPaths.config, "validation-scheduler-state.txt");
+    const validationScheduler = new ValidationScheduler(
+      fs,
+      clock,
+      logger,
+      {
+        substratePath: config.substratePath,
+        validationIntervalMs: config.validation?.intervalMs ?? 604800000, // Default: 7 days
+        stateFilePath,
+      }
+    );
+    orchestrator.setValidationScheduler(validationScheduler);
   }
 
   // Watchdog — detects stalls and injects gentle reminders
