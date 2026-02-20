@@ -26,6 +26,7 @@ import { BackupScheduler } from "./BackupScheduler";
 import { HealthCheckScheduler } from "./HealthCheckScheduler";
 import { EmailScheduler } from "./EmailScheduler";
 import { MetricsScheduler } from "./MetricsScheduler";
+import { ValidationScheduler } from "./ValidationScheduler";
 import { LoopWatchdog } from "./LoopWatchdog";
 import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { IMessageInjector } from "./IMessageInjector";
@@ -55,6 +56,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Metrics scheduler
   private metricsScheduler: MetricsScheduler | null = null;
+
+  // Validation scheduler
+  private validationScheduler: ValidationScheduler | null = null;
 
   // Watchdog — detects stalls and injects gentle reminders
   private watchdog: LoopWatchdog | null = null;
@@ -193,6 +197,10 @@ export class LoopOrchestrator implements IMessageInjector {
 
   setMetricsScheduler(scheduler: MetricsScheduler): void {
     this.metricsScheduler = scheduler;
+  }
+
+  setValidationScheduler(scheduler: ValidationScheduler): void {
+    this.validationScheduler = scheduler;
   }
 
   setWatchdog(watchdog: LoopWatchdog): void {
@@ -390,6 +398,11 @@ export class LoopOrchestrator implements IMessageInjector {
     // Metrics scheduling
     if (this.metricsScheduler && await this.metricsScheduler.shouldRunMetrics()) {
       await this.runScheduledMetrics();
+    }
+
+    // Validation scheduling
+    if (this.validationScheduler && await this.validationScheduler.shouldRunValidation()) {
+      await this.runScheduledValidation();
     }
 
     return result;
@@ -986,6 +999,54 @@ export class LoopOrchestrator implements IMessageInjector {
       this.logger.debug(`metrics: unexpected error — ${errorMsg}`);
       this.eventSink.emit({
         type: "metrics_collected",
+        timestamp: this.clock.now().toISOString(),
+        data: {
+          cycleNumber: this.cycleNumber,
+          success: false,
+          error: errorMsg,
+        },
+      });
+    }
+  }
+
+  private async runScheduledValidation(): Promise<void> {
+    this.logger.debug(`validation: starting scheduled substrate validation (cycle ${this.cycleNumber})`);
+    try {
+      const result = await this.validationScheduler!.runValidation();
+      if (result.success && result.report) {
+        const { brokenReferences, orphanedFiles, staleFiles } = result.report;
+        this.logger.debug(
+          `validation: success — ${brokenReferences.length} broken refs, ` +
+          `${orphanedFiles.length} orphaned files, ${staleFiles.length} stale files`
+        );
+        this.eventSink.emit({
+          type: "validation_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: true,
+            brokenReferences: brokenReferences.length,
+            orphanedFiles: orphanedFiles.length,
+            staleFiles: staleFiles.length,
+          },
+        });
+      } else {
+        this.logger.debug(`validation: failed — ${result.error}`);
+        this.eventSink.emit({
+          type: "validation_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            success: false,
+            error: result.error,
+          },
+        });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`validation: unexpected error — ${errorMsg}`);
+      this.eventSink.emit({
+        type: "validation_complete",
         timestamp: this.clock.now().toISOString(),
         data: {
           cycleNumber: this.cycleNumber,
