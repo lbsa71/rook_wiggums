@@ -43,7 +43,7 @@ export class LoopOrchestrator implements IMessageInjector {
   private rateLimitUntil: string | null = null;
 
   // Message injection — works in both cycle and tick mode
-  private launcher: { inject(message: string): void } | null = null;
+  private launcher: { inject(message: string): void; isActive(): boolean } | null = null;
   private shutdownFn: ((exitCode: number) => void) | null = null;
 
   // Backup scheduler
@@ -96,6 +96,11 @@ export class LoopOrchestrator implements IMessageInjector {
   private conversationMessageQueue: string[] = [];
   private readonly conversationIdleTimeoutMs: number;
 
+  // Sleep/wake callbacks and loop resume function
+  private resumeLoopFn: (() => Promise<void>) | null = null;
+  private onSleepEnter: (() => Promise<void>) | null = null;
+  private onSleepExit: (() => Promise<void>) | null = null;
+
   constructor(
     private readonly ego: Ego,
     private readonly subconscious: Subconscious,
@@ -140,6 +145,11 @@ export class LoopOrchestrator implements IMessageInjector {
       // Normal start from stopped
       this.logger.debug("start() called");
       this.transition(LoopState.RUNNING);
+      this.watchdog?.recordActivity();
+    } else if (this.state === LoopState.SLEEPING) {
+      // Wake from sleep
+      this.logger.debug("start() called — waking from SLEEPING");
+      this.wake();
     } else if (this.state === LoopState.RUNNING && this.rateLimitUntil !== null) {
       // Start during rate limit = try again (clear rate limit)
       this.logger.debug("start() called during rate limit — clearing rate limit");
@@ -148,7 +158,6 @@ export class LoopOrchestrator implements IMessageInjector {
     } else {
       throw new Error(`Cannot start: loop is in ${this.state} state${this.rateLimitUntil ? ' (rate limited)' : ''}`);
     }
-    this.watchdog?.recordActivity();
   }
 
   pause(): void {
@@ -173,14 +182,69 @@ export class LoopOrchestrator implements IMessageInjector {
     }
     this.logger.debug("stop() called — exiting gracefully");
     this.watchdog?.stop();
+    // Clear sleep state if sleeping
+    if (this.state === LoopState.SLEEPING) {
+      this.onSleepExit?.().catch(() => {});
+    }
     this.transition(LoopState.STOPPED);
     if (this.shutdownFn) {
       this.shutdownFn(0); // Exit with code 0 (graceful shutdown)
     }
   }
 
-  setLauncher(launcher: { inject(message: string): void }): void {
+  /**
+   * Wake from SLEEPING state: transition to RUNNING and resume the cycle/tick loop.
+   * Can be triggered by incoming messages, HTTP wake endpoint, or manual start.
+   */
+  wake(): void {
+    if (this.state !== LoopState.SLEEPING) {
+      throw new Error(`Cannot wake: loop is in ${this.state} state`);
+    }
+    this.logger.debug("wake() called");
+    this.transition(LoopState.RUNNING);
+    this.onSleepExit?.().catch((err) => {
+      this.logger.debug(`wake: onSleepExit failed — ${err instanceof Error ? err.message : String(err)}`);
+    });
+    this.resumeLoopFn?.().catch((err) => {
+      this.logger.debug(`wake: resumeLoopFn failed — ${err instanceof Error ? err.message : String(err)}`);
+    });
+    this.watchdog?.recordActivity();
+  }
+
+  /**
+   * Initialize orchestrator in SLEEPING state (for restart-resilient sleep persistence).
+   * Only valid when state is STOPPED (before any loop has started).
+   */
+  initializeSleeping(): void {
+    if (this.state !== LoopState.STOPPED) {
+      return;
+    }
+    this.logger.debug("initializeSleeping() — starting in SLEEPING state");
+    this.state = LoopState.SLEEPING;
+  }
+
+  setResumeLoopFn(fn: () => Promise<void>): void {
+    this.resumeLoopFn = fn;
+  }
+
+  setSleepCallbacks(onEnter: () => Promise<void>, onExit: () => Promise<void>): void {
+    this.onSleepEnter = onEnter;
+    this.onSleepExit = onExit;
+  }
+
+  setLauncher(launcher: { inject(message: string): void; isActive(): boolean }): void {
     this.launcher = launcher;
+  }
+
+  /**
+   * Queue a startup message to be injected at the start of the first active session.
+   * Used by the startup scan to recover [UNPROCESSED] messages after a restart.
+   * In tick mode: consumed at the start of the next tick.
+   * In cycle mode: serves as a reminder alongside [UNPROCESSED] markers in CONVERSATION.md.
+   */
+  queueStartupMessage(message: string): void {
+    this.pendingMessages.push(message);
+    this.logger.debug(`queueStartupMessage: queued startup message (${message.length} chars)`);
   }
 
   setShutdown(fn: (exitCode: number) => void): void {
@@ -459,7 +523,11 @@ export class LoopOrchestrator implements IMessageInjector {
           }
         }
         this.logger.debug("runLoop: stopping — idle threshold exceeded with no plan created");
-        this.stop();
+        if (this.config.idleSleepEnabled) {
+          this.enterSleep();
+        } else {
+          this.stop();
+        }
         break;
       }
 
@@ -654,6 +722,12 @@ export class LoopOrchestrator implements IMessageInjector {
     this.logger.debug(`handleUserMessage: "${message}"`);
     this.watchdog?.recordActivity();
 
+    // Wake loop if sleeping — incoming chat message should restart cycles
+    if (this.state === LoopState.SLEEPING) {
+      this.logger.debug("handleUserMessage: waking loop from SLEEPING state");
+      this.wake();
+    }
+
     // Chat routing: if tick/cycle is active, inject into it
     if (this.isTickOrCycleActive()) {
       this.logger.debug("handleUserMessage: tick/cycle active, injecting message");
@@ -750,7 +824,7 @@ export class LoopOrchestrator implements IMessageInjector {
     await sessionPromise;
   }
 
-  injectMessage(message: string): void {
+  injectMessage(message: string): boolean {
     this.logger.debug(`injectMessage: "${message}"`);
 
     this.eventSink.emit({
@@ -762,18 +836,20 @@ export class LoopOrchestrator implements IMessageInjector {
     // Tick mode: forward to active session manager
     if (this.activeSessionManager?.isActive()) {
       this.activeSessionManager.inject(message);
-      return;
+      return true;
     }
 
     // Cycle mode: forward to launcher's active session (via streamInput)
-    if (this.launcher) {
+    if (this.launcher?.isActive()) {
       this.launcher.inject(message);
-      return;
+      return true;
     }
 
-    // No active session — queue for next tick
-    this.logger.debug("injectMessage: no active session or launcher, queuing");
+    // No active session — queue for next tick/cycle and wake the timer for immediate pickup
+    this.logger.debug("injectMessage: no active session, queuing and waking timer");
     this.pendingMessages.push(message);
+    this.timer.wake();
+    return false;
   }
 
   private transition(to: LoopState): void {
@@ -784,6 +860,14 @@ export class LoopOrchestrator implements IMessageInjector {
       type: "state_changed",
       timestamp: this.clock.now().toISOString(),
       data: { from, to },
+    });
+  }
+
+  private enterSleep(): void {
+    this.logger.debug("enterSleep() — transitioning to SLEEPING state");
+    this.transition(LoopState.SLEEPING);
+    this.onSleepEnter?.().catch((err) => {
+      this.logger.debug(`enterSleep: onSleepEnter failed — ${err instanceof Error ? err.message : String(err)}`);
     });
   }
 

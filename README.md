@@ -116,6 +116,7 @@ Config file fields:
   "tacticalModel": "sonnet",
   "autoStartOnFirstRun": false,
   "autoStartAfterRestart": true,
+  "cycleDelayMs": 30000,
   "conversationArchive": {
     "enabled": false,
     "linesToKeep": 100,
@@ -127,6 +128,7 @@ Config file fields:
 
 - **autoStartOnFirstRun** (default: `false`) — When `true`, the agent loop starts automatically on first/cold start. Default is `false` so you can be present when it starts the first time.
 - **autoStartAfterRestart** (default: `true`) — When `true`, the supervisor passes `--forceStart` when respawning after a restart (Restart button or rebuild). If `--forceStart` is present, the server always auto-starts the loop; the supervisor only adds it when this config is true. Other exit codes exit cleanly without restart.
+- **cycleDelayMs** (default: `30000`) — Delay between loop cycles in milliseconds. Minimum recommended: `10000` (10 seconds) to avoid excessive API calls. For primarily reactive agents (e.g., waiting for Agora messages), consider `60000` (1 minute) or more.
 - **conversationArchive** — Configuration for CONVERSATION.md archiving to prevent unbounded growth:
   - **enabled** (default: `false`) — When `true`, old conversation content is archived to `archive/conversation/` with date-stamped filenames
   - **linesToKeep** (default: `100`) — Number of recent conversation lines to keep in the main file
