@@ -240,6 +240,30 @@ describe("resolveConfig", () => {
     expect(config.superegoAuditInterval).toBe(20);
   });
 
+  it("uses cycleDelayMs from config file", async () => {
+    await fs.mkdir("/project", { recursive: true });
+    await fs.writeFile("/project/config.json", JSON.stringify({
+      cycleDelayMs: 60000,
+    }));
+
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      cwd: "/project",
+      env: {},
+    });
+
+    expect(config.cycleDelayMs).toBe(60000);
+  });
+
+  it("defaults cycleDelayMs to 30000", async () => {
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      env: {},
+    });
+
+    expect(config.cycleDelayMs).toBe(30000);
+  });
+
   it("idleSleepConfig defaults to undefined", async () => {
     const config = await resolveConfig(fs, {
       appPaths: TEST_PATHS,
