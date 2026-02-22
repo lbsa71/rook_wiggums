@@ -1,6 +1,21 @@
 import * as path from "node:path";
+import type { IEnvironment } from "./substrate/abstractions/IEnvironment";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import type { AppPaths } from "./paths";
+
+function isEnvironment(
+  fsOrEnv: IFileSystem | IEnvironment
+): fsOrEnv is IEnvironment {
+  return typeof (fsOrEnv as IEnvironment).getEnv === "function";
+}
+
+/** Use posix path join when path looks like a posix path (e.g. test or Unix). */
+function pathJoin(base: string, ...segments: string[]): string {
+  if (base.startsWith("/") && !base.match(/^[a-zA-Z]:/)) {
+    return path.posix.join(base, ...segments);
+  }
+  return path.join(base, ...segments);
+}
 
 export interface AppConfig {
   substratePath: string;
@@ -62,16 +77,21 @@ export interface ResolveConfigOptions {
 }
 
 export async function resolveConfig(
-  fs: IFileSystem,
+  fsOrEnv: IFileSystem | IEnvironment,
   options: ResolveConfigOptions
 ): Promise<AppConfig> {
-  const { appPaths, env = {} } = options;
+  const fs = isEnvironment(fsOrEnv) ? fsOrEnv.fs : fsOrEnv;
+  const env = options.env ?? (isEnvironment(fsOrEnv) ? (key: string) => fsOrEnv.getEnv(key) : undefined);
+  const { appPaths } = options;
 
   const defaults: AppConfig = {
     substratePath: appPaths.data,
     workingDirectory: appPaths.data,
     sourceCodePath: options.cwd ?? appPaths.data,
-    backupPath: path.join(path.dirname(appPaths.data), "substrate-backups"),
+    backupPath:
+    appPaths.data.startsWith("/") && !/^[a-zA-Z]:/.test(appPaths.data)
+      ? path.posix.join(path.posix.dirname(appPaths.data), "substrate-backups")
+      : path.join(path.dirname(appPaths.data), "substrate-backups"),
     port: 3000,
     model: "sonnet",
     strategicModel: "opus",
@@ -116,13 +136,13 @@ export async function resolveConfig(
     fileConfig = JSON.parse(raw) as Partial<AppConfig>;
   } else {
     // Try CWD config.json
-    const cwdConfig = options.cwd ? path.join(options.cwd, "config.json") : undefined;
+    const cwdConfig = options.cwd ? pathJoin(options.cwd, "config.json") : undefined;
     if (cwdConfig && await fs.exists(cwdConfig)) {
       const raw = await fs.readFile(cwdConfig);
       fileConfig = JSON.parse(raw) as Partial<AppConfig>;
     } else {
       // Try config-dir config.json
-      const configDirFile = path.join(appPaths.config, "config.json");
+      const configDirFile = pathJoin(appPaths.config, "config.json");
       if (await fs.exists(configDirFile)) {
         const raw = await fs.readFile(configDirFile);
         fileConfig = JSON.parse(raw) as Partial<AppConfig>;
@@ -186,14 +206,15 @@ export async function resolveConfig(
   };
 
   // Env vars override everything
-  if (env["SUBSTRATE_PATH"]) {
-    merged.substratePath = env["SUBSTRATE_PATH"];
+  const getEnv = typeof env === "function" ? env : (k: string) => env[k];
+  if (getEnv("SUBSTRATE_PATH")) {
+    merged.substratePath = getEnv("SUBSTRATE_PATH")!;
   }
-  if (env["PORT"]) {
-    merged.port = parseInt(env["PORT"], 10);
+  if (getEnv("PORT")) {
+    merged.port = parseInt(getEnv("PORT")!, 10);
   }
-  if (env["SUPEREGO_AUDIT_INTERVAL"]) {
-    merged.superegoAuditInterval = parseInt(env["SUPEREGO_AUDIT_INTERVAL"], 10);
+  if (getEnv("SUPEREGO_AUDIT_INTERVAL")) {
+    merged.superegoAuditInterval = parseInt(getEnv("SUPEREGO_AUDIT_INTERVAL")!, 10);
   }
 
   return merged;

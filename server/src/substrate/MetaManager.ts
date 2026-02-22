@@ -2,6 +2,10 @@ import * as path from "path";
 import { IFileSystem } from "./abstractions/IFileSystem";
 import { IClock } from "./abstractions/IClock";
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export interface SubstrateMeta {
   name: string;
   fullName: string;
@@ -17,8 +21,9 @@ export class MetaManager {
     private readonly clock: IClock,
     substratePath: string
   ) {
-    this.metaPath = path.join(substratePath, "meta.json");
-    this.defaultName = path.basename(substratePath);
+    const base = toPosix(substratePath);
+    this.metaPath = path.posix.join(base, "meta.json");
+    this.defaultName = path.posix.basename(base);
   }
 
   async read(): Promise<SubstrateMeta | null> {
@@ -40,7 +45,7 @@ export class MetaManager {
     if (await this.fs.exists(this.metaPath)) {
       return;
     }
-    await this.fs.mkdir(path.dirname(this.metaPath), { recursive: true });
+    await this.fs.mkdir(path.posix.dirname(this.metaPath), { recursive: true });
     const meta: SubstrateMeta = {
       name: this.defaultName,
       fullName: this.defaultName,

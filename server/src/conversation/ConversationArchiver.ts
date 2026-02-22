@@ -3,6 +3,10 @@ import { IFileSystem } from "../substrate/abstractions/IFileSystem";
 import { IClock } from "../substrate/abstractions/IClock";
 import * as path from "node:path";
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export class ConversationArchiver implements IConversationArchiver {
   constructor(
     private readonly fs: IFileSystem,
@@ -44,14 +48,15 @@ export class ConversationArchiver implements IConversationArchiver {
     const oldLines = contentLines.slice(0, linesToArchive);
     const recentLines = contentLines.slice(linesToArchive);
 
-    // Create archive directory if it doesn't exist
-    const archiveDir = path.join(this.substratePath, 'archive', 'conversation');
+    // Create archive directory if it doesn't exist (posix for cross-platform tests)
+    const base = toPosix(this.substratePath);
+    const archiveDir = path.posix.join(base, "archive", "conversation");
     await this.fs.mkdir(archiveDir, { recursive: true });
 
     // Create date-stamped archive filename
     const timestamp = this.clock.now().toISOString().replace(/:/g, '-').replace(/\./g, '-');
     const archiveFilename = `conversation-${timestamp}.md`;
-    const archivePath = path.join(archiveDir, archiveFilename);
+    const archivePath = path.posix.join(archiveDir, archiveFilename);
 
     // Write archived content
     const archivedContent = [

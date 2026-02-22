@@ -1,6 +1,5 @@
 import * as path from "node:path";
-import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
-import { SystemClock } from "./substrate/abstractions/SystemClock";
+import { NodeEnvironment } from "./substrate/abstractions/NodeEnvironment";
 import { NodeProcessRunner } from "./agents/claude/NodeProcessRunner";
 import { getAppPaths } from "./paths";
 import { resolveConfig } from "./config";
@@ -68,14 +67,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 async function main(): Promise<void> {
   const { command, configPath, model, outputDir, inputPath, source, dest, identity, lines, forceStart } = parseArgs(process.argv);
-  const fs = new NodeFileSystem();
-  const appPaths = getAppPaths();
+  const env = new NodeEnvironment();
+  const appPaths = getAppPaths({ env });
 
-  const config = await resolveConfig(fs, {
+  const config = await resolveConfig(env, {
     appPaths,
     configPath,
     cwd: process.cwd(),
-    env: process.env,
   });
 
   // CLI --model overrides config file
@@ -84,24 +82,24 @@ async function main(): Promise<void> {
   }
 
   if (command === "init") {
-    await initWorkspace(fs, config, appPaths);
+    await initWorkspace(env.fs, config, appPaths);
     console.log("Workspace initialized successfully.");
   } else if (command === "backup") {
     const isRemote = source && source.includes("@");
     const backupOutputDir = outputDir ?? config.backupPath;
     const result = isRemote
       ? await createRemoteBackup({
-          fs,
+          fs: env.fs,
           runner: new NodeProcessRunner(),
-          clock: new SystemClock(),
+          clock: env.clock,
           remoteSource: resolveBackupSource(source),
           outputDir: backupOutputDir,
           identity,
         })
       : await createBackup({
-          fs,
+          fs: env.fs,
           runner: new NodeProcessRunner(),
-          clock: new SystemClock(),
+          clock: env.clock,
           substratePath: source ?? config.substratePath,
           outputDir: backupOutputDir,
         });
@@ -113,7 +111,7 @@ async function main(): Promise<void> {
     }
   } else if (command === "restore") {
     const result = await restoreBackup({
-      fs,
+      fs: env.fs,
       runner: new NodeProcessRunner(),
       substratePath: config.substratePath,
       inputPath,
@@ -166,7 +164,7 @@ async function main(): Promise<void> {
       }
     } else {
       const logPath = source ?? path.resolve(config.substratePath, "..", "debug.log");
-      const result = await fetchLocalLogs({ fs, logPath });
+      const result = await fetchLocalLogs({ fs: env.fs, logPath });
       if (result.success) {
         process.stdout.write(result.output!);
       } else {

@@ -1,0 +1,2 @@
+* All environment resources, like environment settings, file system operations, and current time should be abstracted into an IEnvironment.ts interface and injected into all modules so tests can mock it.
+* All timestamps should be injected into function calls, so tests can use known and static timestamps.

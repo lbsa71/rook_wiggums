@@ -34,8 +34,8 @@ describe("ConversationArchiver", () => {
       expect(result.linesArchived).toBe(2);
       expect(result.archivedPath).toBeDefined();
 
-      // Check archived file was created
-      const archiveDir = path.join(substratePath, 'archive', 'conversation');
+      // Check archived file was created (archiver uses posix paths)
+      const archiveDir = path.posix.join(substratePath, "archive", "conversation");
       expect(await fs.exists(archiveDir)).toBe(true);
 
       // Check archived file content
@@ -92,7 +92,7 @@ describe("ConversationArchiver", () => {
         "[2025-01-15T10:00:00.000Z] [USER] Recent message",
       ].join('\n');
 
-      const archiveDir = path.join(substratePath, 'archive', 'conversation');
+      const archiveDir = path.posix.join(substratePath, "archive", "conversation");
       expect(await fs.exists(archiveDir)).toBe(false);
 
       await archiver.archive(content, 1);

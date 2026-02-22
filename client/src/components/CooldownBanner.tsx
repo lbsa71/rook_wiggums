@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
+import { useEnvironment } from "../environment/EnvironmentContext";
 
 interface CooldownBannerProps {
   rateLimitUntil: string | null;
+  /** Injected so tests can use known timestamps. Defaults to Date.now. */
+  now?: () => number;
 }
 
 function formatRemaining(ms: number): string {
@@ -17,7 +20,9 @@ function formatRemaining(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function CooldownBanner({ rateLimitUntil }: CooldownBannerProps) {
+export function CooldownBanner({ rateLimitUntil, now: nowProp }: CooldownBannerProps) {
+  const env = useEnvironment();
+  const now = nowProp ?? (() => env.now());
   const [remaining, setRemaining] = useState<number>(0);
 
   useEffect(() => {
@@ -29,7 +34,7 @@ export function CooldownBanner({ rateLimitUntil }: CooldownBannerProps) {
     const target = new Date(rateLimitUntil).getTime();
 
     const update = () => {
-      const diff = target - Date.now();
+      const diff = target - now();
       setRemaining(diff > 0 ? diff : 0);
     };
 

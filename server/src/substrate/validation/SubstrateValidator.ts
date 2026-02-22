@@ -31,6 +31,11 @@ const INDEX_FILES = ["MEMORY.md", "SKILLS.md", "HABITS.md", "VALUES.md", "ID.md"
 const SUBDIRS = ["memory", "skills", "habits", "values", "id", "security"];
 const STALE_THRESHOLD_DAYS = 30;
 
+/** Normalize to posix style so path joins match on all platforms (e.g. tests use posix paths). */
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export class SubstrateValidator {
   private readonly scanner = new ReferenceScanner();
 
@@ -41,6 +46,7 @@ export class SubstrateValidator {
   ) {}
 
   async validate(): Promise<ValidationReport> {
+    const baseDir = toPosix(this.dataDir);
     const timestamp = this.clock.now().toISOString();
     const report: ValidationReport = {
       timestamp,
@@ -54,7 +60,7 @@ export class SubstrateValidator {
 
     // 1. Scan index files for @-references and detect broken ones
     for (const indexFile of INDEX_FILES) {
-      const fullPath = path.join(this.dataDir, indexFile);
+      const fullPath = path.posix.join(baseDir, indexFile);
       if (!(await this.fs.exists(fullPath))) {
         continue;
       }
@@ -69,7 +75,7 @@ export class SubstrateValidator {
       const refs = this.scanner.extractReferences(content);
       for (const ref of refs) {
         allReferences.add(ref);
-        const refPath = path.join(this.dataDir, ref);
+        const refPath = path.posix.join(baseDir, ref);
         if (!(await this.fs.exists(refPath))) {
           report.brokenReferences.push({ file: indexFile, reference: ref });
         }
@@ -78,7 +84,7 @@ export class SubstrateValidator {
 
     // 2. Find orphaned files in subdirectories
     for (const subdir of SUBDIRS) {
-      const subdirPath = path.join(this.dataDir, subdir);
+      const subdirPath = path.posix.join(baseDir, subdir);
       if (!(await this.fs.exists(subdirPath))) {
         continue;
       }
@@ -106,7 +112,7 @@ export class SubstrateValidator {
     const staleThresholdMs = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
 
     for (const ref of allReferences) {
-      const refPath = path.join(this.dataDir, ref);
+      const refPath = path.posix.join(baseDir, ref);
       let stats;
       try {
         stats = await this.fs.stat(refPath);

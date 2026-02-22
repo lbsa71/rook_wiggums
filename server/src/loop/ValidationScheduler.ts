@@ -121,12 +121,13 @@ export class ValidationScheduler {
     if (!this.config.stateFilePath) {
       return null;
     }
+    const statePath = this.config.stateFilePath.replace(/\\/g, "/");
 
     try {
-      if (!(await this.fs.exists(this.config.stateFilePath))) {
+      if (!(await this.fs.exists(statePath))) {
         return null;
       }
-      const content = await this.fs.readFile(this.config.stateFilePath);
+      const content = await this.fs.readFile(statePath);
       const date = new Date(content.trim());
       return isNaN(date.getTime()) ? null : date;
     } catch (err) {
@@ -140,11 +141,12 @@ export class ValidationScheduler {
     if (!this.config.stateFilePath) {
       return;
     }
+    const statePath = this.config.stateFilePath.replace(/\\/g, "/");
 
     try {
-      const dir = path.dirname(this.config.stateFilePath);
+      const dir = path.posix.dirname(statePath);
       await this.fs.mkdir(dir, { recursive: true });
-      await this.fs.writeFile(this.config.stateFilePath, time.toISOString());
+      await this.fs.writeFile(statePath, time.toISOString());
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.debug(`ValidationScheduler: failed to persist state — ${errorMsg}`);
@@ -152,7 +154,8 @@ export class ValidationScheduler {
   }
 
   private async appendReportToProgress(report: ValidationReport): Promise<void> {
-    const progressPath = path.join(this.config.substratePath, "PROGRESS.md");
+    const baseDir = this.config.substratePath.replace(/\\/g, "/");
+    const progressPath = path.posix.join(baseDir, "PROGRESS.md");
     if (!(await this.fs.exists(progressPath))) {
       return;
     }
