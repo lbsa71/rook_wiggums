@@ -1,10 +1,12 @@
 import type { IFileSystem } from "../substrate/abstractions/IFileSystem";
 import type { IClock } from "../substrate/abstractions/IClock";
 import { SubstrateConfig } from "../substrate/config";
-import { SubstrateFileType } from "../substrate/types";
 import { FileLock } from "../substrate/io/FileLock";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { shortKey } from "./utils";
+
+const AGORA_INBOX_LOCK_KEY = "AGORA_INBOX";
+const AGORA_INBOX_FILE_NAME = "AGORA_INBOX.md";
 
 export interface AgoraInboxMessage {
   timestamp: string;
@@ -32,9 +34,9 @@ export class AgoraInboxManager {
    * Add a new unread message to the inbox.
    */
   async addMessage(envelope: Envelope): Promise<void> {
-    const release = await this.lock.acquire(SubstrateFileType.AGORA_INBOX);
+    const release = await this.lock.acquire(AGORA_INBOX_LOCK_KEY);
     try {
-      const filePath = this.config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const filePath = `${this.config.basePath}/${AGORA_INBOX_FILE_NAME}`;
       const content = await this.fs.readFile(filePath);
       
       const timestamp = this.clock.now().toISOString();
@@ -72,9 +74,9 @@ export class AgoraInboxManager {
    * Get all unread messages from the inbox.
    */
   async getUnreadMessages(): Promise<AgoraInboxMessage[]> {
-    const release = await this.lock.acquire(SubstrateFileType.AGORA_INBOX);
+    const release = await this.lock.acquire(AGORA_INBOX_LOCK_KEY);
     try {
-      const filePath = this.config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const filePath = `${this.config.basePath}/${AGORA_INBOX_FILE_NAME}`;
       const content = await this.fs.readFile(filePath);
       
       const lines = content.split("\n");
@@ -106,9 +108,9 @@ export class AgoraInboxManager {
    * Mark a message as read and optionally record reply timestamp.
    */
   async markAsRead(envelopeId: string, repliedAt?: string): Promise<void> {
-    const release = await this.lock.acquire(SubstrateFileType.AGORA_INBOX);
+    const release = await this.lock.acquire(AGORA_INBOX_LOCK_KEY);
     try {
-      const filePath = this.config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const filePath = `${this.config.basePath}/${AGORA_INBOX_FILE_NAME}`;
       const content = await this.fs.readFile(filePath);
       
       const lines = content.split("\n");
@@ -188,9 +190,9 @@ export class AgoraInboxManager {
    * These messages are from unknown senders and are not processed by the agent.
    */
   async addQuarantinedMessage(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<void> {
-    const release = await this.lock.acquire(SubstrateFileType.AGORA_INBOX);
+    const release = await this.lock.acquire(AGORA_INBOX_LOCK_KEY);
     try {
-      const filePath = this.config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const filePath = `${this.config.basePath}/${AGORA_INBOX_FILE_NAME}`;
       const content = await this.fs.readFile(filePath);
       
       const timestamp = this.clock.now().toISOString();

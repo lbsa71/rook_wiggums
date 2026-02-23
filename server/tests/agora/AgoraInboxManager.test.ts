@@ -3,7 +3,6 @@ import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFil
 import { FixedClock } from "../../src/substrate/abstractions/FixedClock";
 import { SubstrateConfig } from "../../src/substrate/config";
 import { FileLock } from "../../src/substrate/io/FileLock";
-import { SubstrateFileType } from "../../src/substrate/types";
 import type { Envelope } from "@rookdaemon/agora";
 
 describe("AgoraInboxManager", () => {
@@ -33,7 +32,7 @@ No read messages yet.
     lock = new FileLock();
 
     // Initialize AGORA_INBOX.md
-    const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+    const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
     await fs.writeFile(inboxPath, initialContent);
 
     manager = new AgoraInboxManager(fs, config, lock, clock);
@@ -52,7 +51,7 @@ No read messages yet.
 
       await manager.addMessage(envelope);
 
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const content = await fs.readFile(inboxPath);
 
       expect(content).toContain("## Unread");
@@ -85,7 +84,7 @@ No read messages yet.
       clock.setNow(new Date("2026-02-15T12:01:00Z"));
       await manager.addMessage(envelope2);
 
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const content = await fs.readFile(inboxPath);
 
       // Both messages should be present
@@ -168,7 +167,7 @@ No read messages yet.
       await manager.addMessage(envelope);
       await manager.markAsRead("msg-123");
 
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const content = await fs.readFile(inboxPath);
 
       // Message should no longer be in Unread section
@@ -196,7 +195,7 @@ No read messages yet.
       await manager.addMessage(envelope);
       await manager.markAsRead("msg-456", "2026-02-15T12:05:00Z");
 
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const content = await fs.readFile(inboxPath);
 
       expect(content).toContain("id:msg-456");
@@ -204,7 +203,7 @@ No read messages yet.
     });
 
     it("should do nothing if message not found", async () => {
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const beforeContent = await fs.readFile(inboxPath);
 
       await manager.markAsRead("non-existent-id");
@@ -251,7 +250,7 @@ No read messages yet.
       expect(messagesAfter).toHaveLength(0);
 
       // Both in read section
-      const inboxPath = config.getFilePath(SubstrateFileType.AGORA_INBOX);
+      const inboxPath = `${config.basePath}/AGORA_INBOX.md`;
       const content = await fs.readFile(inboxPath);
       const lines = content.split("\n");
       const readIndex = lines.findIndex(l => l.trim() === "## Read");
