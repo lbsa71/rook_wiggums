@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import * as nodeFs from "node:fs";
 import { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
 import { SubstrateConfig } from "./substrate/config";
@@ -51,6 +53,30 @@ export interface StartServerOptions {
 export async function startServer(config: AppConfig, options?: StartServerOptions): Promise<StartedServer> {
   const fs = new NodeFileSystem();
 
+  // PID file — prevent multiple concurrent instances from corrupting shared substrate files
+  const pidPath = path.resolve(config.substratePath, "..", "substrate.pid");
+  try {
+    const existingPidStr = await fs.readFile(pidPath);
+    const existingPid = parseInt(existingPidStr.trim(), 10);
+    if (!isNaN(existingPid) && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0); // throws if process is gone (ESRCH on Unix)
+        console.error(`Another server instance is already running (PID ${existingPid}). Stop it before starting a new instance.`);
+        process.exit(1);
+      } catch {
+        // Process not found — stale PID file, safe to proceed
+        console.log(`Stale PID file found (PID ${existingPid} not running). Proceeding.`);
+      }
+    }
+  } catch {
+    // PID file doesn't exist yet — that's fine
+  }
+  await fs.writeFile(pidPath, String(process.pid));
+  process.on("exit", () => {
+    try { nodeFs.unlinkSync(pidPath); } catch { /* ignore */ }
+  });
+
+
   await initializeSubstrate(fs, config.substratePath);
 
   const app = await createApplication({
@@ -66,6 +92,7 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     idleSleepConfig: config.idleSleepConfig,
     shutdownGraceMs: config.shutdownGraceMs,
     logLevel: config.logLevel,
+    apiToken: config.apiToken,
   });
 
   console.log(`Debug log: ${app.logPath}`);

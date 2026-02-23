@@ -354,4 +354,28 @@ describe("resolveConfig", () => {
     expect(config.evaluateOutcome?.enabled).toBe(true);
     expect(config.evaluateOutcome?.qualityThreshold).toBe(80);
   });
+
+  it("apiToken defaults to undefined", async () => {
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      env: {},
+    });
+
+    expect(config.apiToken).toBeUndefined();
+  });
+
+  it("reads apiToken from config file", async () => {
+    await fs.mkdir("/project", { recursive: true });
+    await fs.writeFile("/project/config.json", JSON.stringify({
+      apiToken: "my-secret-token",
+    }));
+
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      cwd: "/project",
+      env: {},
+    });
+
+    expect(config.apiToken).toBe("my-secret-token");
+  });
 });

@@ -62,6 +62,8 @@ export interface ApplicationConfig {
   shutdownGraceMs?: number;
   /** Log verbosity level (default: "info"). Use "debug" to log full envelope payloads and session content. */
   logLevel?: "info" | "debug";
+  /** When set, all /api/* and /mcp requests must include Authorization: Bearer <apiToken> */
+  apiToken?: string;
 }
 
 export interface Application {
