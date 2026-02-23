@@ -75,6 +75,18 @@ reset_attempt_count() {
     log_info "Reset recovery attempt counter"
 }
 
+# Function to clear systemd's start rate limit so restart is allowed
+clear_failed_state() {
+    log_info "Clearing systemd failed state for substrate.service"
+    sudo systemctl reset-failed substrate.service 2>/dev/null || true
+}
+
+# Function to restart substrate via systemctl (requires sudo)
+restart_substrate() {
+    clear_failed_state
+    sudo systemctl restart substrate.service
+}
+
 # Export reset function for use by systemd ExecStartPost
 if [ "${1:-}" = "--reset" ]; then
     reset_attempt_count
@@ -156,7 +168,7 @@ Time: $(date -R)
 
     if [ "$rebuild_success" = true ]; then
         # Rebuild worked, try restarting the service
-        if systemctl restart substrate.service; then
+        if restart_substrate; then
             log_info "Substrate service restarted successfully after rebuild"
 
             send_email \
@@ -197,7 +209,7 @@ $(head -c 10000 < "$rebuild_output")
             log_info "Claude reported successful fix. Restarting substrate service..."
 
             # Restart the service
-            if systemctl restart substrate.service; then
+            if restart_substrate; then
                 log_info "Substrate service restarted successfully"
 
                 # Send success notification

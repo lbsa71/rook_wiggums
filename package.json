@@ -3,7 +3,10 @@
   "version": "0.2.3",
   "private": true,
   "description": "Self-Referential Agent Shell",
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "init": "tsx server/src/cli.ts init",
     "start": "npm run start --workspace=server",

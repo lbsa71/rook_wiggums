@@ -36,25 +36,32 @@ This directory contains systemd service units and recovery scripts for deploying
    chmod +x scripts/recovery.sh
    ```
 
-4. **Create state directory for recovery counter**:
+4. **Install sudoers rule** (allows recovery script to restart the service):
+   ```bash
+   sudo cp scripts/systemd/substrate-sudoers /etc/sudoers.d/substrate
+   sudo chmod 440 /etc/sudoers.d/substrate
+   sudo visudo -cf /etc/sudoers.d/substrate  # validate syntax
+   ```
+
+5. **Create state directory for recovery counter**:
    ```bash
    sudo mkdir -p /var/lib/substrate
    sudo chown rook:rook /var/lib/substrate
    sudo chmod 755 /var/lib/substrate
    ```
 
-5. **Reload systemd daemon**:
+6. **Reload systemd daemon**:
    ```bash
    sudo systemctl daemon-reload
    ```
 
-6. **Enable and start the service**:
+7. **Enable and start the service**:
    ```bash
    sudo systemctl enable substrate.service
    sudo systemctl start substrate.service
    ```
 
-7. **Verify the service is running**:
+8. **Verify the service is running**:
    ```bash
    sudo systemctl status substrate.service
    ```
