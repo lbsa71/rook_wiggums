@@ -22,8 +22,8 @@ ExecStart=/usr/bin/env npm run start
 # Reset recovery attempt counter on successful start
 ExecStartPost=/home/rook/substrate/scripts/recovery.sh --reset
 
-# Restart policy
-Restart=on-failure
+# Restart policy: always restart unless exit code 3 (user-initiated stop via UI)
+Restart=always
 RestartSec=10s
 # Exit code 3 = user-initiated stop; treat as clean exit (no restart, no OnFailure)
 SuccessExitStatus=3
