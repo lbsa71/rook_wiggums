@@ -136,6 +136,10 @@ export class LoopOrchestrator implements IMessageInjector {
     return this.rateLimitUntil;
   }
 
+  getPendingMessageCount(): number {
+    return this.pendingMessages.length;
+  }
+
   isEffectivelyPaused(): boolean {
     return this.state === LoopState.PAUSED || this.rateLimitUntil !== null;
   }
@@ -447,10 +451,10 @@ export class LoopOrchestrator implements IMessageInjector {
     });
     this.watchdog?.recordActivity();
 
-    // Superego audit scheduling
+    // Superego audit scheduling — fire-and-forget to avoid blocking next cycle
     if (this.cycleNumber % this.config.superegoAuditInterval === 0 || this.auditOnNextCycle) {
       this.auditOnNextCycle = false;
-      await this.runAudit();
+      this.runAudit().catch(err => this.logger.debug(`audit: unhandled error — ${err instanceof Error ? err.message : String(err)}`));
     }
 
 
@@ -626,11 +630,18 @@ export class LoopOrchestrator implements IMessageInjector {
     this.activeSessionManager = sessionManager;
 
     // Inject any queued messages
-    for (const msg of this.pendingMessages) {
-      this.logger.debug(`tick ${this.tickNumber}: injecting queued message (${msg.length} chars): ${msg}`);
-      sessionManager.inject(msg);
+    if (this.pendingMessages.length > 0) {
+      this.eventSink.emit({
+        type: "message_processing_started",
+        timestamp: this.clock.now().toISOString(),
+        data: { count: this.pendingMessages.length },
+      });
+      for (const msg of this.pendingMessages) {
+        this.logger.debug(`tick ${this.tickNumber}: injecting queued message (${msg.length} chars): ${msg}`);
+        sessionManager.inject(msg);
+      }
+      this.pendingMessages = [];
     }
-    this.pendingMessages = [];
 
     const result = await sessionManager.run();
 
