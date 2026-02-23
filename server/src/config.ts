@@ -1,7 +1,90 @@
 import * as path from "node:path";
+import { z } from "zod";
 import type { IEnvironment } from "./substrate/abstractions/IEnvironment";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import type { AppPaths } from "./paths";
+
+export class ConfigValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigValidationError";
+  }
+}
+
+const AppConfigSchema = z
+  .object({
+    substratePath: z.string(),
+    workingDirectory: z.string(),
+    sourceCodePath: z.string(),
+    backupPath: z.string(),
+    port: z.number().int().min(1).max(65535),
+    model: z.string(),
+    strategicModel: z.string().optional(),
+    tacticalModel: z.string().optional(),
+    mode: z.enum(["cycle", "tick"]),
+    autoStartOnFirstRun: z.boolean(),
+    autoStartAfterRestart: z.boolean(),
+    backupRetentionCount: z.number().int().min(1).optional(),
+    superegoAuditInterval: z.number().int().min(1).optional(),
+    evaluateOutcome: z
+      .object({
+        enabled: z.boolean(),
+        qualityThreshold: z.number().min(0).max(100).optional(),
+      })
+      .optional(),
+    cycleDelayMs: z.number().min(0).optional(),
+    conversationIdleTimeoutMs: z.number().min(0).optional(),
+    conversationArchive: z
+      .object({
+        enabled: z.boolean(),
+        linesToKeep: z.number().int().min(1),
+        sizeThreshold: z.number().int().min(1),
+        timeThresholdDays: z.number().int().min(1).optional(),
+      })
+      .optional(),
+    email: z
+      .object({
+        enabled: z.boolean(),
+        intervalHours: z.number().min(1),
+        sendTimeHour: z.number().int().min(0).max(23),
+        sendTimeMinute: z.number().int().min(0).max(59),
+      })
+      .optional(),
+    agora: z
+      .object({
+        security: z
+          .object({
+            perSenderRateLimit: z
+              .object({
+                enabled: z.boolean(),
+                maxMessages: z.number().int().min(1),
+                windowMs: z.number().min(1),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    idleSleepConfig: z
+      .object({
+        enabled: z.boolean(),
+        idleCyclesBeforeSleep: z.number().int().min(1),
+      })
+      .optional(),
+    shutdownGraceMs: z.number().min(0).optional(),
+    logLevel: z.enum(["info", "debug"]).optional(),
+    apiToken: z.string().optional(),
+  })
+  .refine(
+    (data) =>
+      data.cycleDelayMs === undefined ||
+      data.conversationIdleTimeoutMs === undefined ||
+      data.cycleDelayMs > data.conversationIdleTimeoutMs,
+    {
+      message: "cycleDelayMs must be greater than conversationIdleTimeoutMs",
+      path: ["cycleDelayMs"],
+    }
+  );
 
 function isEnvironment(
   fsOrEnv: IFileSystem | IEnvironment
@@ -244,6 +327,18 @@ export async function resolveConfig(
   }
   if (getEnv("SUPEREGO_AUDIT_INTERVAL")) {
     merged.superegoAuditInterval = parseInt(getEnv("SUPEREGO_AUDIT_INTERVAL")!, 10);
+  }
+
+  try {
+    AppConfigSchema.parse(merged);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const details = err.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"} — ${issue.message}`)
+        .join("; ");
+      throw new ConfigValidationError(`Invalid config.json: ${details}`);
+    }
+    throw err;
   }
 
   return merged;

@@ -1,5 +1,5 @@
 import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSystem";
-import { resolveConfig } from "../src/config";
+import { resolveConfig, ConfigValidationError } from "../src/config";
 import type { AppPaths } from "../src/paths";
 
 const TEST_PATHS: AppPaths = {
@@ -276,7 +276,7 @@ describe("resolveConfig", () => {
   it("uses conversationIdleTimeoutMs from config file", async () => {
     await fs.mkdir("/project", { recursive: true });
     await fs.writeFile("/project/config.json", JSON.stringify({
-      conversationIdleTimeoutMs: 30000,
+      conversationIdleTimeoutMs: 25000,
     }));
 
     const config = await resolveConfig(fs, {
@@ -285,7 +285,7 @@ describe("resolveConfig", () => {
       env: {},
     });
 
-    expect(config.conversationIdleTimeoutMs).toBe(30000);
+    expect(config.conversationIdleTimeoutMs).toBe(25000);
   });
 
   it("idleSleepConfig defaults to undefined", async () => {
@@ -377,5 +377,68 @@ describe("resolveConfig", () => {
     });
 
     expect(config.apiToken).toBe("my-secret-token");
+  });
+
+  describe("validation errors (ConfigValidationError)", () => {
+    async function writeConfig(obj: unknown): Promise<void> {
+      await fs.mkdir("/project", { recursive: true });
+      await fs.writeFile("/project/config.json", JSON.stringify(obj));
+    }
+
+    const opts = { appPaths: TEST_PATHS, cwd: "/project", env: {} };
+
+    it("throws ConfigValidationError for out-of-range port (0)", async () => {
+      await writeConfig({ port: 0 });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+      await expect(resolveConfig(fs, opts)).rejects.toThrow("Invalid config.json:");
+    });
+
+    it("throws ConfigValidationError for out-of-range port (65536)", async () => {
+      await writeConfig({ port: 65536 });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it("throws ConfigValidationError for invalid mode string", async () => {
+      await writeConfig({ mode: "batch" });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+      await expect(resolveConfig(fs, opts)).rejects.toThrow("Invalid config.json:");
+    });
+
+    it("throws ConfigValidationError for invalid logLevel string", async () => {
+      await writeConfig({ logLevel: "verbose" });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+      await expect(resolveConfig(fs, opts)).rejects.toThrow("Invalid config.json:");
+    });
+
+    it("throws ConfigValidationError when cycleDelayMs <= conversationIdleTimeoutMs", async () => {
+      await writeConfig({ cycleDelayMs: 10000, conversationIdleTimeoutMs: 20000 });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+      await expect(resolveConfig(fs, opts)).rejects.toThrow("cycleDelayMs must be greater than conversationIdleTimeoutMs");
+    });
+
+    it("throws ConfigValidationError when cycleDelayMs equals conversationIdleTimeoutMs", async () => {
+      await writeConfig({ cycleDelayMs: 20000, conversationIdleTimeoutMs: 20000 });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it("throws ConfigValidationError for idleCyclesBeforeSleep < 1", async () => {
+      await writeConfig({ idleSleepConfig: { enabled: true, idleCyclesBeforeSleep: 0 } });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it("throws ConfigValidationError for email.sendTimeHour out of range", async () => {
+      await writeConfig({ email: { enabled: true, intervalHours: 24, sendTimeHour: 24, sendTimeMinute: 0 } });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it("throws ConfigValidationError for email.sendTimeMinute out of range", async () => {
+      await writeConfig({ email: { enabled: true, intervalHours: 24, sendTimeHour: 5, sendTimeMinute: 60 } });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it("throws ConfigValidationError for qualityThreshold > 100", async () => {
+      await writeConfig({ evaluateOutcome: { enabled: true, qualityThreshold: 101 } });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
+    });
   });
 });
