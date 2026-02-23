@@ -24,7 +24,7 @@ import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "imp
 import type { AgoraService } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { LoopWatchdog } from "./LoopWatchdog";
 import { getAppPaths } from "../paths";
-import { TinyBus, SessionInjectionProvider, ChatMessageProvider } from "../tinybus";
+import { TinyBus, SessionInjectionProvider, ChatMessageProvider, type Message } from "../tinybus";
 import { ConversationProvider } from "../tinybus/providers/ConversationProvider";
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { AgoraOutboundProvider } from "../agora/AgoraOutboundProvider";
@@ -229,12 +229,26 @@ export async function createLoopLayer(
 
   // 4. Agora outbound provider - handles outbound agora.send messages (if configured)
   if (agoraService) {
-    agoraOutboundProvider = new AgoraOutboundProvider(agoraService);
+    agoraOutboundProvider = new AgoraOutboundProvider(agoraService, logger);
     tinyBus.registerProvider(agoraOutboundProvider);
   }
 
   // Start TinyBus
   await tinyBus.start();
+
+  // TinyBus observability — log routing outcomes so we can diagnose message delivery issues
+  tinyBus.on("message.routed", (data) => {
+    const d = data as { message: Message; provider: string };
+    logger.debug(`[TINYBUS] Routed: type=${d.message.type} → provider=${d.provider} id=${d.message.id}`);
+  });
+  tinyBus.on("message.error", (data) => {
+    const d = data as { message: Message; provider?: string; error: string };
+    logger.debug(`[TINYBUS] Error: type=${d.message.type} provider=${d.provider ?? "unknown"} error=${d.error}`);
+  });
+  tinyBus.on("message.dropped", (data) => {
+    const d = data as { message: Message; reason: string };
+    logger.debug(`[TINYBUS] Dropped: type=${d.message.type} reason=${d.reason}`);
+  });
 
   httpServer.setOrchestrator(orchestrator);
   httpServer.setDependencies({ reader, ego });

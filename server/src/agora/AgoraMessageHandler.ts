@@ -241,7 +241,7 @@ export class AgoraMessageHandler {
     // Format message as agent prompt similar to old checkAgoraInbox format
     let injected = false;
     try {
-      const agentPrompt = `[AGORA MESSAGE from ${senderDisplayName}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\nRespond to this message if appropriate. Use the TinyBus MCP tool ${"`"}mcp__tinybus__send_message${"`"} with type "agora.send" to reply. Example: { type: "agora.send", payload: { peerName: "${senderDisplayName}", type: "publish", payload: { text: "your response" }, inReplyTo: "${envelope.id}" } }`;
+      const agentPrompt = `[AGORA MESSAGE from ${senderDisplayName}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\nRespond to this message if appropriate. Use the TinyBus MCP tool ${"`"}mcp__tinybus__send_message${"`"} with type "agora.send" to reply. Example: { type: "agora.send", payload: { peerName: "${knownPeer}", type: "publish", payload: { text: "your response" }, inReplyTo: "${envelope.id}" } }`;
       injected = this.messageInjector.injectMessage(agentPrompt);
       this.logger.debug(`[AGORA] Injected message into orchestrator: envelopeId=${envelope.id} delivered=${injected}`);
     } catch (err) {

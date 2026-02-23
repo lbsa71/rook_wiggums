@@ -1,13 +1,14 @@
 import { Message } from "../tinybus/core/Message";
 import { Provider } from "../tinybus/core/Provider";
 import { IAgoraService } from "./IAgoraService";
+import type { ILogger } from "../logging";
 
 /**
  * AgoraOutboundProvider - Handles outbound Agora messages via TinyBus
- * 
+ *
  * Implements TinyBus Provider interface but lives in agora/ module
  * to maintain separation of concerns (all Agora code in one place).
- * 
+ *
  * Expected message format:
  * - type: "agora.send"
  * - payload: { peerName: string; type: string; payload: unknown; inReplyTo?: string }
@@ -17,7 +18,10 @@ export class AgoraOutboundProvider implements Provider {
   private ready = false;
   private started = false;
 
-  constructor(private readonly agoraService: IAgoraService | null) {}
+  constructor(
+    private readonly agoraService: IAgoraService | null,
+    private readonly logger?: ILogger,
+  ) {}
 
   async isReady(): Promise<boolean> {
     return this.ready && this.agoraService !== null;
@@ -66,6 +70,11 @@ export class AgoraOutboundProvider implements Provider {
       throw new Error("Invalid agora.send payload: missing peerName or type");
     }
 
+    this.logger?.debug(
+      `[AGORA-OUT] Sending: peerName=${payload.peerName} type=${payload.type}` +
+      (payload.inReplyTo ? ` inReplyTo=${payload.inReplyTo}` : "")
+    );
+
     const result = await this.agoraService.sendMessage({
       peerName: payload.peerName,
       type: payload.type,
@@ -74,8 +83,12 @@ export class AgoraOutboundProvider implements Provider {
     });
 
     if (!result.ok) {
-      throw new Error(`Failed to send Agora message: ${result.error ?? "unknown error"}`);
+      const errMsg = `Failed to send Agora message: ${result.error ?? "unknown error"} (status=${result.status})`;
+      this.logger?.debug(`[AGORA-OUT] ${errMsg}`);
+      throw new Error(errMsg);
     }
+
+    this.logger?.debug(`[AGORA-OUT] Sent successfully: peerName=${payload.peerName} status=${result.status}`);
   }
 
   onMessage(_handler: (message: Message) => Promise<void>): void {
