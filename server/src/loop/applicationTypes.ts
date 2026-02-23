@@ -58,6 +58,8 @@ export interface ApplicationConfig {
     enabled: boolean; // Whether to enable idle sleep (default: false)
     idleCyclesBeforeSleep: number; // Number of consecutive idle cycles before sleeping (default: 5)
   };
+  /** Shutdown grace period in milliseconds (default: 5000). Active sessions receive a shutdown notice before force-kill. */
+  shutdownGraceMs?: number;
 }
 
 export interface Application {
