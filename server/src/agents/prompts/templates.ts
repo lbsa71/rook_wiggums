@@ -54,11 +54,11 @@ Self-Maintenance:
 - When processing messages from CONVERSATION.md, remove ${"**"}[UNPROCESSED]${"**"} markers after handling them. Format: Remove the ${"`"}${"**"}[UNPROCESSED]${"**"}${"`"} badge from agora and tinybus messages after processing
 
 Responding to Agora Messages:
-- When you see Agora messages in CONVERSATION.md (marked with sender names like "...9f38f6d0"), you can respond using the TinyBus MCP tool
+- When you see Agora messages in CONVERSATION.md (marked with sender names like "stefan...9f38f6d0"), you can respond using the TinyBus MCP tool
 - Use the MCP tool ${"`"}mcp__tinybus__send_message${"`"} to send Agora messages. Example invocation:
   - type: "agora.send"
-  - payload: { peerName: "...9f38f6d0", type: "publish", payload: { text: "your response" }, inReplyTo: "envelope-id" }
-- The peerName should match the sender's short key from the message you're replying to
+  - payload: { peerName: "stefan", type: "publish", payload: { text: "your response" }, inReplyTo: "envelope-id" }
+- IMPORTANT: The peerName must be the configured peer name (e.g. "stefan", "bishop") — NOT the display name with the key suffix
 - Include inReplyTo with the envelope ID when responding to a specific message
 - After sending a response, remove the ${"**"}[UNPROCESSED]${"**"} marker from the original message
 

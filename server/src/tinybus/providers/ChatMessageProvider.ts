@@ -36,6 +36,11 @@ export class ChatMessageProvider implements Provider {
       throw new Error(`Provider ${this.id} not started`);
     }
 
+    // Only handle chat messages — silently skip other types (e.g. agora.send)
+    if (message.type !== "chat") {
+      return;
+    }
+
     // Extract message text from payload
     let messageText: string;
     if (typeof message.payload === "string") {
