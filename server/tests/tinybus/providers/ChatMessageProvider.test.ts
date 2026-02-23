@@ -120,6 +120,17 @@ describe("ChatMessageProvider", () => {
 
       await expect(provider.send(message)).rejects.toThrow("Test error");
     });
+
+    it("silently skips non-chat message types", async () => {
+      const message = createMessage({
+        type: "agora.send",
+        payload: { peerName: "stefan", type: "publish", payload: { text: "hi" } },
+      });
+
+      await provider.send(message);
+
+      expect(handleUserMessageFn).not.toHaveBeenCalled();
+    });
   });
 
   describe("getMessageTypes", () => {
