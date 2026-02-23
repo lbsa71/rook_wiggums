@@ -6,7 +6,7 @@ import { SubstrateFileReader } from "../substrate/io/FileReader";
 import { SubstrateFileWriter } from "../substrate/io/FileWriter";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { FileLock } from "../substrate/io/FileLock";
-import { FileLogger } from "../logging";
+import { FileLogger, type LogLevel } from "../logging";
 import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { MetaManager } from "../substrate/MetaManager";
 
@@ -30,7 +30,10 @@ export interface SubstrateLayerResult {
  * filesystem, clock, config, readers/writers, logger, MetaManager
  * and the SuperegoFindingTracker.
  */
-export async function createSubstrateLayer(substratePath: string): Promise<SubstrateLayerResult> {
+export async function createSubstrateLayer(
+  substratePath: string,
+  logLevel?: LogLevel
+): Promise<SubstrateLayerResult> {
   const fs = new NodeFileSystem();
   const clock = new SystemClock();
   const substrateConfig = new SubstrateConfig(substratePath);
@@ -45,7 +48,7 @@ export async function createSubstrateLayer(substratePath: string): Promise<Subst
 
   // Logger — created early so all layers can use it
   const logPath = path.resolve(substratePath, "..", "debug.log");
-  const logger = new FileLogger(logPath);
+  const logger = new FileLogger(logPath, undefined, logLevel ?? "info");
 
   // Finding tracker — loaded from disk for durable escalation across restarts
   const trackerStatePath = path.resolve(substratePath, "..", ".superego-tracker.json");

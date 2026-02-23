@@ -682,8 +682,6 @@ describe("AgoraMessageHandler", () => {
         getState,
         isRateLimited,
         logger,
-        'allow',
-        inboxManager as unknown as AgoraInboxManager,
         defaultRateLimitConfig
       );
       handler2.setProcessedEnvelopeIds(snapshot);

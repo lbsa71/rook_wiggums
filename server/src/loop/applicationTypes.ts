@@ -60,6 +60,8 @@ export interface ApplicationConfig {
   };
   /** Shutdown grace period in milliseconds (default: 5000). Active sessions receive a shutdown notice before force-kill. */
   shutdownGraceMs?: number;
+  /** Log verbosity level (default: "info"). Use "debug" to log full envelope payloads and session content. */
+  logLevel?: "info" | "debug";
 }
 
 export interface Application {
