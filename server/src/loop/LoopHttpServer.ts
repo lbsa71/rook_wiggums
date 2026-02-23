@@ -162,6 +162,7 @@ export class LoopHttpServer {
         const statusPayload: Record<string, unknown> = {
           state: this.orc.getState(),
           metrics: this.orc.getMetrics(),
+          pendingMessages: this.orc.getPendingMessageCount(),
           version: getVersionInfo(),
         };
         const rlu = this.orc.getRateLimitUntil();
