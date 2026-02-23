@@ -255,6 +255,9 @@ export async function createLoopLayer(
   httpServer.setEventSink(wsServer, clock);
   httpServer.setLogger(logger);
   httpServer.setMeta(await metaManager.read());
+  if (config.apiToken) {
+    httpServer.setApiToken(config.apiToken);
+  }
 
   // Set up TinyBus MCP server
   httpServer.setTinyBus(tinyBus);

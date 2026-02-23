@@ -79,6 +79,8 @@ export interface AppConfig {
   shutdownGraceMs?: number;
   /** Log verbosity level (default: "info"). Use "debug" to log full envelope payloads and session content. */
   logLevel?: "info" | "debug";
+  /** When set, all /api/* and /mcp requests must include Authorization: Bearer <apiToken> */
+  apiToken?: string;
 }
 
 export interface ResolveConfigOptions {
@@ -229,6 +231,7 @@ export async function resolveConfig(
       : undefined,
     shutdownGraceMs: fileConfig.shutdownGraceMs ?? defaults.shutdownGraceMs,
     logLevel: (fileConfig.logLevel ?? defaults.logLevel) as "info" | "debug",
+    apiToken: fileConfig.apiToken,
   };
 
   // Env vars override everything

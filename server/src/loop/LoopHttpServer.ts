@@ -49,6 +49,7 @@ export class LoopHttpServer {
   private delegationTracker: DelegationTracker | null = null;
   private tinyBus: TinyBus | null = null;
   private meta: SubstrateMeta | null = null;
+  private apiToken: string | null = null;
 
   constructor() {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -119,6 +120,11 @@ export class LoopHttpServer {
   setMeta(meta: SubstrateMeta | null): void {
     this.meta = meta;
   }
+
+  setApiToken(token: string): void {
+    this.apiToken = token;
+  }
+
   listen(port: number): Promise<number> {
     return new Promise((resolve) => {
       this.server.listen(port, "127.0.0.1", () => {
@@ -142,6 +148,19 @@ export class LoopHttpServer {
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = req.url ?? "";
     const method = req.method ?? "";
+
+    // API token authentication — enforced on all routes except /hooks/* which have their own auth
+    if (this.apiToken && !url.startsWith("/hooks/")) {
+      const authHeader = req.headers.authorization;
+      const expected = `Bearer ${this.apiToken}`;
+      const valid = authHeader !== undefined &&
+        authHeader.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected));
+      if (!valid) {
+        this.json(res, 401, { error: "Unauthorized" });
+        return;
+      }
+    }
 
     // Handle MCP requests — SDK 1.26+ stateless mode requires a fresh transport per request
     if ((url === "/mcp" || url === "/") && this.tinyBus) {
