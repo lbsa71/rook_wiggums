@@ -10,14 +10,18 @@ export interface LoopConfig {
   superegoAuditInterval: number;
   maxConsecutiveIdleCycles: number;
   idleSleepEnabled: boolean;
+  evaluateOutcomeEnabled: boolean;
+  evaluateOutcomeQualityThreshold: number;
 }
 
 export function defaultLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
   const defaults: LoopConfig = {
     cycleDelayMs: 30000,
-    superegoAuditInterval: 20,
+    superegoAuditInterval: 50,
     maxConsecutiveIdleCycles: 1,
     idleSleepEnabled: false,
+    evaluateOutcomeEnabled: false,
+    evaluateOutcomeQualityThreshold: 70,
   };
   if (!overrides) return defaults;
   return {
@@ -25,6 +29,8 @@ export function defaultLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
     superegoAuditInterval: overrides.superegoAuditInterval ?? defaults.superegoAuditInterval,
     maxConsecutiveIdleCycles: overrides.maxConsecutiveIdleCycles ?? defaults.maxConsecutiveIdleCycles,
     idleSleepEnabled: overrides.idleSleepEnabled ?? defaults.idleSleepEnabled,
+    evaluateOutcomeEnabled: overrides.evaluateOutcomeEnabled ?? defaults.evaluateOutcomeEnabled,
+    evaluateOutcomeQualityThreshold: overrides.evaluateOutcomeQualityThreshold ?? defaults.evaluateOutcomeQualityThreshold,
   };
 }
 
@@ -64,7 +70,7 @@ export interface TickResult {
 }
 
 export interface LoopEvent {
-  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output" | "conversation_message" | "conversation_response" | "tick_started" | "tick_complete" | "message_injected" | "restart_requested" | "backup_complete" | "health_check_complete" | "email_sent" | "metrics_collected" | "reconsideration_complete" | "agora_message" | "file_changed" | "validation_complete";
+  type: "state_changed" | "cycle_complete" | "idle" | "error" | "audit_complete" | "idle_handler" | "evaluation_requested" | "process_output" | "conversation_message" | "conversation_response" | "tick_started" | "tick_complete" | "message_injected" | "message_processing_started" | "restart_requested" | "backup_complete" | "health_check_complete" | "email_sent" | "metrics_collected" | "reconsideration_complete" | "agora_message" | "file_changed" | "validation_complete";
   timestamp: string;
   data: Record<string, unknown>;
 }

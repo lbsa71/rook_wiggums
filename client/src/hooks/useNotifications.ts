@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useEnvironment } from "../environment/EnvironmentContext";
 
 export interface Notification {
   id: string;
@@ -35,7 +36,14 @@ function mapEvent(event: Event): { message: string; type: Notification["type"] }
   }
 }
 
-export function useNotifications(lastEvent: Event | null) {
+export interface UseNotificationsOptions {
+  /** Injected so tests can use known timestamps. Defaults to Date.now. */
+  now?: () => number;
+}
+
+export function useNotifications(lastEvent: Event | null, options?: UseNotificationsOptions) {
+  const env = useEnvironment();
+  const now = options?.now ?? (() => env.now());
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const prevEventRef = useRef<Event | null>(null);
 
@@ -51,7 +59,7 @@ export function useNotifications(lastEvent: Event | null) {
       id,
       message: mapped.message,
       type: mapped.type,
-      timestamp: Date.now(),
+      timestamp: now(),
     };
 
     setNotifications((prev) => [notification, ...prev].slice(0, MAX_NOTIFICATIONS));

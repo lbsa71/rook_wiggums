@@ -20,12 +20,16 @@
  * Usage: node dist/supervisor.js
  */
 
-import { spawn } from "child_process";
-import * as path from "path";
+import { spawn } from "node:child_process";
+import * as path from "node:path";
+import { NodeEnvironment } from "./substrate/abstractions/NodeEnvironment";
 import { resolveConfig } from "./config";
 import { getAppPaths } from "./paths";
-import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
+
+declare const __dirname: string;
+const SERVER_DIR =
+  typeof __dirname !== "undefined" ? path.resolve(__dirname, "..") : process.cwd();
 
 const RESTART_EXIT_CODE = 75;
 const MAX_BUILD_RETRIES = 5;
@@ -72,8 +76,9 @@ export async function validateRestartSafety(
     return false;
   }
 
-  // 2. Check restart-context.md
-  const restartContextPath = path.join(dataDir, "memory", "restart-context.md");
+  // 2. Check restart-context.md (posix for cross-platform tests with in-memory fs)
+  const dataDirPosix = dataDir.replace(/\\/g, "/");
+  const restartContextPath = path.posix.join(dataDirPosix, "memory", "restart-context.md");
   const contextExists = await fs.exists(restartContextPath);
   if (!contextExists) {
     console.error("[supervisor] Safety gate failed: memory/restart-context.md does not exist");
@@ -96,13 +101,11 @@ export async function validateRestartSafety(
 }
 
 async function main(): Promise<void> {
-  const serverDir = path.resolve(__dirname, "..");
-  const cliPath = path.join(serverDir, "dist", "cli.js");
-  const fs = new NodeFileSystem();
+  const cliPath = path.join(SERVER_DIR, "dist", "cli.js");
+  const env = new NodeEnvironment();
   const resolveOptions = {
-    appPaths: getAppPaths(),
+    appPaths: getAppPaths({ env }),
     cwd: process.cwd(),
-    env: process.env,
   };
   let isFirstTime = true;
   let consecutiveFailures = 0;
@@ -110,7 +113,7 @@ async function main(): Promise<void> {
   let consecutiveUnhealthyRestarts = 0;
 
   for (;;) {
-    const config = await resolveConfig(fs, resolveOptions);
+    const config = await resolveConfig(env, resolveOptions);
     const useForceStart = isFirstTime
       ? config.autoStartOnFirstRun === true
       : config.autoStartAfterRestart !== false;
@@ -142,7 +145,7 @@ async function main(): Promise<void> {
       currentRetryDelay = INITIAL_RETRY_DELAY_MS;
       const skipGates = process.argv.includes("--skip-safety-gates");
       if (!skipGates) {
-        const safeToRestart = await validateRestartSafety(serverDir, config.workingDirectory, fs);
+        const safeToRestart = await validateRestartSafety(serverDir, config.workingDirectory, env.fs);
         if (!safeToRestart) {
           console.error("[supervisor] Restart aborted due to failed safety gates");
           process.exit(1);

@@ -1,6 +1,36 @@
 import { getAppPaths } from "../src/paths";
+import type { IEnvironment } from "../src/substrate/abstractions/IEnvironment";
+
+function mockEnv(overrides: {
+  getPlatform: () => string;
+  getHomedir: () => string;
+  getEnv: (key: string) => string | undefined;
+}): IEnvironment {
+  return {
+    get fs() {
+      throw new Error("not used in getAppPaths");
+    },
+    get clock() {
+      throw new Error("not used in getAppPaths");
+    },
+    getEnv: overrides.getEnv,
+    getPlatform: overrides.getPlatform,
+    getHomedir: overrides.getHomedir,
+  };
+}
 
 describe("getAppPaths", () => {
+  it("returns XDG-based paths when given IEnvironment (linux)", () => {
+    const env = mockEnv({
+      getPlatform: () => "linux",
+      getHomedir: () => "/home/testuser",
+      getEnv: (k) => (k === "XDG_CONFIG_HOME" ? "/custom/config" : undefined),
+    });
+    const paths = getAppPaths({ env });
+    expect(paths.config).toBe("/custom/config/substrate");
+    expect(paths.data).toBe("/home/testuser/.local/share/substrate");
+  });
+
   it("returns XDG-based paths on linux", () => {
     const paths = getAppPaths({
       platform: "linux",

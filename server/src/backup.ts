@@ -3,6 +3,10 @@ import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import type { IProcessRunner } from "./agents/claude/IProcessRunner";
 import type { IClock } from "./substrate/abstractions/IClock";
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export interface BackupOptions {
   fs: IFileSystem;
   runner: IProcessRunner;
@@ -43,7 +47,7 @@ export async function findLatestBackup(
     .sort();
 
   if (backups.length === 0) return null;
-  return path.join(backupDir, backups[backups.length - 1]);
+  return toPosix(path.join(backupDir, backups[backups.length - 1]));
 }
 
 export async function restoreBackup(options: RestoreOptions): Promise<RestoreResult> {
@@ -125,14 +129,16 @@ export async function createBackup(options: BackupOptions): Promise<BackupResult
     return { success: false, error: "Substrate directory not found" };
   }
 
-  await fs.mkdir(outputDir, { recursive: true });
+  const outDir = toPosix(outputDir);
+  const subPath = toPosix(substratePath);
+  await fs.mkdir(outDir, { recursive: true });
 
   const timestamp = clock.now().toISOString().replace(/:/g, "-");
   const filename = `substrate-backup-${timestamp}.tar.gz`;
-  const outputPath = path.join(outputDir, filename);
+  const outputPath = path.posix.join(outDir, filename);
 
   // Use -C for relative paths so archives are portable across agent spaces
-  const result = await runner.run("tar", ["-czf", outputPath, "-C", substratePath, "."]);
+  const result = await runner.run("tar", ["-czf", outputPath, "-C", subPath, "."]);
 
   if (result.exitCode !== 0) {
     return { success: false, outputPath, error: result.stderr };

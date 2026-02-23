@@ -21,6 +21,7 @@ import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { IAgoraService } from "../agora/IAgoraService";
 import type { ILogger } from "../logging";
 import { getVersionInfo } from "../version";
+import { SubstrateMeta } from "../substrate/MetaManager";
 
 export interface LoopHttpDependencies {
   reader: SubstrateFileReader;
@@ -29,7 +30,7 @@ export interface LoopHttpDependencies {
 
 export class LoopHttpServer {
   private server: http.Server;
-  private orchestrator: LoopOrchestrator;
+  private orchestrator: LoopOrchestrator | null = null;
   private reader: SubstrateFileReader | null = null;
   private ego: Ego | null = null;
   private reportStore: GovernanceReportStore | null = null;
@@ -46,14 +47,19 @@ export class LoopHttpServer {
   private sizeTracker: SubstrateSizeTracker | null = null;
   private delegationTracker: DelegationTracker | null = null;
   private tinyBus: TinyBus | null = null;
+  private meta: SubstrateMeta | null = null;
 
-  constructor(orchestrator: LoopOrchestrator) {
-    this.orchestrator = orchestrator;
+  constructor() {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
   }
 
   setOrchestrator(orchestrator: LoopOrchestrator): void {
     this.orchestrator = orchestrator;
+  }
+
+  private get orc(): LoopOrchestrator {
+    if (!this.orchestrator) throw new Error("Orchestrator not yet initialized");
+    return this.orchestrator;
   }
 
   setDependencies(deps: LoopHttpDependencies): void {
@@ -109,6 +115,9 @@ export class LoopHttpServer {
     this.tinyBus = tinyBus;
   }
 
+  setMeta(meta: SubstrateMeta | null): void {
+    this.meta = meta;
+  }
   listen(port: number): Promise<number> {
     return new Promise((resolve) => {
       this.server.listen(port, "127.0.0.1", () => {
@@ -151,47 +160,49 @@ export class LoopHttpServer {
     switch (route) {
       case "GET /api/loop/status": {
         const statusPayload: Record<string, unknown> = {
-          state: this.orchestrator.getState(),
-          metrics: this.orchestrator.getMetrics(),
+          state: this.orc.getState(),
+          metrics: this.orc.getMetrics(),
+          pendingMessages: this.orc.getPendingMessageCount(),
           version: getVersionInfo(),
         };
-        const rlu = this.orchestrator.getRateLimitUntil();
+        const rlu = this.orc.getRateLimitUntil();
         if (rlu) statusPayload.rateLimitUntil = rlu;
+        if (this.meta) statusPayload.meta = this.meta;
         this.json(res, 200, statusPayload);
         break;
       }
 
       case "GET /api/loop/metrics":
-        this.json(res, 200, this.orchestrator.getMetrics());
+        this.json(res, 200, this.orc.getMetrics());
         break;
 
       case "POST /api/loop/start":
         this.tryStateTransition(res, () => {
-          const previousState = this.orchestrator.getState();
-          this.orchestrator.start();
+          const previousState = this.orc.getState();
+          this.orc.start();
           // Only start loop if transitioning from STOPPED
           // If rate-limited, the loop is already running, just cleared the rate limit
           if (previousState === LoopState.STOPPED) {
             // Fire-and-forget: start the loop without awaiting
             if (this.mode === "tick") {
-              this.orchestrator.runTickLoop().catch(() => {});
+              this.orc.runTickLoop().catch(() => {});
             } else {
-              this.orchestrator.runLoop().catch(() => {});
+              this.orc.runLoop().catch(() => {});
             }
           }
         });
         break;
 
       case "POST /api/loop/pause":
-        this.tryStateTransition(res, () => this.orchestrator.pause());
+        this.tryStateTransition(res, () => this.orc.pause());
         break;
 
       case "POST /api/loop/resume":
-        this.tryStateTransition(res, () => this.orchestrator.resume());
+        this.tryStateTransition(res, () => this.orc.resume());
         break;
 
       case "POST /api/loop/wake":
-        this.tryStateTransition(res, () => this.orchestrator.wake());
+        this.tryStateTransition(res, () => this.orc.wake());
         break;
 
       case "POST /api/loop/stop":
@@ -200,7 +211,7 @@ export class LoopHttpServer {
           this.json(res, 200, { state: LoopState.STOPPED, message: "Stopping gracefully" });
           // Use setImmediate to ensure response is sent before process exits
           setImmediate(() => {
-            this.orchestrator.stop();
+            this.orc.stop();
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Unknown error";
@@ -217,12 +228,12 @@ export class LoopHttpServer {
         this.json(res, 200, { success: true, message: "Restart requested — rebuilding" });
         // Use setImmediate to ensure response is sent before process exits
         setImmediate(() => {
-          this.orchestrator.requestRestart();
+          this.orc.requestRestart();
         });
         break;
 
       case "POST /api/loop/audit":
-        this.orchestrator.requestAudit();
+        this.orc.requestAudit();
         this.json(res, 200, { success: true });
         break;
 
@@ -356,7 +367,7 @@ export class LoopHttpServer {
             });
           } else {
             // Fallback to direct call if TinyBus not available
-            this.orchestrator.handleUserMessage(parsed.message!).catch((err) => {
+            this.orc.handleUserMessage(parsed.message!).catch((err) => {
               const errMsg = err instanceof Error ? err.message : String(err);
               if (this.eventSink && this.clock) {
                 this.eventSink.emit({
@@ -666,7 +677,7 @@ export class LoopHttpServer {
   private tryStateTransition(res: http.ServerResponse, fn: () => void): void {
     try {
       fn();
-      this.json(res, 200, { state: this.orchestrator.getState() });
+      this.json(res, 200, { state: this.orc.getState() });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       this.json(res, 409, { error: message });

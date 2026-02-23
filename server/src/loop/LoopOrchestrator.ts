@@ -1,5 +1,5 @@
 import { Ego } from "../agents/roles/Ego";
-import { Subconscious, TaskResult } from "../agents/roles/Subconscious";
+import { Subconscious, TaskResult, OutcomeEvaluation } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
 import { Id } from "../agents/roles/Id";
 import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
@@ -22,11 +22,7 @@ import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
 import { RateLimitStateManager } from "./RateLimitStateManager";
-import { BackupScheduler } from "./BackupScheduler";
-import { HealthCheckScheduler } from "./HealthCheckScheduler";
-import { EmailScheduler } from "./EmailScheduler";
-import { MetricsScheduler } from "./MetricsScheduler";
-import { ValidationScheduler } from "./ValidationScheduler";
+import { SchedulerCoordinator } from "./SchedulerCoordinator";
 import { LoopWatchdog } from "./LoopWatchdog";
 import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { IMessageInjector } from "./IMessageInjector";
@@ -46,20 +42,8 @@ export class LoopOrchestrator implements IMessageInjector {
   private launcher: { inject(message: string): void; isActive(): boolean } | null = null;
   private shutdownFn: ((exitCode: number) => void) | null = null;
 
-  // Backup scheduler
-  private backupScheduler: BackupScheduler | null = null;
-
-  // Health check scheduler
-  private healthCheckScheduler: HealthCheckScheduler | null = null;
-
-  // Email scheduler
-  private emailScheduler: EmailScheduler | null = null;
-
-  // Metrics scheduler
-  private metricsScheduler: MetricsScheduler | null = null;
-
-  // Validation scheduler
-  private validationScheduler: ValidationScheduler | null = null;
+  // Scheduler coordinator — runs all due schedulers each cycle
+  private schedulerCoordinator: SchedulerCoordinator | null = null;
 
   // Watchdog — detects stalls and injects gentle reminders
   private watchdog: LoopWatchdog | null = null;
@@ -117,7 +101,7 @@ export class LoopOrchestrator implements IMessageInjector {
     findingTracker?: SuperegoFindingTracker,
     findingTrackerSave?: () => Promise<void>
   ) {
-    this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 60_000; // Default 60s
+    this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 20_000; // Default 20s
     if (findingTracker) {
       this.findingTracker = findingTracker;
     }
@@ -134,6 +118,10 @@ export class LoopOrchestrator implements IMessageInjector {
 
   getRateLimitUntil(): string | null {
     return this.rateLimitUntil;
+  }
+
+  getPendingMessageCount(): number {
+    return this.pendingMessages.length;
   }
 
   isEffectivelyPaused(): boolean {
@@ -251,34 +239,28 @@ export class LoopOrchestrator implements IMessageInjector {
     this.shutdownFn = fn;
   }
 
-  setBackupScheduler(scheduler: BackupScheduler): void {
-    this.backupScheduler = scheduler;
+  setSchedulerCoordinator(coordinator: SchedulerCoordinator): void {
+    this.schedulerCoordinator = coordinator;
   }
 
-  setHealthCheckScheduler(scheduler: HealthCheckScheduler): void {
-    this.healthCheckScheduler = scheduler;
-  }
-
-  setEmailScheduler(scheduler: EmailScheduler): void {
-    this.emailScheduler = scheduler;
-  }
-
-  setMetricsScheduler(scheduler: MetricsScheduler): void {
-    this.metricsScheduler = scheduler;
-  }
-
-  setValidationScheduler(scheduler: ValidationScheduler): void {
-    this.validationScheduler = scheduler;
+  getCycleNumber(): number {
+    return this.cycleNumber;
   }
 
   setWatchdog(watchdog: LoopWatchdog): void {
     this.watchdog = watchdog;
   }
 
-  // Note: setAgoraInboxManager() removed - messages now go directly to CONVERSATION.md
-
   setRateLimitStateManager(manager: RateLimitStateManager): void {
     this.rateLimitStateManager = manager;
+  }
+
+  /**
+   * Set the rateLimitUntil timestamp directly (e.g. restored from disk on startup).
+   * A null value clears any active rate-limit marker.
+   */
+  setRateLimitUntil(value: string | null): void {
+    this.rateLimitUntil = value;
   }
 
   setReportStore(store: GovernanceReportStore): void {
@@ -447,38 +429,16 @@ export class LoopOrchestrator implements IMessageInjector {
     });
     this.watchdog?.recordActivity();
 
-    // Superego audit scheduling
+    // Superego audit scheduling — fire-and-forget to avoid blocking next cycle
     if (this.cycleNumber % this.config.superegoAuditInterval === 0 || this.auditOnNextCycle) {
       this.auditOnNextCycle = false;
-      await this.runAudit();
+      this.runAudit().catch(err => this.logger.debug(`audit: unhandled error — ${err instanceof Error ? err.message : String(err)}`));
     }
 
 
 
-    // Backup scheduling
-    if (this.backupScheduler && await this.backupScheduler.shouldRunBackup()) {
-      await this.runScheduledBackup();
-    }
-
-    // Health check scheduling
-    if (this.healthCheckScheduler && this.healthCheckScheduler.shouldRunCheck()) {
-      await this.runScheduledHealthCheck();
-    }
-
-    // Email scheduling
-    if (this.emailScheduler && await this.emailScheduler.shouldRunEmail()) {
-      await this.runScheduledEmail();
-    }
-
-    // Metrics scheduling
-    if (this.metricsScheduler && await this.metricsScheduler.shouldRunMetrics()) {
-      await this.runScheduledMetrics();
-    }
-
-    // Validation scheduling
-    if (this.validationScheduler && await this.validationScheduler.shouldRunValidation()) {
-      await this.runScheduledValidation();
-    }
+    // Run all due schedulers (backup, health check, email, metrics, validation)
+    await this.schedulerCoordinator?.runDueSchedulers();
 
     return result;
   }
@@ -488,6 +448,22 @@ export class LoopOrchestrator implements IMessageInjector {
 
   async runLoop(): Promise<void> {
     this.logger.debug("runLoop() entered");
+
+    // Honor rate limit restored from disk before the previous shutdown.
+    if (this.rateLimitUntil !== null) {
+      const waitMs = Math.max(0, new Date(this.rateLimitUntil).getTime() - this.clock.now().getTime());
+      if (waitMs > 0) {
+        this.logger.debug(`runLoop: honoring restored rate limit — waiting ${waitMs}ms until ${this.rateLimitUntil}`);
+        this.eventSink.emit({
+          type: "idle",
+          timestamp: this.clock.now().toISOString(),
+          data: { rateLimitUntil: this.rateLimitUntil, waitMs },
+        });
+        await this.timer.delay(waitMs);
+      }
+      this.rateLimitUntil = null;
+    }
+
     while (this.state === LoopState.RUNNING) {
       const cycleResult = await this.runOneCycle();
 
@@ -558,8 +534,13 @@ export class LoopOrchestrator implements IMessageInjector {
         await this.timer.delay(waitMs);
         this.rateLimitUntil = null;
       } else {
-        this.logger.debug(`runLoop: delaying ${this.config.cycleDelayMs}ms before next cycle`);
-        await this.timer.delay(this.config.cycleDelayMs);
+        // Skip the inter-cycle delay when messages are already waiting — process them immediately.
+        if (this.pendingMessages.length > 0) {
+          this.logger.debug("runLoop: pending messages detected, skipping cycle delay");
+        } else {
+          this.logger.debug(`runLoop: delaying ${this.config.cycleDelayMs}ms before next cycle`);
+          await this.timer.delay(this.config.cycleDelayMs);
+        }
       }
     }
     this.logger.debug("runLoop() exited");
@@ -621,11 +602,18 @@ export class LoopOrchestrator implements IMessageInjector {
     this.activeSessionManager = sessionManager;
 
     // Inject any queued messages
-    for (const msg of this.pendingMessages) {
-      this.logger.debug(`tick ${this.tickNumber}: injecting queued message (${msg.length} chars): ${msg}`);
-      sessionManager.inject(msg);
+    if (this.pendingMessages.length > 0) {
+      this.eventSink.emit({
+        type: "message_processing_started",
+        timestamp: this.clock.now().toISOString(),
+        data: { count: this.pendingMessages.length },
+      });
+      for (const msg of this.pendingMessages) {
+        this.logger.debug(`tick ${this.tickNumber}: injecting queued message (${msg.length} chars): ${msg}`);
+        sessionManager.inject(msg);
+      }
+      this.pendingMessages = [];
     }
-    this.pendingMessages = [];
 
     const result = await sessionManager.run();
 
@@ -912,248 +900,6 @@ export class LoopOrchestrator implements IMessageInjector {
     });
   }
 
-  private async runScheduledBackup(): Promise<void> {
-    this.logger.debug(`backup: starting scheduled backup (cycle ${this.cycleNumber})`);
-    try {
-      const result = await this.backupScheduler!.runBackup();
-      if (result.success) {
-        this.logger.debug(`backup: success — ${result.backupPath} (verified: ${result.verification?.valid ?? false})`);
-        this.eventSink.emit({
-          type: "backup_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: true,
-            backupPath: result.backupPath,
-            verified: result.verification?.valid ?? false,
-            checksum: result.verification?.checksum,
-            sizeBytes: result.verification?.sizeBytes,
-          },
-        });
-      } else {
-        this.logger.debug(`backup: failed — ${result.error}`);
-        this.eventSink.emit({
-          type: "backup_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: false,
-            error: result.error,
-          },
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.debug(`backup: unexpected error — ${errorMsg}`);
-      this.eventSink.emit({
-        type: "backup_complete",
-        timestamp: this.clock.now().toISOString(),
-        data: {
-          cycleNumber: this.cycleNumber,
-          success: false,
-          error: errorMsg,
-        },
-      });
-    }
-  }
-
-  private async runScheduledHealthCheck(): Promise<void> {
-    this.logger.debug(`health_check: starting scheduled check (cycle ${this.cycleNumber})`);
-    try {
-      const result = await this.healthCheckScheduler!.runCheck();
-      if (result.success && result.result) {
-        this.logger.debug(`health_check: complete — overall: ${result.result.overall}`);
-        this.eventSink.emit({
-          type: "health_check_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: true,
-            overall: result.result.overall,
-            drift: {
-              score: result.result.drift.score,
-              findings: result.result.drift.findings.length,
-            },
-            consistency: {
-              consistent: result.result.consistency.inconsistencies.length === 0,
-              issues: result.result.consistency.inconsistencies.length,
-            },
-            security: {
-              compliant: result.result.security.compliant,
-              issues: result.result.security.issues.length,
-            },
-            planQuality: {
-              score: result.result.planQuality.score,
-              findings: result.result.planQuality.findings.length,
-            },
-            reasoning: {
-              valid: result.result.reasoning.valid,
-              issues: result.result.reasoning.issues.length,
-            },
-          },
-        });
-      } else {
-        this.logger.debug(`health_check: failed — ${result.error}`);
-        this.eventSink.emit({
-          type: "health_check_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: false,
-            error: result.error,
-          },
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.debug(`health_check: unexpected error — ${errorMsg}`);
-      this.eventSink.emit({
-        type: "health_check_complete",
-        timestamp: this.clock.now().toISOString(),
-        data: {
-          cycleNumber: this.cycleNumber,
-          success: false,
-          error: errorMsg,
-        },
-      });
-    }
-  }
-
-  private async runScheduledEmail(): Promise<void> {
-    this.logger.debug(`email: starting scheduled email (cycle ${this.cycleNumber})`);
-    try {
-      const result = await this.emailScheduler!.runEmail();
-      if (result.success && result.content) {
-        this.logger.debug(`email: success — ${result.content.subject}`);
-        this.eventSink.emit({
-          type: "email_sent",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: true,
-            subject: result.content.subject,
-            bodyPreview: result.content.body.substring(0, 100),
-          },
-        });
-      } else {
-        this.logger.debug(`email: failed — ${result.error}`);
-        this.eventSink.emit({
-          type: "email_sent",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: false,
-            error: result.error,
-          },
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.debug(`email: unexpected error — ${errorMsg}`);
-      this.eventSink.emit({
-        type: "email_sent",
-        timestamp: this.clock.now().toISOString(),
-        data: {
-          cycleNumber: this.cycleNumber,
-          success: false,
-          error: errorMsg,
-        },
-      });
-    }
-  }
-
-  private async runScheduledMetrics(): Promise<void> {
-    this.logger.debug(`metrics: starting scheduled metrics collection (cycle ${this.cycleNumber})`);
-    try {
-      const result = await this.metricsScheduler!.runMetrics();
-      if (result.success) {
-        this.logger.debug(`metrics: success — collected: ${JSON.stringify(result.collected)}`);
-        this.eventSink.emit({
-          type: "metrics_collected",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: true,
-            collected: result.collected,
-          },
-        });
-      } else {
-        this.logger.debug(`metrics: failed — ${result.error}`);
-        this.eventSink.emit({
-          type: "metrics_collected",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: false,
-            error: result.error,
-          },
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.debug(`metrics: unexpected error — ${errorMsg}`);
-      this.eventSink.emit({
-        type: "metrics_collected",
-        timestamp: this.clock.now().toISOString(),
-        data: {
-          cycleNumber: this.cycleNumber,
-          success: false,
-          error: errorMsg,
-        },
-      });
-    }
-  }
-
-  private async runScheduledValidation(): Promise<void> {
-    this.logger.debug(`validation: starting scheduled substrate validation (cycle ${this.cycleNumber})`);
-    try {
-      const result = await this.validationScheduler!.runValidation();
-      if (result.success && result.report) {
-        const { brokenReferences, orphanedFiles, staleFiles } = result.report;
-        this.logger.debug(
-          `validation: success — ${brokenReferences.length} broken refs, ` +
-          `${orphanedFiles.length} orphaned files, ${staleFiles.length} stale files`
-        );
-        this.eventSink.emit({
-          type: "validation_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: true,
-            brokenReferences: brokenReferences.length,
-            orphanedFiles: orphanedFiles.length,
-            staleFiles: staleFiles.length,
-          },
-        });
-      } else {
-        this.logger.debug(`validation: failed — ${result.error}`);
-        this.eventSink.emit({
-          type: "validation_complete",
-          timestamp: this.clock.now().toISOString(),
-          data: {
-            cycleNumber: this.cycleNumber,
-            success: false,
-            error: result.error,
-          },
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.debug(`validation: unexpected error — ${errorMsg}`);
-      this.eventSink.emit({
-        type: "validation_complete",
-        timestamp: this.clock.now().toISOString(),
-        data: {
-          cycleNumber: this.cycleNumber,
-          success: false,
-          error: errorMsg,
-        },
-      });
-    }
-  }
-
-
-
   private async recordDriveRatingIfApplicable(description: string, taskResult: TaskResult): Promise<void> {
     if (!this.driveQualityTracker) return;
 
@@ -1185,11 +931,37 @@ export class LoopOrchestrator implements IMessageInjector {
   ): Promise<void> {
     this.logger.debug(`reconsideration: evaluating outcome for task "${dispatch.taskId}" (cycle ${this.cycleNumber})`);
     try {
-      const evaluation = await this.subconscious.evaluateOutcome(
-        { taskId: dispatch.taskId, description: dispatch.description },
-        taskResult,
-        this.createLogCallback("SUBCONSCIOUS")
-      );
+      let evaluation: OutcomeEvaluation;
+
+      if (!this.config.evaluateOutcomeEnabled) {
+        // Heuristic path: use computeDriveRating() without spawning an LLM session
+        const driveRating = Subconscious.computeDriveRating(taskResult);
+        const qualityScore = driveRating * 10; // scale 0-10 → 0-100
+
+        if (qualityScore >= this.config.evaluateOutcomeQualityThreshold) {
+          // Score is good enough — use heuristic result directly
+          const outcomeMatchesIntent = taskResult.result !== "failure";
+          // needsReassessment: only if quality is catastrophically 0 (threshold can't be ≤0 in practice)
+          const needsReassessment = qualityScore === 0;
+          this.logger.debug(`reconsideration: heuristic score ${qualityScore}/100 — skipping LLM evaluation`);
+          evaluation = { outcomeMatchesIntent, qualityScore, issuesFound: [], recommendedActions: [], needsReassessment };
+        } else {
+          // Score below threshold — fall back to LLM for safety
+          this.logger.debug(`reconsideration: heuristic score ${qualityScore}/100 below threshold — falling back to LLM`);
+          evaluation = await this.subconscious.evaluateOutcome(
+            { taskId: dispatch.taskId, description: dispatch.description },
+            taskResult,
+            this.createLogCallback("SUBCONSCIOUS")
+          );
+        }
+      } else {
+        // LLM evaluation enabled — original behavior
+        evaluation = await this.subconscious.evaluateOutcome(
+          { taskId: dispatch.taskId, description: dispatch.description },
+          taskResult,
+          this.createLogCallback("SUBCONSCIOUS")
+        );
+      }
 
       this.logger.debug(
         `reconsideration: complete — outcome matches intent: ${evaluation.outcomeMatchesIntent}, ` +

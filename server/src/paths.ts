@@ -1,7 +1,13 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import type { IEnvironment } from "./substrate/abstractions/IEnvironment";
 
 const APP_NAME = "substrate";
+
+/** Normalize to posix style so paths are consistent in tests and cross-platform. */
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
 
 export interface AppPaths {
   config: string;
@@ -14,32 +20,44 @@ export interface PathOptions {
   env?: Record<string, string | undefined>;
 }
 
-export function getAppPaths(options?: PathOptions): AppPaths {
-  const platform = options?.platform ?? process.platform;
-  const home = options?.homedir ?? os.homedir();
-  const env = options?.env ?? process.env;
+export type GetAppPathsOptions = PathOptions | { env: IEnvironment };
+
+function isEnvironment(o: GetAppPathsOptions | undefined): o is { env: IEnvironment } {
+  return o != null && "env" in o && typeof (o as { env: IEnvironment }).env.getEnv === "function";
+}
+
+export function getAppPaths(options?: GetAppPathsOptions): AppPaths {
+  const platform = isEnvironment(options)
+    ? options.env.getPlatform()
+    : (options?.platform ?? process.platform);
+  const home = isEnvironment(options)
+    ? options.env.getHomedir()
+    : (options?.homedir ?? os.homedir());
+  const envRecord = isEnvironment(options)
+    ? (key: string) => options.env.getEnv(key)
+    : (key: string) => options?.env?.[key] ?? process.env[key];
 
   if (platform === "darwin") {
     return {
-      config: path.join(home, "Library", "Preferences", APP_NAME),
-      data: path.join(home, "Library", "Application Support", APP_NAME),
+      config: toPosix(path.join(home, "Library", "Preferences", APP_NAME)),
+      data: toPosix(path.join(home, "Library", "Application Support", APP_NAME)),
     };
   }
 
   if (platform === "win32") {
-    const appData = env["APPDATA"] ?? path.join(home, "AppData", "Roaming");
-    const localAppData = env["LOCALAPPDATA"] ?? path.join(home, "AppData", "Local");
+    const appData = envRecord("APPDATA") ?? path.join(home, "AppData", "Roaming");
+    const localAppData = envRecord("LOCALAPPDATA") ?? path.join(home, "AppData", "Local");
     return {
-      config: path.join(appData, APP_NAME),
-      data: path.join(localAppData, APP_NAME),
+      config: toPosix(path.join(appData, APP_NAME)),
+      data: toPosix(path.join(localAppData, APP_NAME)),
     };
   }
 
   // Linux / other Unix
-  const xdgConfig = env["XDG_CONFIG_HOME"] ?? path.join(home, ".config");
-  const xdgData = env["XDG_DATA_HOME"] ?? path.join(home, ".local", "share");
+  const xdgConfig = envRecord("XDG_CONFIG_HOME") ?? path.join(home, ".config");
+  const xdgData = envRecord("XDG_DATA_HOME") ?? path.join(home, ".local", "share");
   return {
-    config: path.join(xdgConfig, APP_NAME),
-    data: path.join(xdgData, APP_NAME),
+    config: toPosix(path.join(xdgConfig, APP_NAME)),
+    data: toPosix(path.join(xdgData, APP_NAME)),
   };
 }

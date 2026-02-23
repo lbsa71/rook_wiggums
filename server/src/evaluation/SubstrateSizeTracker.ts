@@ -2,6 +2,10 @@ import { IFileSystem } from "../substrate/abstractions/IFileSystem";
 import { IClock } from "../substrate/abstractions/IClock";
 import * as path from "node:path";
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 /**
  * Single size measurement snapshot
  */
@@ -60,8 +64,9 @@ export class SubstrateSizeTracker {
     private readonly clock: IClock,
     private readonly substratePath: string
   ) {
-    const metricsDir = `${substratePath}/.metrics`;
-    this.metricsPath = `${metricsDir}/substrate_sizes.jsonl`;
+    const base = toPosix(substratePath);
+    const metricsDir = path.posix.join(base, ".metrics");
+    this.metricsPath = path.posix.join(metricsDir, "substrate_sizes.jsonl");
   }
 
   /**
@@ -71,9 +76,10 @@ export class SubstrateSizeTracker {
     const files: Record<string, number> = {};
     let totalBytes = 0;
 
+    const base = toPosix(this.substratePath);
     // Measure all substrate markdown files
     for (const filename of Object.keys(SIZE_TARGETS)) {
-      const filePath = path.join(this.substratePath, filename);
+      const filePath = path.posix.join(base, filename);
       try {
         const content = await this.fs.readFile(filePath);
         const lineCount = content.split("\n").length;
@@ -94,7 +100,7 @@ export class SubstrateSizeTracker {
     };
 
     // Ensure .metrics directory exists
-    const metricsDir = path.dirname(this.metricsPath);
+    const metricsDir = path.posix.dirname(this.metricsPath);
     await this.fs.mkdir(metricsDir, { recursive: true });
 
     // Append to JSONL file
@@ -127,8 +133,9 @@ export class SubstrateSizeTracker {
   async getCurrentStatus(): Promise<Record<string, FileSizeStatus>> {
     const status: Record<string, FileSizeStatus> = {};
 
+    const base = toPosix(this.substratePath);
     for (const [filename, target] of Object.entries(SIZE_TARGETS)) {
-      const filePath = path.join(this.substratePath, filename);
+      const filePath = path.posix.join(base, filename);
       let current = 0;
       
       try {

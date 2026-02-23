@@ -14,12 +14,12 @@ import { EventEmitter } from "events";
 import { validateRestartSafety } from "../src/supervisor";
 import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSystem";
 
-jest.mock("child_process", () => ({
+jest.mock("node:child_process", () => ({
   spawn: jest.fn(),
 }));
 
-// Import after mock so Jest can replace the module
-import { spawn } from "child_process";
+// Import after mock so Jest can replace the module (must match supervisor's import)
+import { spawn } from "node:child_process";
 const mockSpawn = spawn as jest.MockedFunction<typeof spawn>;
 
 /** Helper: returns a fake ChildProcess that exits with the given code. */
@@ -239,8 +239,8 @@ describe("validateRestartSafety", () => {
 
   it("returns true when all safety gates pass", async () => {
     mockSpawn
-      .mockReturnValueOnce(fakeProcess(0) as ReturnType<typeof spawn>)  // npm test
-      .mockReturnValueOnce(fakeProcess(0) as ReturnType<typeof spawn>); // git diff-index
+      .mockImplementationOnce(() => fakeProcess(0) as ReturnType<typeof spawn>)  // npm test
+      .mockImplementationOnce(() => fakeProcess(0) as ReturnType<typeof spawn>);  // git diff-index
 
     const fs = new InMemoryFileSystem();
     await fs.mkdir("/data/memory", { recursive: true });

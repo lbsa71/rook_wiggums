@@ -1,6 +1,21 @@
 import * as path from "node:path";
+import type { IEnvironment } from "./substrate/abstractions/IEnvironment";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import type { AppPaths } from "./paths";
+
+function isEnvironment(
+  fsOrEnv: IFileSystem | IEnvironment
+): fsOrEnv is IEnvironment {
+  return typeof (fsOrEnv as IEnvironment).getEnv === "function";
+}
+
+/** Use posix path join when path looks like a posix path (e.g. test or Unix). */
+function pathJoin(base: string, ...segments: string[]): string {
+  if (base.startsWith("/") && !base.match(/^[a-zA-Z]:/)) {
+    return path.posix.join(base, ...segments);
+  }
+  return path.join(base, ...segments);
+}
 
 export interface AppConfig {
   substratePath: string;
@@ -18,10 +33,19 @@ export interface AppConfig {
   autoStartAfterRestart: boolean;
   /** Number of backups to retain (default: 14). */
   backupRetentionCount?: number;
-  /** Number of cycles between SUPEREGO audits (default: 20). Can be overridden by SUPEREGO_AUDIT_INTERVAL env var. */
+  /** Number of cycles between SUPEREGO audits (default: 50). Can be overridden by SUPEREGO_AUDIT_INTERVAL env var. */
   superegoAuditInterval?: number;
+  /** Configuration for post-task outcome evaluation */
+  evaluateOutcome?: {
+    /** When false (default), use computeDriveRating() heuristic; fall back to LLM only when score < qualityThreshold */
+    enabled: boolean;
+    /** Minimum heuristic quality score (0-100) required to skip LLM evaluation (default: 70) */
+    qualityThreshold?: number;
+  };
   /** Delay between loop cycles in ms (default: 30000). For primarily reactive agents, consider 60000 or more. */
   cycleDelayMs?: number;
+  /** How long (ms) a conversation session stays open after the last message before being closed (default: 20000). */
+  conversationIdleTimeoutMs?: number;
   /** Configuration for CONVERSATION.md archiving */
   conversationArchive?: {
     enabled: boolean;
@@ -39,7 +63,6 @@ export interface AppConfig {
   /** Configuration for Agora security */
   agora?: {
     security?: {
-      unknownSenderPolicy?: 'allow' | 'quarantine' | 'reject'; // default: 'quarantine'
       perSenderRateLimit?: {
         enabled: boolean; // Whether to enable per-sender rate limiting (default: true)
         maxMessages: number; // Maximum messages per sender in time window (default: 10)
@@ -52,6 +75,10 @@ export interface AppConfig {
     enabled: boolean; // Whether to enable idle sleep (default: false)
     idleCyclesBeforeSleep: number; // Number of consecutive idle cycles before sleeping (default: 5)
   };
+  /** Shutdown grace period in milliseconds (default: 5000). Active sessions receive a shutdown notice before force-kill. */
+  shutdownGraceMs?: number;
+  /** Log verbosity level (default: "info"). Use "debug" to log full envelope payloads and session content. */
+  logLevel?: "info" | "debug";
 }
 
 export interface ResolveConfigOptions {
@@ -62,16 +89,21 @@ export interface ResolveConfigOptions {
 }
 
 export async function resolveConfig(
-  fs: IFileSystem,
+  fsOrEnv: IFileSystem | IEnvironment,
   options: ResolveConfigOptions
 ): Promise<AppConfig> {
-  const { appPaths, env = {} } = options;
+  const fs = isEnvironment(fsOrEnv) ? fsOrEnv.fs : fsOrEnv;
+  const env = options.env ?? (isEnvironment(fsOrEnv) ? (key: string) => fsOrEnv.getEnv(key) : undefined);
+  const { appPaths } = options;
 
   const defaults: AppConfig = {
     substratePath: appPaths.data,
     workingDirectory: appPaths.data,
     sourceCodePath: options.cwd ?? appPaths.data,
-    backupPath: path.join(path.dirname(appPaths.data), "substrate-backups"),
+    backupPath:
+    appPaths.data.startsWith("/") && !/^[a-zA-Z]:/.test(appPaths.data)
+      ? path.posix.join(path.posix.dirname(appPaths.data), "substrate-backups")
+      : path.join(path.dirname(appPaths.data), "substrate-backups"),
     port: 3000,
     model: "sonnet",
     strategicModel: "opus",
@@ -80,8 +112,13 @@ export async function resolveConfig(
     autoStartOnFirstRun: false,
     autoStartAfterRestart: true,
     backupRetentionCount: 14,
-    superegoAuditInterval: 20,
+    superegoAuditInterval: 50,
     cycleDelayMs: 30000,
+    evaluateOutcome: {
+      enabled: false,
+      qualityThreshold: 70,
+    },
+    conversationIdleTimeoutMs: 20000,
     conversationArchive: {
       enabled: false, // Disabled by default to maintain backward compatibility
       linesToKeep: 100,
@@ -96,7 +133,6 @@ export async function resolveConfig(
     },
     agora: {
       security: {
-        unknownSenderPolicy: 'quarantine', // Quarantine by default for security
         perSenderRateLimit: {
           enabled: true, // Enabled by default
           maxMessages: 10, // 10 messages per minute
@@ -104,6 +140,8 @@ export async function resolveConfig(
         },
       },
     },
+    shutdownGraceMs: 5000,
+    logLevel: "info",
   };
 
   let fileConfig: Partial<AppConfig> = {};
@@ -116,13 +154,13 @@ export async function resolveConfig(
     fileConfig = JSON.parse(raw) as Partial<AppConfig>;
   } else {
     // Try CWD config.json
-    const cwdConfig = options.cwd ? path.join(options.cwd, "config.json") : undefined;
+    const cwdConfig = options.cwd ? pathJoin(options.cwd, "config.json") : undefined;
     if (cwdConfig && await fs.exists(cwdConfig)) {
       const raw = await fs.readFile(cwdConfig);
       fileConfig = JSON.parse(raw) as Partial<AppConfig>;
     } else {
       // Try config-dir config.json
-      const configDirFile = path.join(appPaths.config, "config.json");
+      const configDirFile = pathJoin(appPaths.config, "config.json");
       if (await fs.exists(configDirFile)) {
         const raw = await fs.readFile(configDirFile);
         fileConfig = JSON.parse(raw) as Partial<AppConfig>;
@@ -145,6 +183,13 @@ export async function resolveConfig(
     backupRetentionCount: fileConfig.backupRetentionCount ?? defaults.backupRetentionCount,
     superegoAuditInterval: fileConfig.superegoAuditInterval ?? defaults.superegoAuditInterval,
     cycleDelayMs: fileConfig.cycleDelayMs ?? defaults.cycleDelayMs,
+    evaluateOutcome: fileConfig.evaluateOutcome
+      ? {
+          enabled: fileConfig.evaluateOutcome.enabled ?? defaults.evaluateOutcome!.enabled,
+          qualityThreshold: fileConfig.evaluateOutcome.qualityThreshold ?? defaults.evaluateOutcome!.qualityThreshold,
+        }
+      : defaults.evaluateOutcome,
+    conversationIdleTimeoutMs: fileConfig.conversationIdleTimeoutMs ?? defaults.conversationIdleTimeoutMs,
     conversationArchive: fileConfig.conversationArchive
       ? {
           enabled: fileConfig.conversationArchive.enabled ?? defaults.conversationArchive!.enabled,
@@ -165,7 +210,6 @@ export async function resolveConfig(
       ? {
           security: fileConfig.agora.security
             ? {
-                unknownSenderPolicy: fileConfig.agora.security.unknownSenderPolicy ?? defaults.agora!.security!.unknownSenderPolicy,
                 perSenderRateLimit: fileConfig.agora.security.perSenderRateLimit
                   ? {
                       enabled: fileConfig.agora.security.perSenderRateLimit.enabled ?? defaults.agora!.security!.perSenderRateLimit!.enabled,
@@ -183,17 +227,20 @@ export async function resolveConfig(
           idleCyclesBeforeSleep: fileConfig.idleSleepConfig.idleCyclesBeforeSleep ?? 5,
         }
       : undefined,
+    shutdownGraceMs: fileConfig.shutdownGraceMs ?? defaults.shutdownGraceMs,
+    logLevel: (fileConfig.logLevel ?? defaults.logLevel) as "info" | "debug",
   };
 
   // Env vars override everything
-  if (env["SUBSTRATE_PATH"]) {
-    merged.substratePath = env["SUBSTRATE_PATH"];
+  const getEnv = typeof env === "function" ? env : (k: string) => env[k];
+  if (getEnv("SUBSTRATE_PATH")) {
+    merged.substratePath = getEnv("SUBSTRATE_PATH")!;
   }
-  if (env["PORT"]) {
-    merged.port = parseInt(env["PORT"], 10);
+  if (getEnv("PORT")) {
+    merged.port = parseInt(getEnv("PORT")!, 10);
   }
-  if (env["SUPEREGO_AUDIT_INTERVAL"]) {
-    merged.superegoAuditInterval = parseInt(env["SUPEREGO_AUDIT_INTERVAL"], 10);
+  if (getEnv("SUPEREGO_AUDIT_INTERVAL")) {
+    merged.superegoAuditInterval = parseInt(getEnv("SUPEREGO_AUDIT_INTERVAL")!, 10);
   }
 
   return merged;

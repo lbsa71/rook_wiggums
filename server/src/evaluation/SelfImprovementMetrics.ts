@@ -3,6 +3,10 @@ import { IClock } from "../substrate/abstractions/IClock";
 import { GovernanceReportStore } from "./GovernanceReportStore";
 import * as path from "node:path";
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export interface CodeQualityMetrics {
   linesOfCode: number;
   testCount: number;
@@ -115,19 +119,20 @@ export class SelfImprovementMetricsCollector {
    * Persist a snapshot to disk and append a readable summary to PROGRESS.md.
    */
   async save(snapshot: SelfImprovementSnapshot): Promise<void> {
-    const metricsDir = path.join(this.substratePath, "..", "data", "metrics");
+    const base = toPosix(this.substratePath);
+    const metricsDir = path.posix.join(base, "..", "data", "metrics");
     await this.fs.mkdir(metricsDir, { recursive: true });
 
     const filename = `self-improvement-${snapshot.period}.json`;
     await this.fs.writeFile(
-      path.join(metricsDir, filename),
+      path.posix.join(metricsDir, filename),
       JSON.stringify(snapshot, null, 2)
     );
 
     const previous = await this.loadPrevious(snapshot.period);
     const summary = this.formatSummary(snapshot, previous);
     await this.fs.appendFile(
-      path.join(this.substratePath, "PROGRESS.md"),
+      path.posix.join(base, "PROGRESS.md"),
       `\n## Self-Improvement Metrics (${snapshot.period})\n\n${summary}\n`
     );
   }
@@ -140,9 +145,10 @@ export class SelfImprovementMetricsCollector {
     const prevDate = new Date(year, month - 2); // period month is 1-indexed; Date month is 0-indexed; subtract 2 to go back one month
     const prevPeriod = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
 
-    const metricsDir = path.join(this.substratePath, "..", "data", "metrics");
+    const base = toPosix(this.substratePath);
+    const metricsDir = path.posix.join(base, "..", "data", "metrics");
     try {
-      const content = await this.fs.readFile(path.join(metricsDir, `self-improvement-${prevPeriod}.json`));
+      const content = await this.fs.readFile(path.posix.join(metricsDir, `self-improvement-${prevPeriod}.json`));
       return JSON.parse(content) as SelfImprovementSnapshot;
     } catch {
       return null;
@@ -205,13 +211,14 @@ export class SelfImprovementMetricsCollector {
   // ---------------------------------------------------------------------------
 
   private async collectCodeQuality(): Promise<CodeQualityMetrics> {
+    const srcBase = toPosix(this.serverSrcPath);
     // Count TypeScript source files (excluding test files and generated dirs)
     const srcFiles = await this.listFilesRecursively(
-      this.serverSrcPath,
+      srcBase,
       ".ts",
       (name) => !name.endsWith(".test.ts") && !name.endsWith(".d.ts")
     );
-    const testFiles = await this.listFilesRecursively(this.serverSrcPath, ".test.ts");
+    const testFiles = await this.listFilesRecursively(srcBase, ".test.ts");
 
     let linesOfCode = 0;
     for (const f of srcFiles) {
@@ -233,10 +240,11 @@ export class SelfImprovementMetricsCollector {
   }
 
   private async collectKnowledge(): Promise<KnowledgeMetrics> {
+    const base = toPosix(this.substratePath);
     // Count root-level .md files in the substrate directory
     let totalFiles = 0;
     try {
-      const rootEntries = await this.fs.readdir(this.substratePath);
+      const rootEntries = await this.fs.readdir(base);
       totalFiles = rootEntries.filter((e) => e.endsWith(".md")).length;
     } catch {
       // substrate path doesn't exist
@@ -246,7 +254,7 @@ export class SelfImprovementMetricsCollector {
     let subdirectoryFiles = 0;
     for (const subdir of SUBSTRATE_SUBDIRS) {
       try {
-        const entries = await this.fs.readdir(path.join(this.substratePath, subdir));
+        const entries = await this.fs.readdir(path.posix.join(base, subdir));
         subdirectoryFiles += entries.filter((e) => e.endsWith(".md")).length;
       } catch {
         // subdirectory doesn't exist
@@ -257,7 +265,7 @@ export class SelfImprovementMetricsCollector {
     let referenceCount = 0;
     for (const indexFile of SUBSTRATE_INDEX_FILES) {
       try {
-        const content = await this.fs.readFile(path.join(this.substratePath, indexFile));
+        const content = await this.fs.readFile(path.posix.join(base, indexFile));
         const matches = content.match(/@[a-zA-Z0-9_\-/.]+\.md/g);
         if (matches) {
           referenceCount += matches.length;
@@ -273,7 +281,7 @@ export class SelfImprovementMetricsCollector {
     const nowMs = this.clock.now().getTime();
     for (const indexFile of SUBSTRATE_INDEX_FILES) {
       try {
-        const stat = await this.fs.stat(path.join(this.substratePath, indexFile));
+        const stat = await this.fs.stat(path.posix.join(base, indexFile));
         const ageDays = Math.max(0, (nowMs - stat.mtimeMs) / (1000 * 60 * 60 * 24));
         totalAgeDays += ageDays;
         agedFileCount++;
@@ -338,10 +346,11 @@ export class SelfImprovementMetricsCollector {
   }
 
   private async collectCapability(period: string): Promise<CapabilityMetrics> {
+    const base = toPosix(this.substratePath);
     // Count skill list entries in SKILLS.md (lines starting with "- " or "* ")
     let skillsAdded = 0;
     try {
-      const content = await this.fs.readFile(path.join(this.substratePath, "SKILLS.md"));
+      const content = await this.fs.readFile(path.posix.join(base, "SKILLS.md"));
       skillsAdded = content.split("\n").filter((line) => /^[-*]\s/.test(line)).length;
     } catch {
       // SKILLS.md doesn't exist
@@ -349,10 +358,10 @@ export class SelfImprovementMetricsCollector {
 
     // Count active integrations by checking for known config files
     let activeIntegrations = 0;
-    const parentDir = path.join(this.substratePath, "..");
+    const parentDir = path.posix.join(base, "..");
     for (const configFile of INTEGRATION_CONFIG_FILES) {
       try {
-        if (await this.fs.exists(path.join(parentDir, configFile))) {
+        if (await this.fs.exists(path.posix.join(parentDir, configFile))) {
           activeIntegrations++;
         }
       } catch {
@@ -363,7 +372,7 @@ export class SelfImprovementMetricsCollector {
     // Estimate task completion rate from PROGRESS.md entries in the current period
     let taskCompletionRate = 0;
     try {
-      const content = await this.fs.readFile(path.join(this.substratePath, "PROGRESS.md"));
+      const content = await this.fs.readFile(path.posix.join(base, "PROGRESS.md"));
       const periodLines = content.split("\n").filter((line) => line.startsWith(`[${period}`));
       const successLines = periodLines.filter((line) => /completed|success|done/i.test(line));
       const failLines = periodLines.filter((line) => /fail|error/i.test(line));
@@ -393,7 +402,7 @@ export class SelfImprovementMetricsCollector {
     try {
       const entries = await this.fs.readdir(dir);
       for (const entry of entries) {
-        const fullPath = path.join(dir, entry);
+        const fullPath = path.posix.join(dir, entry);
         try {
           const stat = await this.fs.stat(fullPath);
           if (stat.isDirectory && !SKIP_DIRS.has(entry)) {
