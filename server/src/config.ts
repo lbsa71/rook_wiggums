@@ -73,6 +73,8 @@ export interface AppConfig {
     enabled: boolean; // Whether to enable idle sleep (default: false)
     idleCyclesBeforeSleep: number; // Number of consecutive idle cycles before sleeping (default: 5)
   };
+  /** Shutdown grace period in milliseconds (default: 5000). Active sessions receive a shutdown notice before force-kill. */
+  shutdownGraceMs?: number;
 }
 
 export interface ResolveConfigOptions {
@@ -133,6 +135,7 @@ export async function resolveConfig(
         },
       },
     },
+    shutdownGraceMs: 5000,
   };
 
   let fileConfig: Partial<AppConfig> = {};
@@ -217,6 +220,7 @@ export async function resolveConfig(
           idleCyclesBeforeSleep: fileConfig.idleSleepConfig.idleCyclesBeforeSleep ?? 5,
         }
       : undefined,
+    shutdownGraceMs: fileConfig.shutdownGraceMs ?? defaults.shutdownGraceMs,
   };
 
   // Env vars override everything
