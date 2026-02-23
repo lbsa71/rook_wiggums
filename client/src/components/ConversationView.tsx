@@ -105,6 +105,7 @@ export function ConversationView({ lastEvent, refreshKey }: ConversationViewProp
   useEffect(() => {
     if (lastEvent?.type === "cycle_complete" || 
         lastEvent?.type === "conversation_response" ||
+        lastEvent?.type === "agora_message" ||
         (lastEvent?.type === "file_changed" && lastEvent.data.fileType === "CONVERSATION")) {
       fetchConversation();
     }
