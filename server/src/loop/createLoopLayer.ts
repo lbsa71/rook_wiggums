@@ -70,6 +70,8 @@ export async function createLoopLayer(
       ? config.idleSleepConfig.idleCyclesBeforeSleep
       : config.maxConsecutiveIdleCycles,
     idleSleepEnabled: config.idleSleepConfig?.enabled ?? false,
+    evaluateOutcomeEnabled: config.evaluateOutcome?.enabled ?? false,
+    evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 70,
   });
 
   const httpServer = new LoopHttpServer();
