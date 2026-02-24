@@ -24,6 +24,16 @@ import type { ILogger } from "../logging";
 import { getVersionInfo } from "../version";
 import { SubstrateMeta } from "../substrate/MetaManager";
 
+// Lazy singleton for the ESM-only @rookdaemon/agora module.
+// Imported once on first use and cached for all subsequent calls.
+let _agoraModule: typeof import("@rookdaemon/agora") | null = null;
+async function getAgoraModule(): Promise<typeof import("@rookdaemon/agora")> {
+  if (!_agoraModule) {
+    _agoraModule = await import("@rookdaemon/agora");
+  }
+  return _agoraModule;
+}
+
 export interface LoopHttpDependencies {
   reader: SubstrateFileReader;
   ego: Ego;
@@ -716,8 +726,9 @@ export class LoopHttpServer {
         this.logger?.debug(`[AGORA] Envelope decoded successfully: envelopeId=${result.envelope!.id} type=${result.envelope!.type}`);
 
         // SECURITY: Verify signature before processing
-        // Dynamic import required because @rookdaemon/agora is ESM-only
-        const agora = await import("@rookdaemon/agora");
+        // Dynamic import required because @rookdaemon/agora is ESM-only;
+        // getAgoraModule() caches the result after the first call.
+        const agora = await getAgoraModule();
         const verifyResult = agora.verifyEnvelope(result.envelope!);
         if (!verifyResult.valid) {
           this.logger?.debug(`[AGORA] Webhook rejected: Invalid envelope signature: ${verifyResult.reason ?? "unknown"}`);
