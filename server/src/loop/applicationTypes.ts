@@ -79,6 +79,8 @@ export interface ApplicationConfig {
     stallThresholdMs?: number;
     /** Milliseconds between watchdog checks (default: 300000 — 5 min) */
     checkIntervalMs?: number;
+    /** Milliseconds after stall reminder before force-restarting the process (default: 600000 — 10 min). Set to 0 to disable force-restart. */
+    forceRestartThresholdMs?: number;
   };
 }
 
