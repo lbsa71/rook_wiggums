@@ -170,7 +170,9 @@ async function main(): Promise<void> {
             console.error("[supervisor] Rollback failed — no last-known-good tag found, giving up");
             process.exit(1);
           }
-          const rollbackBuildCode = await run("npx", ["tsc"], SERVER_DIR);
+          // IMPORTANT: Use npm run build (tsup), not npx tsc directly.
+          // Raw tsc produces different output than tsup and may succeed while generating a broken binary.
+          const rollbackBuildCode = await run("npm", ["run", "build"], SERVER_DIR);
           if (rollbackBuildCode !== 0) {
             console.error("[supervisor] Rollback build failed, giving up");
             process.exit(1);
