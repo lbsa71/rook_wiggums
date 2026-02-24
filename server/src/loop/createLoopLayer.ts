@@ -586,11 +586,17 @@ export async function createLoopLayer(
   // Watchdog — detects stalls and injects gentle reminders
   const watchdogConfig = config.watchdog ?? {};
   if (!watchdogConfig.disabled) {
+    const forceRestartThresholdMs = watchdogConfig.forceRestartThresholdMs ?? 10 * 60 * 1000; // 10 minutes after reminder
     const watchdog = new LoopWatchdog({
       clock,
       logger,
       injectMessage: (msg) => orchestrator.injectMessage(msg),
       stallThresholdMs: watchdogConfig.stallThresholdMs ?? 20 * 60 * 1000, // 20 minutes
+      forceRestart: forceRestartThresholdMs > 0 ? () => {
+        logger.debug("watchdog: force-restarting — session likely died silently");
+        orchestrator.requestRestart();
+      } : undefined,
+      forceRestartThresholdMs,
     });
     orchestrator.setWatchdog(watchdog);
     watchdog.start(watchdogConfig.checkIntervalMs ?? 5 * 60 * 1000); // Check every 5 minutes

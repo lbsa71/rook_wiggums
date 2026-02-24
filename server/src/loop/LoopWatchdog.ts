@@ -6,6 +6,10 @@ export interface LoopWatchdogConfig {
   logger: ILogger;
   injectMessage: (message: string) => void;
   stallThresholdMs: number;
+  /** Called when stall persists for forceRestartThresholdMs after the initial reminder. */
+  forceRestart?: () => void;
+  /** How long after the stall reminder before force-restarting (ms). Only used if forceRestart is set. */
+  forceRestartThresholdMs?: number;
 }
 
 const STALL_REMINDER =
@@ -20,9 +24,12 @@ export class LoopWatchdog {
   private readonly logger: ILogger;
   private readonly injectMessage: (message: string) => void;
   private readonly stallThresholdMs: number;
+  private readonly forceRestart: (() => void) | undefined;
+  private readonly forceRestartThresholdMs: number | undefined;
 
   private lastActivityTime: Date | null = null;
   private reminderSent = false;
+  private reminderSentAt: Date | null = null;
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: LoopWatchdogConfig) {
@@ -30,25 +37,43 @@ export class LoopWatchdog {
     this.logger = config.logger;
     this.injectMessage = config.injectMessage;
     this.stallThresholdMs = config.stallThresholdMs;
+    this.forceRestart = config.forceRestart;
+    this.forceRestartThresholdMs = config.forceRestartThresholdMs;
   }
 
   recordActivity(): void {
     this.lastActivityTime = this.clock.now();
     this.reminderSent = false;
+    this.reminderSentAt = null;
   }
 
   check(): void {
-    if (!this.lastActivityTime || this.reminderSent) {
+    if (!this.lastActivityTime) {
       return;
     }
 
-    const elapsed = this.clock.now().getTime() - this.lastActivityTime.getTime();
-    if (elapsed >= this.stallThresholdMs) {
-      this.logger.debug(
-        `watchdog: no activity for ${Math.round(elapsed / 1000)}s (threshold: ${Math.round(this.stallThresholdMs / 1000)}s) — injecting stall reminder`,
-      );
-      this.injectMessage(STALL_REMINDER);
-      this.reminderSent = true;
+    const now = this.clock.now();
+    const elapsed = now.getTime() - this.lastActivityTime.getTime();
+
+    if (!this.reminderSent) {
+      if (elapsed >= this.stallThresholdMs) {
+        this.logger.debug(
+          `watchdog: no activity for ${Math.round(elapsed / 1000)}s (threshold: ${Math.round(this.stallThresholdMs / 1000)}s) — injecting stall reminder`,
+        );
+        this.injectMessage(STALL_REMINDER);
+        this.reminderSent = true;
+        this.reminderSentAt = now;
+      }
+    } else if (this.forceRestart && this.forceRestartThresholdMs !== undefined && this.forceRestartThresholdMs > 0 && this.reminderSentAt) {
+      const timeSinceReminder = now.getTime() - this.reminderSentAt.getTime();
+      if (timeSinceReminder >= this.forceRestartThresholdMs) {
+        const totalStallSec = Math.round(elapsed / 1000);
+        const sinceReminderSec = Math.round(timeSinceReminder / 1000);
+        this.logger.debug(
+          `watchdog: stall persists ${totalStallSec}s total (${sinceReminderSec}s since reminder) — force restarting`,
+        );
+        this.forceRestart();
+      }
     }
   }
 

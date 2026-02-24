@@ -5,7 +5,7 @@ import { InMemoryLogger } from "../../src/logging";
 describe("LoopWatchdog", () => {
   const baseTime = new Date("2026-02-15T10:00:00Z");
 
-  function createWatchdog(opts?: { stallThresholdMs?: number }) {
+  function createWatchdog(opts?: { stallThresholdMs?: number; forceRestartThresholdMs?: number; forceRestart?: () => void }) {
     const clock = new FixedClock(baseTime);
     const logger = new InMemoryLogger();
     const injected: string[] = [];
@@ -16,6 +16,8 @@ describe("LoopWatchdog", () => {
       logger,
       injectMessage,
       stallThresholdMs: opts?.stallThresholdMs ?? 20 * 60 * 1000,
+      forceRestart: opts?.forceRestart,
+      forceRestartThresholdMs: opts?.forceRestartThresholdMs,
     });
 
     return { watchdog, clock, logger, injected };
@@ -137,5 +139,117 @@ describe("LoopWatchdog", () => {
     clock.setNow(new Date(baseTime.getTime() + 5 * 60 * 1000 + 1000));
     watchdog.check();
     expect(injected).toHaveLength(1);
+  });
+
+  describe("force restart behavior", () => {
+    it("calls forceRestart after forceRestartThresholdMs following a stall reminder", () => {
+      let restartCalled = false;
+      const { watchdog, clock } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 500,
+        forceRestart: () => { restartCalled = true; },
+      });
+
+      watchdog.recordActivity();
+
+      // Advance past stall threshold — should inject reminder
+      clock.setNow(new Date(baseTime.getTime() + 2000));
+      watchdog.check();
+      expect(restartCalled).toBe(false); // Reminder injected, no restart yet
+
+      // Advance past forceRestart threshold after reminder
+      clock.setNow(new Date(baseTime.getTime() + 2600));
+      watchdog.check();
+      expect(restartCalled).toBe(true);
+    });
+
+    it("does not call forceRestart before forceRestartThresholdMs has elapsed", () => {
+      let restartCalled = false;
+      const { watchdog, clock } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 5000,
+        forceRestart: () => { restartCalled = true; },
+      });
+
+      watchdog.recordActivity();
+
+      // Advance past stall threshold
+      clock.setNow(new Date(baseTime.getTime() + 2000));
+      watchdog.check();
+      expect(restartCalled).toBe(false);
+
+      // Advance, but not past forceRestart threshold
+      clock.setNow(new Date(baseTime.getTime() + 4000));
+      watchdog.check();
+      expect(restartCalled).toBe(false);
+    });
+
+    it("does not call forceRestart when forceRestart callback is not set", () => {
+      // Should not throw even when stall persists past forceRestartThresholdMs
+      const { watchdog, clock, injected } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 500,
+        // forceRestart not set
+      });
+
+      watchdog.recordActivity();
+      clock.setNow(new Date(baseTime.getTime() + 3000));
+      watchdog.check();
+      // Only the reminder should be injected, no error
+      expect(injected).toHaveLength(1);
+    });
+
+    it("does not call forceRestart when forceRestartThresholdMs is 0", () => {
+      let restartCalled = false;
+      const { watchdog, clock } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 0,
+        forceRestart: () => { restartCalled = true; },
+      });
+
+      watchdog.recordActivity();
+      clock.setNow(new Date(baseTime.getTime() + 5000));
+      watchdog.check();
+      expect(restartCalled).toBe(false);
+    });
+
+    it("logs when force-restarting", () => {
+      const { watchdog, clock, logger } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 500,
+        forceRestart: () => {},
+      });
+
+      watchdog.recordActivity();
+      clock.setNow(new Date(baseTime.getTime() + 2000));
+      watchdog.check(); // reminder
+      clock.setNow(new Date(baseTime.getTime() + 2600));
+      watchdog.check(); // force restart
+
+      expect(logger.getEntries().some(e => e.includes("force restart"))).toBe(true);
+    });
+
+    it("resets force-restart state when new activity is recorded after stall", () => {
+      let restartCount = 0;
+      const { watchdog, clock } = createWatchdog({
+        stallThresholdMs: 1000,
+        forceRestartThresholdMs: 500,
+        forceRestart: () => { restartCount++; },
+      });
+
+      // First stall cycle — reminder then restart
+      watchdog.recordActivity();
+      clock.setNow(new Date(baseTime.getTime() + 2000));
+      watchdog.check(); // reminder
+      clock.setNow(new Date(baseTime.getTime() + 2600));
+      watchdog.check(); // force restart
+      expect(restartCount).toBe(1);
+
+      // New activity resets state
+      watchdog.recordActivity();
+      clock.setNow(new Date(baseTime.getTime() + 4000));
+      watchdog.check(); // still within threshold from new activity
+      expect(restartCount).toBe(1); // No additional restart
+    });
   });
 });

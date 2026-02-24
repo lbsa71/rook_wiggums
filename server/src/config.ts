@@ -183,6 +183,8 @@ export interface AppConfig {
     stallThresholdMs?: number;
     /** Milliseconds between watchdog checks (default: 300000 — 5 min) */
     checkIntervalMs?: number;
+    /** Milliseconds after stall reminder before force-restarting the process (default: 600000 — 10 min). Set to 0 to disable force-restart. */
+    forceRestartThresholdMs?: number;
   };
 }
 
@@ -346,6 +348,7 @@ export async function resolveConfig(
           disabled: fileConfig.watchdog.disabled ?? false,
           stallThresholdMs: fileConfig.watchdog.stallThresholdMs ?? 20 * 60 * 1000,
           checkIntervalMs: fileConfig.watchdog.checkIntervalMs ?? 5 * 60 * 1000,
+          forceRestartThresholdMs: fileConfig.watchdog.forceRestartThresholdMs ?? 10 * 60 * 1000,
         }
       : undefined,
   };
