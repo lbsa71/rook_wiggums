@@ -235,12 +235,13 @@ describe("LoopHttpServer /api/health/critical endpoint", () => {
     lastCycleAt?: Date | null;
     lastCycleResult?: "success" | "failure" | "idle" | "none";
     criticalResult?: CriticalChecksResult;
+    consecutiveAuditFailures?: number;
   }): LoopHttpServer {
     clock = new FixedClock(NOW);
 
     const mockOrchestrator = {
       getState: () => opts.state ?? LoopState.RUNNING,
-      getMetrics: () => ({}),
+      getMetrics: () => ({ consecutiveAuditFailures: opts.consecutiveAuditFailures ?? 0 }),
       getPendingMessageCount: () => 0,
       getRateLimitUntil: () => null,
       getLastCycleDiagnostics: () => ({
@@ -283,6 +284,19 @@ describe("LoopHttpServer /api/health/critical endpoint", () => {
       expect(body.checks.consecutiveAuditFailures).toBe(0);
       expect(body.version).toBeDefined();
       expect(body.timestamp).toBe(NOW.toISOString());
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns consecutiveAuditFailures from live orchestrator metrics", async () => {
+    const server = buildServer({ state: LoopState.RUNNING, consecutiveAuditFailures: 3 });
+    const port = await server.listen(0);
+
+    try {
+      const response = await makeRequest(port, "/api/health/critical");
+      const body = JSON.parse(response.body);
+      expect(body.checks.consecutiveAuditFailures).toBe(3);
     } finally {
       await server.close();
     }
