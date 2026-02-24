@@ -75,7 +75,7 @@ export class Subconscious {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!result.success) {
         const errorDetail = result.rawOutput || result.error || "Claude session error";
@@ -198,7 +198,7 @@ Respond with ONLY a JSON object:
       const evalResult = await this.sessionLauncher.launch({
         systemPrompt,
         message: evaluationPrompt,
-      }, { model, onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!evalResult.success) {
         // Default to conservative evaluation on failure

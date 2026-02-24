@@ -51,7 +51,7 @@ export class Ego {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!result.success) {
         return { action: "idle", reason: `Claude session error: ${result.error || "unknown"}` };
@@ -112,6 +112,8 @@ export class Ego {
       model,
       onLogEntry,
       cwd: this.workingDirectory,
+      continueSession: true,
+      persistSession: true,
       ...options, // Allow overriding options (e.g. idleTimeoutMs)
     };
     const result = await this.sessionLauncher.launch({

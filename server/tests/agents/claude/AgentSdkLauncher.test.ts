@@ -575,4 +575,106 @@ describe("AgentSdkLauncher", () => {
       expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(40); // Allow some tolerance
     });
   });
+
+  describe("continueSession and persistSession options", () => {
+    it("passes persistSession=true to query options when set", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const queryFn = createMockQueryFn(messages);
+      const launcher = new AgentSdkLauncher(queryFn, clock);
+
+      await launcher.launch(
+        { systemPrompt: "Go", message: "Hi" },
+        { persistSession: true },
+      );
+
+      const calls = queryFn.getCalls();
+      expect(calls[0].options?.persistSession).toBe(true);
+    });
+
+    it("defaults persistSession to false when not set", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const queryFn = createMockQueryFn(messages);
+      const launcher = new AgentSdkLauncher(queryFn, clock);
+
+      await launcher.launch({ systemPrompt: "Go", message: "Hi" });
+
+      const calls = queryFn.getCalls();
+      expect(calls[0].options?.persistSession).toBe(false);
+    });
+
+    it("passes continue=true to query options when continueSession is set", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const queryFn = createMockQueryFn(messages);
+      const launcher = new AgentSdkLauncher(queryFn, clock);
+
+      await launcher.launch(
+        { systemPrompt: "Go", message: "Hi" },
+        { continueSession: true },
+      );
+
+      const calls = queryFn.getCalls();
+      expect(calls[0].options?.continue).toBe(true);
+    });
+
+    it("does not pass continue when continueSession is not set", async () => {
+      const messages: SdkMessage[] = [
+        { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 },
+      ];
+      const queryFn = createMockQueryFn(messages);
+      const launcher = new AgentSdkLauncher(queryFn, clock);
+
+      await launcher.launch({ systemPrompt: "Go", message: "Hi" });
+
+      const calls = queryFn.getCalls();
+      expect(calls[0].options?.continue).toBeUndefined();
+    });
+
+    it("falls back without continue when continueSession fails with session error", async () => {
+      let callCount = 0;
+      const queryFn: SdkQueryFn = (params) => {
+        callCount++;
+        return (async function* () {
+          if (params.options?.continue) {
+            yield { type: "result", subtype: "error", errors: ["No session found to continue"], total_cost_usd: 0, duration_ms: 0 } as SdkMessage;
+            return;
+          }
+          yield { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 0 } as SdkMessage;
+        })();
+      };
+      const logger = new InMemoryLogger();
+      const launcher = new AgentSdkLauncher(queryFn, clock, undefined, logger);
+
+      const result = await launcher.launch(
+        { systemPrompt: "Go", message: "Hi" },
+        { continueSession: true },
+      );
+
+      expect(result.success).toBe(true);
+      expect(callCount).toBe(2);
+      expect(logger.getEntries().some(e => e.includes("--continue failed"))).toBe(true);
+    });
+
+    it("does not fallback on non-continue errors", async () => {
+      const queryFn: SdkQueryFn = () => {
+        return (async function* () {
+          yield { type: "result", subtype: "error", errors: ["Rate limit exceeded"], total_cost_usd: 0, duration_ms: 0 } as SdkMessage;
+        })();
+      };
+      const launcher = new AgentSdkLauncher(queryFn, clock);
+
+      const result = await launcher.launch(
+        { systemPrompt: "Go", message: "Hi" },
+        { continueSession: true },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Rate limit exceeded");
+    });
+  });
 });

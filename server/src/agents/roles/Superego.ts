@@ -71,7 +71,7 @@ export class Superego {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!result.success) {
         return {
@@ -121,7 +121,7 @@ export class Superego {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory });
+      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!result.success) {
         return proposals.map(() => ({

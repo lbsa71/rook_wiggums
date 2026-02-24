@@ -15,6 +15,8 @@ import { Ego } from "../agents/roles/Ego";
 import { Subconscious } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
 import { Id } from "../agents/roles/Id";
+import { AgentRole } from "../agents/types";
+import { WorkspaceManager } from "../agents/workspace/WorkspaceManager";
 import { TaskClassificationMetrics } from "../evaluation/TaskClassificationMetrics";
 import { SubstrateSizeTracker } from "../evaluation/SubstrateSizeTracker";
 import { DelegationTracker } from "../evaluation/DelegationTracker";
@@ -90,6 +92,11 @@ export async function createAgentLayer(
     metricsCollector: config.metrics?.enabled !== false ? taskMetrics : undefined, // Default enabled
   });
 
+  // Per-role workspaces — each role gets its own cwd so Claude Code sessions stay isolated
+  const layerPath = path.resolve(config.substratePath, "..");
+  const workspaceManager = new WorkspaceManager(fs, layerPath);
+  await workspaceManager.ensureWorkspaces();
+
   const cwd = config.workingDirectory;
 
   // Conversation manager with compaction and optional archiving
@@ -119,10 +126,10 @@ export async function createAgentLayer(
   const driveRatingsPath = path.resolve(config.substratePath, "..", "data", "drive-ratings.jsonl");
   const driveQualityTracker = new DriveQualityTracker(fs, driveRatingsPath);
 
-  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd);
-  const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, gatedLauncher, clock, taskClassifier, writer, cwd);
-  const id = new Id(reader, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd, driveQualityTracker);
+  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.EGO));
+  const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.SUBCONSCIOUS));
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, gatedLauncher, clock, taskClassifier, writer, workspaceManager.workspacePath(AgentRole.SUPEREGO));
+  const id = new Id(reader, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.ID), driveQualityTracker);
 
   return {
     checker, promptBuilder, launcher, gatedLauncher, apiSemaphore, processTracker,

@@ -24,6 +24,8 @@ export interface LaunchOptions {
   idleTimeoutMs?: number;
   onLogEntry?: (entry: ProcessLogEntry) => void;
   cwd?: string;
+  continueSession?: boolean;
+  persistSession?: boolean;
 }
 
 export interface ISessionLauncher {

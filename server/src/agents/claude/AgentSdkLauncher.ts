@@ -125,7 +125,15 @@ export class AgentSdkLauncher implements ISessionLauncher {
       if (result.success) {
         return result;
       }
-      
+
+      if (options?.continueSession && this.isContinueError(result)) {
+        this.logger.debug("sdk-launch: --continue failed, retrying without continue");
+        const fallbackResult = await this.executeLaunch(request, { ...options, continueSession: false });
+        if (fallbackResult.success) return fallbackResult;
+        lastError = fallbackResult;
+        continue;
+      }
+
       lastError = result;
     }
     
@@ -152,7 +160,8 @@ export class AgentSdkLauncher implements ISessionLauncher {
       model: modelToUse,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
-      persistSession: false,
+      persistSession: options?.persistSession ?? false,
+      ...(options?.continueSession ? { continue: true } : {}),
       ...(Object.keys(this.mcpServers).length > 0 ? { mcpServers: this.mcpServers } : {}),
     };
 
@@ -366,6 +375,11 @@ export class AgentSdkLauncher implements ISessionLauncher {
     }
     // SDK might not expose PID — return null
     return null;
+  }
+
+  private isContinueError(result: ClaudeSessionResult): boolean {
+    const msg = (result.error ?? "").toLowerCase();
+    return msg.includes("no session") || msg.includes("continue") || msg.includes("no conversation");
   }
 
   private mapContentBlock(block: SdkContentBlock): ProcessLogEntry {
