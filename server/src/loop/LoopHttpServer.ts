@@ -492,7 +492,7 @@ export class LoopHttpServer {
           substrateFsWritable: criticalResult.substrateFsWritable,
           lastCycleAgeMs,
           lastCycleResult,
-          consecutiveAuditFailures: 0,
+          consecutiveAuditFailures: this.orchestrator.getMetrics().consecutiveAuditFailures,
         },
         version: getVersionInfo().version,
         timestamp: now.toISOString(),
