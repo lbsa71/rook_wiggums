@@ -122,7 +122,7 @@ describe("startServer — process error handlers", () => {
   it("uncaughtException handler calls app.stop() before process.exit(1)", async () => {
     await startServer(makeConfig());
 
-    process.emit("uncaughtException", new Error("kaboom"), { promise: Promise.resolve(), reason: undefined });
+    process.emit("uncaughtException", new Error("kaboom"), "uncaughtException");
 
     await flushPromises();
 
