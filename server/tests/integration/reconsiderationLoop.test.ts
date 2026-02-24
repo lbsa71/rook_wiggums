@@ -122,6 +122,7 @@ describe("Reconsideration Loop Integration", () => {
 
     orchestrator.start();
     const result = await orchestrator.runOneCycle();
+    await orchestrator.drainDeferredWork();
 
     expect(result.success).toBe(true);
     expect(result.taskId).toBe("task-1");
@@ -157,6 +158,7 @@ describe("Reconsideration Loop Integration", () => {
 
     orchestrator.start();
     const result = await orchestrator.runOneCycle();
+    await orchestrator.drainDeferredWork();
 
     expect(result.success).toBe(false); // Partial is treated as not success
 
@@ -237,6 +239,7 @@ describe("Reconsideration Loop Integration", () => {
 
     orchestrator.start();
     const result = await orchestrator.runOneCycle();
+    await orchestrator.drainDeferredWork();
 
     // Task should still be marked as successful
     expect(result.success).toBe(true);
@@ -372,6 +375,7 @@ describe("Reconsideration Loop — heuristic gate (evaluateOutcomeEnabled: false
     const orchestrator = makeOrchestrator({ evaluateOutcomeEnabled: false, evaluateOutcomeQualityThreshold: 70 });
     orchestrator.start();
     await orchestrator.runOneCycle();
+    await orchestrator.drainDeferredWork();
 
     // 2 launches: task execution + LLM evaluation fallback
     expect(deps.launcher.getLaunches()).toHaveLength(2);
@@ -402,6 +406,7 @@ describe("Reconsideration Loop — heuristic gate (evaluateOutcomeEnabled: false
     const orchestrator = makeOrchestrator({ evaluateOutcomeEnabled: true });
     orchestrator.start();
     await orchestrator.runOneCycle();
+    await orchestrator.drainDeferredWork();
 
     // 2 launches: task execution + LLM evaluation
     expect(deps.launcher.getLaunches()).toHaveLength(2);
