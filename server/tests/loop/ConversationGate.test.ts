@@ -183,42 +183,38 @@ describe("ConversationGate and TickGating", () => {
     }, 10_000);
   });
 
-  describe("tick gating", () => {
-    it("defers tick when conversation session is active", async () => {
+  describe("conversation and pipeline concurrency", () => {
+    it("does not defer tick when conversation session is active (pipeline decoupled)", async () => {
       // Start a conversation session
       launcher.enqueueSuccess("Response");
       const handlePromise = orchestrator.handleUserMessage("Hello");
 
-      // Try to run a tick (simulate runOneTick being called)
-      // Since conversation is active, tick should be deferred
+      // runOneTick should not be deferred — conversation and pipeline are decoupled
+      // (both gated by ApiSemaphore instead of conversation gate)
+      // Note: runOneTick will throw because tick dependencies are not configured
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tickResult = await (orchestrator as any).runOneTick();
-
-      expect(tickResult.error).toContain("Deferred");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((orchestrator as any).tickRequested).toBe(true);
+      await expect((orchestrator as any).runOneTick()).rejects.toThrow("Tick dependencies not configured");
 
       await handlePromise;
     });
 
-    it("runs tick immediately when conversation session closes and tickRequested", async () => {
-      // Set orchestrator state to RUNNING (required for tickRequested to be cleared)
+    it("does not defer cycle when conversation session is active (pipeline decoupled)", async () => {
       orchestrator.start();
 
-      // Set up: conversation active, tick requested
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (orchestrator as any).conversationSessionActive = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (orchestrator as any).tickRequested = true;
+      // Start a conversation session
+      launcher.enqueueSuccess("Response");
+      const handlePromise = orchestrator.handleUserMessage("Hello");
 
-      // Close conversation session
+      // Verify conversation session is active
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (orchestrator as any).onConversationSessionClosed();
+      expect((orchestrator as any).conversationSessionActive).toBe(true);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((orchestrator as any).tickRequested).toBe(false);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((orchestrator as any).conversationSessionActive).toBe(false);
+      // runOneCycle should not defer — conversation and pipeline are decoupled
+      // It will throw because substrate files aren't set up, but the key assertion
+      // is that it ATTEMPTS the cycle rather than returning a deferred result
+      await expect(orchestrator.runOneCycle()).rejects.toThrow();
+
+      await handlePromise;
     });
   });
 });

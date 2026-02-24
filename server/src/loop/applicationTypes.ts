@@ -71,6 +71,8 @@ export interface ApplicationConfig {
   enableFileReadCache?: boolean;
   /** Maximum size of PROGRESS.md in bytes before rotation (default: 512 * 1024 = 512 KB). */
   progressMaxBytes?: number;
+  /** Maximum concurrent Claude API sessions (default: 2). Prevents rate-limit saturation when work pipeline and conversations overlap. */
+  maxConcurrentSessions?: number;
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */

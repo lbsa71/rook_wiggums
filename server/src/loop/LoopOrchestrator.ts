@@ -28,6 +28,7 @@ import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { IMessageInjector } from "./IMessageInjector";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
 import { DriveQualityTracker } from "../evaluation/DriveQualityTracker";
+import { DeferredWorkQueue } from "./DeferredWorkQueue";
 
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
@@ -78,6 +79,9 @@ export class LoopOrchestrator implements IMessageInjector {
   private tickRequested = false;
   private tickInProgress = false;
 
+  // Deferred work queue — overlaps post-execution work with next cycle dispatch
+  private readonly deferredWork: DeferredWorkQueue;
+
   // Conversation session gate
   private conversationSessionActive = false;
   private conversationSessionPromise: Promise<void> | null = null;
@@ -113,6 +117,9 @@ export class LoopOrchestrator implements IMessageInjector {
       this.findingTracker = findingTracker;
     }
     this.findingTrackerSave = findingTrackerSave ?? null;
+    this.deferredWork = new DeferredWorkQueue(
+      (err) => this.logger.warn(`deferred work failed: ${err.message}`)
+    );
   }
 
   getState(): LoopState {
@@ -125,6 +132,11 @@ export class LoopOrchestrator implements IMessageInjector {
 
   getRateLimitUntil(): string | null {
     return this.rateLimitUntil;
+  }
+
+  /** Drain deferred background work. Exposed for testing and graceful shutdown. */
+  async drainDeferredWork(): Promise<void> {
+    await this.deferredWork.drain();
   }
 
   getPendingMessageCount(): number {
@@ -320,18 +332,6 @@ export class LoopOrchestrator implements IMessageInjector {
       };
     }
 
-    // Gate cycle while conversation session is active
-    if (this.conversationSessionActive) {
-      this.logger.debug("runOneCycle() deferred — conversation session active");
-      this.tickRequested = true; // Use same flag for cycle mode
-      return {
-        cycleNumber: this.cycleNumber,
-        action: "idle",
-        success: true,
-        summary: "Deferred due to active conversation session",
-      };
-    }
-
     this.isProcessing = true;
     try {
       return await this.executeOneCycle();
@@ -346,6 +346,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
     this.logger.debug(`cycle ${this.cycleNumber}: starting`);
     this.watchdog?.recordActivity();
+
+    // Drain deferred work from previous cycle before dispatching
+    await this.deferredWork.drain();
 
     const dispatch = await this.ego.dispatchNext();
 
@@ -436,15 +439,20 @@ export class LoopOrchestrator implements IMessageInjector {
       // Drive learning: if task was Id-generated, record a quality rating for future drive improvement
       await this.recordDriveRatingIfApplicable(dispatch.description, taskResult);
 
+      // Enqueue proposal evaluation as deferred work (overlaps with next cycle's dispatch)
       if (taskResult.proposals.length > 0) {
-        this.logger.debug(`cycle ${this.cycleNumber}: evaluating ${taskResult.proposals.length} proposal(s)`);
-        const evaluations = await this.superego.evaluateProposals(taskResult.proposals, this.createLogCallback("SUPEREGO"));
-        await this.superego.applyProposals(taskResult.proposals, evaluations);
+        this.logger.debug(`cycle ${this.cycleNumber}: deferring evaluation of ${taskResult.proposals.length} proposal(s)`);
+        this.deferredWork.enqueue(
+          (async () => {
+            const evaluations = await this.superego.evaluateProposals(taskResult.proposals, this.createLogCallback("SUPEREGO"));
+            await this.superego.applyProposals(taskResult.proposals, evaluations);
+          })()
+        );
       }
 
-      // Reconsideration phase: evaluate outcome quality and need for reassessment
+      // Enqueue reconsideration as deferred work
       if (success || taskResult.result === "partial") {
-        await this.runReconsideration(dispatch, taskResult);
+        this.deferredWork.enqueue(this.runReconsideration(dispatch, taskResult));
       }
 
       result = {
@@ -467,16 +475,18 @@ export class LoopOrchestrator implements IMessageInjector {
     this.lastCycleAt = this.clock.now();
     this.lastCycleResult = result.action === "idle" ? "idle" : (result.success ? "success" : "failure");
 
-    // Superego audit scheduling — fire-and-forget to avoid blocking next cycle
+    // Superego audit — enqueue as deferred work (overlaps with next cycle's dispatch)
     if (this.cycleNumber % this.config.superegoAuditInterval === 0 || this.auditOnNextCycle) {
       this.auditOnNextCycle = false;
-      this.runAudit().catch(err => this.logger.warn(`audit: unhandled error — ${err instanceof Error ? err.message : String(err)}`));
+      this.deferredWork.enqueue(this.runAudit());
     }
 
 
 
-    // Run all due schedulers (backup, health check, email, metrics, validation)
-    await this.schedulerCoordinator?.runDueSchedulers();
+    // Enqueue schedulers as deferred work (overlaps with next cycle's dispatch)
+    if (this.schedulerCoordinator) {
+      this.deferredWork.enqueue(this.schedulerCoordinator.runDueSchedulers());
+    }
 
     return result;
   }
@@ -504,22 +514,6 @@ export class LoopOrchestrator implements IMessageInjector {
 
     while (this.state === LoopState.RUNNING) {
       const cycleResult = await this.runOneCycle();
-
-      // If cycle was deferred, wait for conversation session to close
-      if (cycleResult.summary === "Deferred due to active conversation session") {
-        this.logger.debug("runLoop: cycle deferred, waiting for conversation session to close");
-        if (this.conversationSessionPromise) {
-          await this.conversationSessionPromise;
-          // If tickRequested, run cycle immediately
-          if (this.tickRequested && !this.conversationSessionActive) {
-            this.tickRequested = false;
-            continue; // Run cycle immediately without delay
-          }
-        }
-        // If still deferred, wait a bit before checking again
-        await this.timer.delay(1000);
-        continue;
-      }
 
       if (this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
         if (this.idleHandler) {
@@ -581,6 +575,8 @@ export class LoopOrchestrator implements IMessageInjector {
         }
       }
     }
+    // Drain any remaining deferred work before exiting
+    await this.deferredWork.drain();
     this.logger.debug("runLoop() exited");
   }
 
@@ -593,19 +589,6 @@ export class LoopOrchestrator implements IMessageInjector {
   }
 
   async runOneTick(): Promise<TickResult> {
-    // Gate tick while conversation session is active (check before dependencies)
-    if (this.conversationSessionActive) {
-      this.logger.debug(`tick ${this.tickNumber + 1}: deferred — conversation session active`);
-      this.tickRequested = true;
-      // Return a "deferred" result
-      return {
-        tickNumber: this.tickNumber,
-        success: true,
-        durationMs: 0,
-        error: "Deferred due to active conversation session",
-      };
-    }
-
     if (!this.tickPromptBuilder || !this.sdkSessionFactory) {
       throw new Error("Tick dependencies not configured");
     }
@@ -681,23 +664,6 @@ export class LoopOrchestrator implements IMessageInjector {
     while (this.state === LoopState.RUNNING) {
       const result = await this.runOneTick();
 
-      // If tick was deferred, don't delay — wait for conversation session to close
-      if (result.error === "Deferred due to active conversation session") {
-        this.logger.debug("runTickLoop: tick deferred, waiting for conversation session to close");
-        // Wait for conversation session promise if it exists
-        if (this.conversationSessionPromise) {
-          await this.conversationSessionPromise;
-          // If tickRequested, run it immediately
-          if (this.tickRequested && !this.conversationSessionActive) {
-            this.tickRequested = false;
-            continue; // Run tick immediately without delay
-          }
-        }
-        // If still deferred, wait a bit before checking again
-        await this.timer.delay(1000);
-        continue;
-      }
-
       if (this.state !== LoopState.RUNNING) {
         this.logger.debug(`runTickLoop: exiting — state is ${this.state}`);
         break;
@@ -706,6 +672,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.logger.debug(`runTickLoop: delaying ${this.config.cycleDelayMs}ms before next tick`);
       await this.timer.delay(this.config.cycleDelayMs);
     }
+    await this.deferredWork.drain();
     this.logger.debug("runTickLoop() exited");
   }
 

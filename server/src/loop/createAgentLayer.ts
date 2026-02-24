@@ -4,6 +4,9 @@ import { PromptBuilder } from "../agents/prompts/PromptBuilder";
 import { AgentSdkLauncher, SdkQueryFn } from "../agents/claude/AgentSdkLauncher";
 import { ProcessTracker, ProcessTrackerConfig } from "../agents/claude/ProcessTracker";
 import { NodeProcessKiller } from "../agents/claude/NodeProcessKiller";
+import { ApiSemaphore } from "../agents/claude/ApiSemaphore";
+import { SemaphoreSessionLauncher } from "../agents/claude/SemaphoreSessionLauncher";
+import { ISessionLauncher } from "../agents/claude/ISessionLauncher";
 import { TaskClassifier } from "../agents/TaskClassifier";
 import { ConversationCompactor } from "../conversation/ConversationCompactor";
 import { ConversationArchiver } from "../conversation/ConversationArchiver";
@@ -23,6 +26,8 @@ export interface AgentLayerResult {
   checker: PermissionChecker;
   promptBuilder: PromptBuilder;
   launcher: AgentSdkLauncher;
+  gatedLauncher: ISessionLauncher;
+  apiSemaphore: ApiSemaphore;
   processTracker: ProcessTracker;
   taskMetrics: TaskClassificationMetrics;
   sizeTracker: SubstrateSizeTracker;
@@ -69,6 +74,10 @@ export async function createAgentLayer(
   logger.debug(`agent-layer: MCP servers configured: tinybus → ${mcpUrl}`);
   const launcher = new AgentSdkLauncher(sdkQuery, clock, config.model, logger, processTracker, mcpServers);
 
+  // API semaphore — caps concurrent Claude sessions for rate-limit safety
+  const apiSemaphore = new ApiSemaphore(config.maxConcurrentSessions ?? 2);
+  const gatedLauncher: ISessionLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
+
   // Metrics collection components
   const taskMetrics = new TaskClassificationMetrics(fs, clock, config.substratePath);
   const sizeTracker = new SubstrateSizeTracker(fs, clock, config.substratePath);
@@ -84,7 +93,7 @@ export async function createAgentLayer(
   const cwd = config.workingDirectory;
 
   // Conversation manager with compaction and optional archiving
-  const compactor = new ConversationCompactor(launcher, cwd);
+  const compactor = new ConversationCompactor(gatedLauncher, cwd);
 
   let archiver: ConversationArchiver | undefined;
   let archiveConfig: ConversationArchiveConfig | undefined;
@@ -110,13 +119,13 @@ export async function createAgentLayer(
   const driveRatingsPath = path.resolve(config.substratePath, "..", "data", "drive-ratings.jsonl");
   const driveQualityTracker = new DriveQualityTracker(fs, driveRatingsPath);
 
-  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
-  const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, launcher, clock, taskClassifier, cwd);
-  const superego = new Superego(reader, appendWriter, checker, promptBuilder, launcher, clock, taskClassifier, writer, cwd);
-  const id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier, cwd, driveQualityTracker);
+  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd);
+  const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd);
+  const superego = new Superego(reader, appendWriter, checker, promptBuilder, gatedLauncher, clock, taskClassifier, writer, cwd);
+  const id = new Id(reader, checker, promptBuilder, gatedLauncher, clock, taskClassifier, cwd, driveQualityTracker);
 
   return {
-    checker, promptBuilder, launcher, processTracker,
+    checker, promptBuilder, launcher, gatedLauncher, apiSemaphore, processTracker,
     taskMetrics, sizeTracker, delegationTracker, taskClassifier,
     conversationManager, driveQualityTracker,
     ego, subconscious, superego, id,
