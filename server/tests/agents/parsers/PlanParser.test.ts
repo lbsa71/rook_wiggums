@@ -76,6 +76,26 @@ const NO_TASKS_SECTION = `# Plan
 Just thinking
 `;
 
+const DEFERRED_PLAN_MULTI = `# Plan
+
+## Current Goal
+Wait for external events
+
+## Tasks
+- [ ] Regular task
+- [~] Wait for PRs: WHEN \`gh pr list --state open | grep -q foo\`. Review them.
+- [x] Done task
+`;
+
+const DEFERRED_ONLY_PLAN = `# Plan
+
+## Current Goal
+All deferred
+
+## Tasks
+- [~] Waiting task: WHEN \`true\`. Do stuff.
+`;
+
 describe("PlanParser", () => {
   describe("parseCurrentGoal", () => {
     it("extracts the current goal text", () => {
@@ -250,6 +270,81 @@ describe("PlanParser", () => {
     it("returns false when tasks exist", () => {
       const tasks = PlanParser.parseTasks(SIMPLE_PLAN);
       expect(PlanParser.isEmpty(tasks)).toBe(false);
+    });
+  });
+
+  describe("deferred tasks ([~])", () => {
+    describe("parseTasks", () => {
+      it("parses [~] tasks as DEFERRED", () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_PLAN_MULTI);
+        const deferred = tasks.find((t) => t.title.startsWith("Wait for PRs"));
+        expect(deferred).toBeDefined();
+        expect(deferred!.status).toBe(TaskStatus.DEFERRED);
+      });
+
+      it("extracts trigger from WHEN `...` syntax", () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_PLAN_MULTI);
+        const deferred = tasks.find((t) => t.title.startsWith("Wait for PRs"));
+        expect(deferred!.trigger).toBe(
+          "gh pr list --state open | grep -q foo"
+        );
+      });
+
+      it("leaves trigger undefined when no WHEN clause", () => {
+        const tasks = PlanParser.parseTasks(SIMPLE_PLAN);
+        expect(tasks[0].trigger).toBeUndefined();
+      });
+    });
+
+    describe("findNextActionable", () => {
+      it("skips DEFERRED tasks when no evaluator provided", async () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_PLAN_MULTI);
+        const next = await PlanParser.findNextActionable(tasks);
+        expect(next).toBeDefined();
+        expect(next!.title).toBe("Regular task");
+      });
+
+      it("returns null when only DEFERRED tasks remain and no evaluator", async () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_ONLY_PLAN);
+        expect(await PlanParser.findNextActionable(tasks)).toBeNull();
+      });
+
+      it("activates a DEFERRED task when evaluator returns true", async () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_ONLY_PLAN);
+        const evaluator: TriggerEvaluator = { evaluate: async () => true };
+        const next = await PlanParser.findNextActionable(tasks, evaluator);
+        expect(next).toBeDefined();
+        expect(next!.status).toBe(TaskStatus.DEFERRED);
+        expect(next!.title).toContain("Waiting task");
+      });
+
+      it("keeps skipping when evaluator returns false", async () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_ONLY_PLAN);
+        const evaluator: TriggerEvaluator = { evaluate: async () => false };
+        expect(await PlanParser.findNextActionable(tasks, evaluator)).toBeNull();
+      });
+
+      it("skips DEFERRED tasks without a trigger even with evaluator", async () => {
+        const plan = `# Plan\n\n## Current Goal\nTest\n\n## Tasks\n- [~] No condition here\n`;
+        const tasks = PlanParser.parseTasks(plan);
+        const evaluator: TriggerEvaluator = { evaluate: async () => true };
+        expect(await PlanParser.findNextActionable(tasks, evaluator)).toBeNull();
+      });
+    });
+
+    describe("markComplete", () => {
+      it("marks a DEFERRED task as complete ([~] → [x])", () => {
+        const updated = PlanParser.markComplete(DEFERRED_PLAN_MULTI, "task-2");
+        expect(updated).toContain("- [x] Wait for PRs");
+        expect(updated).not.toContain("- [~] Wait for PRs");
+      });
+    });
+
+    describe("isComplete", () => {
+      it("returns false when DEFERRED tasks exist", () => {
+        const tasks = PlanParser.parseTasks(DEFERRED_ONLY_PLAN);
+        expect(PlanParser.isComplete(tasks)).toBe(false);
+      });
     });
   });
 });
