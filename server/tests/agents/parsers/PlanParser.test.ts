@@ -1,6 +1,7 @@
 import {
   PlanParser,
   TaskStatus,
+  TriggerEvaluator,
 } from "../../../src/agents/parsers/PlanParser";
 
 const SIMPLE_PLAN = `# Plan
@@ -47,6 +48,26 @@ const EMPTY_PLAN = `# Plan
 Figure out what to do
 
 ## Tasks
+`;
+
+const DEFERRED_PLAN = `# Plan
+
+## Current Goal
+Build with conditions
+
+## Tasks
+- [~] Deploy app: WHEN \`exit 0\`
+- [ ] Write docs
+`;
+
+const DEFERRED_PLAN_BLOCKED = `# Plan
+
+## Current Goal
+Build with conditions
+
+## Tasks
+- [~] Deploy app: WHEN \`exit 1\`
+- [ ] Write docs
 `;
 
 const NO_TASKS_SECTION = `# Plan
@@ -126,30 +147,58 @@ describe("PlanParser", () => {
     it("returns empty array when no tasks section", () => {
       expect(PlanParser.parseTasks(NO_TASKS_SECTION)).toEqual([]);
     });
+
+    it("parses [~] tasks as DEFERRED with trigger extracted", () => {
+      const tasks = PlanParser.parseTasks(DEFERRED_PLAN);
+      expect(tasks[0].status).toBe(TaskStatus.DEFERRED);
+      expect(tasks[0].trigger).toBe("exit 0");
+    });
   });
 
   describe("findNextActionable", () => {
-    it("returns the first PENDING leaf task (depth-first)", () => {
+    it("returns the first PENDING leaf task (depth-first)", async () => {
       const tasks = PlanParser.parseTasks(NESTED_PLAN);
-      const next = PlanParser.findNextActionable(tasks);
+      const next = await PlanParser.findNextActionable(tasks);
       expect(next).toBeDefined();
       expect(next!.id).toBe("task-1.1");
       expect(next!.title).toBe("Login page");
     });
 
-    it("skips completed tasks", () => {
+    it("skips completed tasks", async () => {
       const tasks = PlanParser.parseTasks(SIMPLE_PLAN);
-      const next = PlanParser.findNextActionable(tasks);
+      const next = await PlanParser.findNextActionable(tasks);
       expect(next!.title).toBe("Design login form");
     });
 
-    it("returns null when all tasks are complete", () => {
+    it("returns null when all tasks are complete", async () => {
       const tasks = PlanParser.parseTasks(ALL_COMPLETE);
-      expect(PlanParser.findNextActionable(tasks)).toBeNull();
+      expect(await PlanParser.findNextActionable(tasks)).toBeNull();
     });
 
-    it("returns null when there are no tasks", () => {
-      expect(PlanParser.findNextActionable([])).toBeNull();
+    it("returns null when there are no tasks", async () => {
+      expect(await PlanParser.findNextActionable([])).toBeNull();
+    });
+
+    it("skips deferred tasks when no evaluator is provided", async () => {
+      const tasks = PlanParser.parseTasks(DEFERRED_PLAN);
+      const next = await PlanParser.findNextActionable(tasks);
+      expect(next!.title).toBe("Write docs");
+    });
+
+    it("activates a deferred task when evaluator returns true", async () => {
+      const evaluator: TriggerEvaluator = { evaluate: async () => true };
+      const tasks = PlanParser.parseTasks(DEFERRED_PLAN);
+      const next = await PlanParser.findNextActionable(tasks, evaluator);
+      expect(next).toBeDefined();
+      expect(next!.status).toBe(TaskStatus.DEFERRED);
+      expect(next!.trigger).toBe("exit 0");
+    });
+
+    it("skips deferred task when evaluator returns false", async () => {
+      const evaluator: TriggerEvaluator = { evaluate: async () => false };
+      const tasks = PlanParser.parseTasks(DEFERRED_PLAN_BLOCKED);
+      const next = await PlanParser.findNextActionable(tasks, evaluator);
+      expect(next!.title).toBe("Write docs");
     });
   });
 
