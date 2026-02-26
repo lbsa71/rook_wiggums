@@ -17,7 +17,9 @@ import { DelegationTracker } from "../evaluation/DelegationTracker";
 import { TinyBus } from "../tinybus/core/TinyBus";
 import { createMessage } from "../tinybus/core/Message";
 import { createTinyBusMcpServer } from "../mcp/TinyBusMcpServer";
+import { addCodeDispatchTools } from "../mcp/CodeDispatchMcpServer";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { CodeDispatcher } from "../code-dispatch/CodeDispatcher";
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { IAgoraService } from "../agora/IAgoraService";
 import type { ILogger } from "../logging";
@@ -61,6 +63,7 @@ export class LoopHttpServer {
   private sizeTracker: SubstrateSizeTracker | null = null;
   private delegationTracker: DelegationTracker | null = null;
   private tinyBus: TinyBus | null = null;
+  private codeDispatcher: CodeDispatcher | null = null;
   private meta: SubstrateMeta | null = null;
   private apiToken: string | null = null;
   private readonly agoraWebhookToken: string | undefined;
@@ -130,6 +133,10 @@ export class LoopHttpServer {
 
   setTinyBus(tinyBus: TinyBus): void {
     this.tinyBus = tinyBus;
+  }
+
+  setCodeDispatcher(dispatcher: CodeDispatcher): void {
+    this.codeDispatcher = dispatcher;
   }
 
   setMeta(meta: SubstrateMeta | null): void {
@@ -322,6 +329,9 @@ export class LoopHttpServer {
   private async handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     try {
       const mcpServer = createTinyBusMcpServer({ tinyBus: this.tinyBus!, agoraService: this.agoraService });
+      if (this.codeDispatcher) {
+        addCodeDispatchTools(mcpServer, this.codeDispatcher);
+      }
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // Stateless mode
       });

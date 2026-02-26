@@ -31,6 +31,10 @@ import { AgoraOutboundProvider } from "../agora/AgoraOutboundProvider";
 import { IAgoraService } from "../agora/IAgoraService";
 import { FileWatcher } from "../substrate/watcher/FileWatcher";
 import { SubstrateFileType } from "../substrate/types";
+import { CodeDispatcher } from "../code-dispatch/CodeDispatcher";
+import { ClaudeCliBackend } from "../code-dispatch/ClaudeCliBackend";
+import type { BackendType } from "../code-dispatch/types";
+import type { ICodeBackend } from "../code-dispatch/ICodeBackend";
 import type { SdkQueryFn } from "../agents/claude/AgentSdkLauncher";
 import type { ApplicationConfig } from "./applicationTypes";
 import type { SubstrateLayerResult } from "./createSubstrateLayer";
@@ -264,6 +268,14 @@ export async function createLoopLayer(
 
   // Set up TinyBus MCP server
   httpServer.setTinyBus(tinyBus);
+
+  // Set up Code Dispatch layer (Phase 1: ClaudeCliBackend only)
+  const codeDispatchRunner = new NodeProcessRunner();
+  const codeBackends = new Map<BackendType, ICodeBackend>([
+    ["claude", new ClaudeCliBackend(codeDispatchRunner, clock, config.tacticalModel)],
+  ]);
+  const codeDispatcher = new CodeDispatcher(fs, codeDispatchRunner, config.substratePath, codeBackends, clock);
+  httpServer.setCodeDispatcher(codeDispatcher);
 
   if (agoraService && agoraMessageHandler) {
     httpServer.setAgoraMessageHandler(agoraMessageHandler, agoraService);
