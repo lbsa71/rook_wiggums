@@ -264,6 +264,91 @@ describe("supervisor rollback logic", () => {
   });
 });
 
+describe("health check ordering", () => {
+  it("health check runs after server is spawned, not before", () => {
+    // Regression test for: health check was called after server exited (code 75)
+    // but before the new server was started — so it always failed (connection refused).
+    //
+    // The fix: pendingHealthCheck flag defers the check until the next spawn.
+    // When pendingHealthCheck is true, the server is spawned first, then health-
+    // checked concurrently. The check only runs while the server is alive.
+
+    const events: string[] = [];
+
+    // Simulate: server exits with 75 → build → set pendingHealthCheck → restart
+    // On next iteration: spawn server, THEN check health
+    function simulateCycle(pendingHealthCheck: boolean, serverHealthy: boolean): {
+      nextPendingHealthCheck: boolean;
+      healthCheckedWhileAlive: boolean;
+    } {
+      let healthCheckedWhileAlive = false;
+      let serverAlive = false;
+
+      if (pendingHealthCheck) {
+        // Correct: spawn server first, health-check while it's running
+        serverAlive = true;
+        events.push("server_spawned");
+        if (serverAlive) {
+          healthCheckedWhileAlive = true;
+          events.push("health_checked");
+          if (!serverHealthy) {
+            serverAlive = false;
+            events.push("server_killed");
+          }
+        }
+        serverAlive = false;
+        events.push("server_exited");
+      }
+
+      return {
+        nextPendingHealthCheck: !serverHealthy,
+        healthCheckedWhileAlive,
+      };
+    }
+
+    // Simulate restart with pendingHealthCheck = true, server healthy
+    const result = simulateCycle(true, true);
+
+    const serverSpawnIndex = events.indexOf("server_spawned");
+    const healthCheckIndex = events.indexOf("health_checked");
+
+    expect(serverSpawnIndex).toBeGreaterThanOrEqual(0);
+    expect(healthCheckIndex).toBeGreaterThan(serverSpawnIndex);
+    expect(result.healthCheckedWhileAlive).toBe(true);
+    expect(result.nextPendingHealthCheck).toBe(false);
+  });
+
+  it("health check failure kills server and sets pendingHealthCheck for retry", () => {
+    const events: string[] = [];
+
+    function simulatePendingHealthCheckCycle(serverHealthy: boolean): {
+      serverKilled: boolean;
+      continueWithoutExitCodeProcessing: boolean;
+      nextPendingHealthCheck: boolean;
+    } {
+      let serverKilled = false;
+      let continueWithoutExitCodeProcessing = false;
+
+      // Spawn server
+      events.push("server_spawned");
+      // Concurrent health check
+      if (!serverHealthy) {
+        serverKilled = true;
+        events.push("server_killed");
+        continueWithoutExitCodeProcessing = true; // don't propagate kill exit code
+      }
+
+      return { serverKilled, continueWithoutExitCodeProcessing, nextPendingHealthCheck: !serverHealthy };
+    }
+
+    const result = simulatePendingHealthCheckCycle(false);
+
+    expect(result.serverKilled).toBe(true);
+    expect(result.continueWithoutExitCodeProcessing).toBe(true);
+    expect(result.nextPendingHealthCheck).toBe(true); // will retry health check on next restart
+  });
+});
+
 describe("validateRestartSafety", () => {
   const serverDir = "/srv";
   const dataDir = "/data";

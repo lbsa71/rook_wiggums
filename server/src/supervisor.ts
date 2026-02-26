@@ -50,6 +50,38 @@ function run(cmd: string, args: string[], cwd: string): Promise<number> {
   });
 }
 
+/**
+ * Spawn a process and concurrently poll its health endpoint.
+ * The health check runs while the server is alive — not after it exits.
+ * If unhealthy, the server process is killed so the caller can handle rollback.
+ */
+async function runWithHealthCheck(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  port: number,
+): Promise<{ exitCode: number; healthy: boolean; healthBody: unknown }> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: "inherit", cwd });
+    let healthy = false;
+    let healthBody: unknown;
+
+    // Health check runs concurrently while the server starts up
+    waitForHealthy(port).then(({ healthy: h, body }) => {
+      healthy = h;
+      healthBody = body;
+      if (!h) {
+        child.kill(); // Kill unhealthy server — caller handles rollback
+      }
+    }).catch(() => {
+      child.kill();
+    });
+
+    child.on("exit", (code) => resolve({ exitCode: code ?? 1, healthy, healthBody }));
+    child.on("error", () => resolve({ exitCode: 1, healthy: false, healthBody }));
+  });
+}
+
 async function waitForHealthy(port: number, maxAttempts = HEALTH_CHECK_ATTEMPTS): Promise<{ healthy: boolean; body?: unknown }> {
   const url = `http://127.0.0.1:${port}/api/health/critical`;
   let lastBody: unknown;
@@ -116,6 +148,8 @@ async function main(): Promise<void> {
   let consecutiveFailures = 0;
   let currentRetryDelay = INITIAL_RETRY_DELAY_MS;
   let consecutiveUnhealthyRestarts = 0;
+  // Set after a successful build: health-check the next server start concurrently
+  let pendingHealthCheck = false;
 
   for (;;) {
     const config = await resolveConfig(env, resolveOptions);
@@ -128,7 +162,64 @@ async function main(): Promise<void> {
     const startArgs = [cliPath, "start"];
     if (useForceStart) startArgs.push("--forceStart");
 
-    const exitCode = await run("node", startArgs, SERVER_DIR);
+    let exitCode: number;
+
+    if (pendingHealthCheck) {
+      // Spawn the new server and health-check it concurrently while it's running.
+      // This is the correct place for the health check — not after the server has already exited.
+      pendingHealthCheck = false;
+      const { exitCode: ec, healthy, healthBody } = await runWithHealthCheck(
+        "node", startArgs, SERVER_DIR, config.port ?? 3000
+      );
+
+      if (healthy) {
+        consecutiveUnhealthyRestarts = 0;
+        await run("git", ["tag", "-f", "last-known-good"], SERVER_DIR);
+        console.log("[supervisor] Server is healthy — tagged current commit as last-known-good");
+      } else {
+        consecutiveUnhealthyRestarts++;
+        console.error(`[supervisor] Health check failed after restart (${consecutiveUnhealthyRestarts}/${MAX_CONSECUTIVE_UNHEALTHY}):`, JSON.stringify(healthBody, null, 2));
+
+        if (consecutiveUnhealthyRestarts >= MAX_CONSECUTIVE_UNHEALTHY) {
+          // Save health diagnostics to restart-context.md before rollback
+          const restartContextPath = path.posix.join(
+            config.workingDirectory.replace(/\\/g, "/"),
+            "memory",
+            "restart-context.md"
+          );
+          const healthSection = `\n## Health Check at Rollback Trigger\n\`\`\`json\n${JSON.stringify(healthBody, null, 2)}\n\`\`\`\n`;
+          try {
+            await env.fs.mkdir(path.posix.join(config.workingDirectory.replace(/\\/g, "/"), "memory"), { recursive: true });
+            const existing = await env.fs.exists(restartContextPath) ? await env.fs.readFile(restartContextPath) : "";
+            await env.fs.writeFile(restartContextPath, existing + healthSection);
+          } catch { /* best effort — don't block rollback */ }
+
+          console.error("[supervisor] 3 consecutive unhealthy restarts — rolling back to last-known-good");
+          const checkoutCode = await run("git", ["checkout", "last-known-good"], SERVER_DIR);
+          if (checkoutCode !== 0) {
+            console.error("[supervisor] Rollback failed — no last-known-good tag found, giving up");
+            process.exit(1);
+          }
+          // IMPORTANT: Use npm run build (tsup), not npx tsc directly.
+          // Raw tsc produces different output than tsup and may succeed while generating a broken binary.
+          const rollbackBuildCode = await run("npm", ["run", "build"], SERVER_DIR);
+          if (rollbackBuildCode !== 0) {
+            console.error("[supervisor] Rollback build failed, giving up");
+            process.exit(1);
+          }
+          consecutiveUnhealthyRestarts = 0;
+          console.log("[supervisor] Rollback build succeeded — restarting with last-known-good version");
+        }
+
+        // Server was killed (unhealthy) — don't propagate its exit code; restart cleanly
+        pendingHealthCheck = true;
+        continue;
+      }
+
+      exitCode = ec;
+    } else {
+      exitCode = await run("node", startArgs, SERVER_DIR);
+    }
 
     if (exitCode === STOP_EXIT_CODE) {
       // User-initiated stop: restart without auto-start, skip rebuild
@@ -168,48 +259,8 @@ async function main(): Promise<void> {
         }
       }
       console.log("[supervisor] Build succeeded — restarting server");
-
-      const { healthy, body: healthBody } = await waitForHealthy(config.port);
-      if (healthy) {
-        consecutiveUnhealthyRestarts = 0;
-        // Tag current commit as last-known-good
-        await run("git", ["tag", "-f", "last-known-good"], SERVER_DIR);
-        console.log("[supervisor] Server is healthy — tagged current commit as last-known-good");
-      } else {
-        consecutiveUnhealthyRestarts++;
-        console.error(`[supervisor] Health check failed after restart (${consecutiveUnhealthyRestarts}/${MAX_CONSECUTIVE_UNHEALTHY}):`, JSON.stringify(healthBody, null, 2));
-
-        if (consecutiveUnhealthyRestarts >= MAX_CONSECUTIVE_UNHEALTHY) {
-          // Save health diagnostics to restart-context.md before rollback
-          const restartContextPath = path.posix.join(
-            config.workingDirectory.replace(/\\/g, "/"),
-            "memory",
-            "restart-context.md"
-          );
-          const healthSection = `\n## Health Check at Rollback Trigger\n\`\`\`json\n${JSON.stringify(healthBody, null, 2)}\n\`\`\`\n`;
-          try {
-            await env.fs.mkdir(path.posix.join(config.workingDirectory.replace(/\\/g, "/"), "memory"), { recursive: true });
-            const existing = await env.fs.exists(restartContextPath) ? await env.fs.readFile(restartContextPath) : "";
-            await env.fs.writeFile(restartContextPath, existing + healthSection);
-          } catch { /* best effort — don't block rollback */ }
-
-          console.error("[supervisor] 3 consecutive unhealthy restarts — rolling back to last-known-good");
-          const checkoutCode = await run("git", ["checkout", "last-known-good"], SERVER_DIR);
-          if (checkoutCode !== 0) {
-            console.error("[supervisor] Rollback failed — no last-known-good tag found, giving up");
-            process.exit(1);
-          }
-          // IMPORTANT: Use npm run build (tsup), not npx tsc directly.
-          // Raw tsc produces different output than tsup and may succeed while generating a broken binary.
-          const rollbackBuildCode = await run("npm", ["run", "build"], SERVER_DIR);
-          if (rollbackBuildCode !== 0) {
-            console.error("[supervisor] Rollback build failed, giving up");
-            process.exit(1);
-          }
-          consecutiveUnhealthyRestarts = 0;
-          console.log("[supervisor] Rollback build succeeded — restarting with last-known-good version");
-        }
-      }
+      // Health check deferred: will run concurrently on the next server spawn
+      pendingHealthCheck = true;
     }
   }
 }
