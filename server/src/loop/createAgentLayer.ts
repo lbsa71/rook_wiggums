@@ -72,8 +72,9 @@ export async function createAgentLayer(
   const mcpUrl = `http://localhost:${config.httpPort ?? DEFAULT_HTTP_PORT}/mcp`;
   const mcpServers = {
     tinybus: { type: "http" as const, url: mcpUrl },
+    code_dispatch: { type: "http" as const, url: mcpUrl },
   };
-  logger.debug(`agent-layer: MCP servers configured: tinybus → ${mcpUrl}`);
+  logger.debug(`agent-layer: MCP servers configured: tinybus → ${mcpUrl}, code_dispatch → ${mcpUrl}`);
   const launcher = new AgentSdkLauncher(sdkQuery, clock, config.model, logger, processTracker, mcpServers);
 
   // API semaphore — caps concurrent Claude sessions for rate-limit safety
