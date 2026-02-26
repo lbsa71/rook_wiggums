@@ -184,7 +184,7 @@ export class LoopOrchestrator implements IMessageInjector {
     this.transition(LoopState.RUNNING);
   }
 
-  stop(): void {
+  stop(userInitiated = false): void {
     if (this.state === LoopState.STOPPED) {
       return;
     }
@@ -195,7 +195,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.onSleepExit?.().catch(() => {});
     }
     this.transition(LoopState.STOPPED);
-    if (this.shutdownFn) {
+    if (this.shutdownFn && userInitiated) {
       this.shutdownFn(76); // Exit with code 76 (user-initiated stop — supervisor restarts without auto-start)
     }
   }

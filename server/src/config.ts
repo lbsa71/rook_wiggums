@@ -216,7 +216,7 @@ export async function resolveConfig(
     strategicModel: "opus",
     tacticalModel: "sonnet",
     mode: "cycle",
-    autoStartOnFirstRun: false,
+    autoStartOnFirstRun: true,
     autoStartAfterRestart: true,
     backupRetentionCount: 14,
     superegoAuditInterval: 50,

@@ -256,7 +256,7 @@ export class LoopHttpServer {
           this.json(res, 200, { state: LoopState.STOPPED, message: "Stopping gracefully" });
           // Use setImmediate to ensure response is sent before process exits
           setImmediate(() => {
-            this.orc.stop();
+            this.orc.stop(true); // user-initiated: suppress auto-start on restart
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Unknown error";

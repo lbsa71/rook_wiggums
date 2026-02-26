@@ -4,7 +4,7 @@
  * Spawns `node dist/cli.js start` (optionally with --forceStart). The server only honors the flag:
  * when --forceStart is present it always auto-starts the loop; it does not read config for that.
  * This loop uses isFirstTime and config to decide whether to add --forceStart:
- * - First run: add --forceStart iff autoStartOnFirstRun is true (default false).
+ * - First run: add --forceStart iff autoStartOnFirstRun is true (default true).
  * - After restart (exit 75): add --forceStart iff autoStartAfterRestart is true (default true).
  * - After user stop (exit 76): restart without --forceStart (auto-start suppressed).
  * - Any other exit code: propagate (clean exit; no restart).
