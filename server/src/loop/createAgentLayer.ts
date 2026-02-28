@@ -4,6 +4,8 @@ import { PromptBuilder } from "../agents/prompts/PromptBuilder";
 import { AgentSdkLauncher, SdkQueryFn } from "../agents/claude/AgentSdkLauncher";
 import { GeminiSessionLauncher } from "../agents/gemini/GeminiSessionLauncher";
 import { CopilotSessionLauncher } from "../agents/copilot/CopilotSessionLauncher";
+import { OllamaSessionLauncher } from "../agents/ollama/OllamaSessionLauncher";
+import { FetchHttpClient } from "../agents/ollama/FetchHttpClient";
 import { ProcessTracker, ProcessTrackerConfig } from "../agents/claude/ProcessTracker";
 import { NodeProcessKiller } from "../agents/claude/NodeProcessKiller";
 import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
@@ -93,6 +95,11 @@ export async function createAgentLayer(
     logger.debug("agent-layer: using CopilotSessionLauncher for cognitive roles");
     const copilotLauncher = new CopilotSessionLauncher(new NodeProcessRunner(), clock, config.model);
     gatedLauncher = new SemaphoreSessionLauncher(copilotLauncher, apiSemaphore);
+  } else if (config.sessionLauncher === "ollama") {
+    const ollamaBaseUrl = config.ollamaBaseUrl ?? "http://localhost:11434";
+    logger.debug(`agent-layer: using OllamaSessionLauncher for cognitive roles (${ollamaBaseUrl}, model: ${config.model})`);
+    const ollamaLauncher = new OllamaSessionLauncher(new FetchHttpClient(), clock, config.model, ollamaBaseUrl);
+    gatedLauncher = new SemaphoreSessionLauncher(ollamaLauncher, apiSemaphore);
   } else {
     gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
   }
