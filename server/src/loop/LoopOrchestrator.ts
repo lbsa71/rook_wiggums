@@ -32,6 +32,7 @@ import { PerformanceMetrics } from "../evaluation/PerformanceMetrics";
 import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
+import type { IAgoraService } from "../agora/IAgoraService";
 
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
@@ -90,6 +91,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Endorsement interceptor — compliance circuit-breaker
   private endorsementInterceptor: EndorsementInterceptor | null = null;
+
+  // Agora service — sends agoraReplies from Subconscious/Ego structured JSON output
+  private agoraService: IAgoraService | null = null;
 
   // Conversation session gate
   private conversationSessionActive = false;
@@ -311,6 +315,15 @@ export class LoopOrchestrator implements IMessageInjector {
     this.endorsementInterceptor = interceptor;
   }
 
+  /**
+   * Set the Agora service for sending agoraReplies from structured JSON output.
+   * When set, the orchestrator will send any agoraReplies returned by
+   * Subconscious.execute() after the execution completes.
+   */
+  setAgoraService(service: IAgoraService): void {
+    this.agoraService = service;
+  }
+
   requestRestart(): void {
     this.logger.debug("requestRestart() called — exiting for supervisor restart");
     this.eventSink.emit({
@@ -459,6 +472,13 @@ export class LoopOrchestrator implements IMessageInjector {
         if (taskResult.summary) {
           await this.subconscious.logConversation(taskResult.summary);
         }
+      }
+
+      // Send agoraReplies from structured JSON output (if any)
+      // This moves Agora sends from LLM tool calls into the orchestrator,
+      // enabling pure text-in → JSON-out execution for self-hosted models.
+      if (taskResult.agoraReplies.length > 0 && this.agoraService) {
+        this.deferredWork.enqueue(this.sendAgoraReplies(taskResult));
       }
 
       // Drive learning: if task was Id-generated, record a quality rating for future drive improvement
@@ -1023,6 +1043,29 @@ export class LoopOrchestrator implements IMessageInjector {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.debug(`drive-quality: failed to record rating — ${msg}`);
+    }
+  }
+
+  private async sendAgoraReplies(taskResult: TaskResult): Promise<void> {
+    if (!this.agoraService) return;
+
+    for (const reply of taskResult.agoraReplies) {
+      try {
+        const result = await this.agoraService.sendMessage({
+          peerName: reply.peerName,
+          type: "publish",
+          payload: { text: reply.text },
+          inReplyTo: reply.inReplyTo,
+        });
+        if (result.ok) {
+          this.logger.debug(`agoraReplies: sent to ${reply.peerName} (status=${result.status})`);
+        } else {
+          this.logger.debug(`agoraReplies: failed to send to ${reply.peerName} — ${result.error ?? "unknown error"} (status=${result.status})`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.debug(`agoraReplies: error sending to ${reply.peerName} — ${msg}`);
+      }
     }
   }
 

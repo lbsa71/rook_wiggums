@@ -17,6 +17,17 @@ export interface SubconsciousProposal {
   content: string;
 }
 
+/**
+ * Structured Agora reply to be sent by the orchestrator after execution.
+ * Moves Agora sends from LLM tool calls into structured JSON return,
+ * enabling pure text-in → JSON-out execution without MCP tool calling.
+ */
+export interface AgoraReply {
+  peerName: string;
+  text: string;
+  inReplyTo?: string; // optional envelope ID when replying to a specific message
+}
+
 export interface TaskResult {
   result: "success" | "failure" | "partial";
   summary: string;
@@ -24,7 +35,63 @@ export interface TaskResult {
   skillUpdates: string | null;
   memoryUpdates: string | null;
   proposals: SubconsciousProposal[];
+  agoraReplies: AgoraReply[];
 }
+
+/**
+ * JSON Schema for TaskResult — used by OllamaSessionLauncher for
+ * grammar-constrained decoding via the `format` field.
+ */
+export const TASK_RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    result: { type: "string", enum: ["success", "failure", "partial"] },
+    summary: { type: "string" },
+    progressEntry: { type: "string" },
+    skillUpdates: { type: ["string", "null"] },
+    memoryUpdates: { type: ["string", "null"] },
+    proposals: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          target: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["target", "content"],
+      },
+    },
+    agoraReplies: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          peerName: { type: "string" },
+          text: { type: "string" },
+          inReplyTo: { type: "string" },
+        },
+        required: ["peerName", "text"],
+      },
+    },
+  },
+  required: ["result", "summary", "progressEntry", "skillUpdates", "memoryUpdates", "proposals", "agoraReplies"],
+} as const;
+
+/**
+ * JSON Schema for OutcomeEvaluation — used by OllamaSessionLauncher for
+ * grammar-constrained decoding via the `format` field.
+ */
+export const OUTCOME_EVALUATION_SCHEMA = {
+  type: "object",
+  properties: {
+    outcomeMatchesIntent: { type: "boolean" },
+    qualityScore: { type: "number" },
+    issuesFound: { type: "array", items: { type: "string" } },
+    recommendedActions: { type: "array", items: { type: "string" } },
+    needsReassessment: { type: "boolean" },
+  },
+  required: ["outcomeMatchesIntent", "qualityScore", "issuesFound", "recommendedActions", "needsReassessment"],
+} as const;
 
 export interface OutcomeEvaluation {
   outcomeMatchesIntent: boolean;
@@ -65,7 +132,7 @@ export class Subconscious {
 
       let message = this.promptBuilder.buildAgentMessage(eagerRefs, lazyRefs, "");
       if (pendingMessages && pendingMessages.length > 0) {
-        message += `[PENDING MESSAGES — process first]\nProcess and respond to these before the task below. Use the TinyBus MCP tool (\`mcp__tinybus__send_message\` in Claude Code, or \`send_message\` in Gemini CLI) with type "agora.send" to reply to Agora messages.\n\n`;
+        message += `[PENDING MESSAGES — process first]\nProcess and respond to these before the task below. Include any Agora replies in the \`agoraReplies\` field of your JSON response. The orchestrator will send them.\n\n`;
         message += pendingMessages.join("\n\n---\n\n");
         message += "\n\n[TASK]\n";
       }
@@ -86,6 +153,7 @@ export class Subconscious {
           skillUpdates: null,
           memoryUpdates: null,
           proposals: [],
+          agoraReplies: [],
         };
       }
 
@@ -97,6 +165,7 @@ export class Subconscious {
         skillUpdates: (parsed.skillUpdates as string | null | undefined) ?? null,
         memoryUpdates: (parsed.memoryUpdates as string | null | undefined) ?? null,
         proposals: (parsed.proposals as SubconsciousProposal[] | undefined) ?? [],
+        agoraReplies: (parsed.agoraReplies as AgoraReply[] | undefined) ?? [],
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -107,6 +176,7 @@ export class Subconscious {
         skillUpdates: null,
         memoryUpdates: null,
         proposals: [],
+        agoraReplies: [],
       };
     }
   }
