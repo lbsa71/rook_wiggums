@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { IProcessRunner } from "../claude/IProcessRunner";
 import type { IClock } from "../../substrate/abstractions/IClock";
 import type {
@@ -14,18 +15,26 @@ const DEFAULT_MODEL = "claude-sonnet-4.5";
  * reasoning sessions (Ego / Subconscious / Superego / Id).
  *
  * CLI mapping:
- *   systemPrompt  → prepended to the message as a "SYSTEM INSTRUCTIONS:" block
- *   message       → -p "<message>"
- *   model         → --model <model>
+ *   systemPrompt    → prepended to the message as a "SYSTEM INSTRUCTIONS:" block
+ *   message         → -p "<message>"
+ *   model           → --model <model>
+ *   continueSession → --resume <uuid> keyed by cwd (isolated per role workspace)
  *   --allow-all-tools → auto-approve all tool calls (required for headless mode)
+ *
+ * Session continuity: unlike Claude, Copilot sessions are stored globally in
+ * ~/.copilot/session-state/<uuid>/ rather than inside the working directory.
+ * We generate a UUID per cwd on the first continueSession call and reuse it
+ * for subsequent calls, giving each role its own isolated conversation thread.
  */
 export class CopilotSessionLauncher implements ISessionLauncher {
   private readonly model: string;
+  private readonly sessionIds = new Map<string, string>();
 
   constructor(
     private readonly processRunner: IProcessRunner,
     private readonly clock: IClock,
     model?: string,
+    private readonly generateUUID: () => string = randomUUID,
   ) {
     this.model = model ?? DEFAULT_MODEL;
   }
@@ -47,6 +56,13 @@ export class CopilotSessionLauncher implements ISessionLauncher {
 
     if (options?.cwd) {
       args.push("--add-dir", options.cwd);
+    }
+
+    if (options?.continueSession && options.cwd) {
+      if (!this.sessionIds.has(options.cwd)) {
+        this.sessionIds.set(options.cwd, this.generateUUID());
+      }
+      args.push("--resume", this.sessionIds.get(options.cwd)!);
     }
 
     try {
