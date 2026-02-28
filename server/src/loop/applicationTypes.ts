@@ -74,7 +74,9 @@ export interface ApplicationConfig {
   /** Maximum concurrent Claude API sessions (default: 2). Prevents rate-limit saturation when work pipeline and conversations overlap. */
   maxConcurrentSessions?: number;
   /** Which session launcher to use for agent reasoning sessions (default: "claude"). */
-  sessionLauncher?: "claude" | "gemini";
+  sessionLauncher?: "claude" | "gemini" | "ollama";
+  /** Base URL for the Ollama server when sessionLauncher is "ollama" (default: "http://localhost:11434"). */
+  ollamaBaseUrl?: string;
   /** Default code backend to use for code dispatch tasks (default: "claude"). */
   defaultCodeBackend?: "claude" | "copilot" | "gemini" | "auto";
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
