@@ -18,7 +18,15 @@ export class NodeProcessRunner implements IProcessRunner {
     const idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
 
     return new Promise<ProcessResult>((resolve, reject) => {
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], cwd: options?.cwd });
+      const augmentedPath = [
+        `${process.env.HOME}/.local/bin`,
+        process.env.PATH ?? "",
+      ].filter(Boolean).join(":");
+      const child = spawn(command, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        cwd: options?.cwd,
+        env: { ...process.env, PATH: augmentedPath },
+      });
 
       let stdout = "";
       let stderr = "";
