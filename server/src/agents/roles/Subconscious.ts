@@ -78,7 +78,7 @@ export class Subconscious {
       }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
 
       if (!result.success) {
-        const errorDetail = result.rawOutput || result.error || "Claude session error";
+        const errorDetail = result.error || "Session error (exit code " + result.exitCode + ")";
         return {
           result: "failure",
           summary: `Task execution failed: ${errorDetail}`,

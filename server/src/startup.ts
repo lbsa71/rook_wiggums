@@ -102,6 +102,8 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     workingDirectory: config.workingDirectory,
     sourceCodePath: config.sourceCodePath,
     model: config.model,
+    strategicModel: config.strategicModel,
+    tacticalModel: config.tacticalModel,
     httpPort: config.port,
     mode: config.mode,
     backupRetentionCount: config.backupRetentionCount,
