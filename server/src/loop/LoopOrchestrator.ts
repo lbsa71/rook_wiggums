@@ -388,6 +388,8 @@ export class LoopOrchestrator implements IMessageInjector {
         } catch (err) {
           this.logger.debug(`cycle ${this.cycleNumber}: pending message response failed — ${err instanceof Error ? err.message : String(err)}`);
         }
+        // Processing messages is real work — reset idle counter to avoid premature sleep
+        this.metrics.consecutiveIdleCycles = 0;
       }
 
       this.logger.debug(`cycle ${this.cycleNumber}: idle (consecutive: ${this.metrics.consecutiveIdleCycles})`);

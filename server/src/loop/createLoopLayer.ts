@@ -103,12 +103,8 @@ export async function createLoopLayer(
 
     // Note: We'll create AgoraMessageHandler after orchestrator is created
     // so we can pass it as IMessageInjector
-
-    // Connect to relay if configured (will set handler after orchestrator creation)
-    if (agoraService && agoraConfig.relay?.autoConnect && agoraConfig.relay.url) {
-      await agoraService.connectRelay(agoraConfig.relay.url);
-      logger.debug(`Connected to Agora relay at ${agoraConfig.relay.url}`);
-    }
+    // IMPORTANT: connectRelay is deferred until after the message handler is registered
+    // to avoid losing queued relay messages delivered immediately on connect.
   } catch (err) {
     // If Agora config doesn't exist, log and continue without Agora capability
     logger.debug("Agora not configured: " + (err instanceof Error ? err.message : String(err)));
@@ -210,6 +206,10 @@ export async function createLoopLayer(
           logger.debug(`[AGORA] Failed to process relay message: ${err instanceof Error ? err.message : String(err)}`);
         }
       });
+
+      // Connect to relay AFTER handler is registered so queued messages aren't lost
+      await agoraService.connectRelay(agoraConfig.relay.url);
+      logger.debug(`Connected to Agora relay at ${agoraConfig.relay.url}`);
     }
   }
 

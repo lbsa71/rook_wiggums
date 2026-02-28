@@ -18,7 +18,7 @@ export function defaultLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
   const defaults: LoopConfig = {
     cycleDelayMs: 30000,
     superegoAuditInterval: 50,
-    maxConsecutiveIdleCycles: 1,
+    maxConsecutiveIdleCycles: 10,
     idleSleepEnabled: false,
     evaluateOutcomeEnabled: false,
     evaluateOutcomeQualityThreshold: 70,
