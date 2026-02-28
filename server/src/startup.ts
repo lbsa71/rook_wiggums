@@ -113,6 +113,8 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     apiToken: config.apiToken,
     progressMaxBytes: config.progressMaxBytes,
     watchdog: config.watchdog,
+    sessionLauncher: config.sessionLauncher,
+    defaultCodeBackend: config.defaultCodeBackend,
   });
   appForCleanup = app;
 
