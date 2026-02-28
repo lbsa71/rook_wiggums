@@ -1,2 +1,15 @@
-* All environment resources, like environment settings, file system operations, and current time should be abstracted into an IEnvironment.ts interface and injected into all modules so tests can mock it.
-* All timestamps should be injected into function calls, so tests can use known and static timestamps.
+# Substrate
+This repo is an AI agent orchestration shell (roles, file-based substrate memory).
+
+# Way of working
+* Always start coding tasks with a git pull.
+* Smallest valuable increment: decompose into the smallest possible valuable increments.
+* Simplicity and legibility. If the right solution requires refactoring first, do that.
+* TDD: red/green/refactor.
+* Boy scout rule: leave the codebase in better shape than you found it.
+* Abstract environment (file, process, time, env) behind interfaces; inject so tests can use in-memory/fixed implementations.
+* Inject timestamps into logic—no raw `Date.now()` or `new Date()` in business code.
+* End completed tasks with pull, build, lint, test, commit, push. Push often.
+
+# Versioning
+* Before committing: update package.json (at least patch) for significant changes; ensure build and tests pass.
