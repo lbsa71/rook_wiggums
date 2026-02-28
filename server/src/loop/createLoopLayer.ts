@@ -305,6 +305,12 @@ export async function createLoopLayer(
   const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
   orchestrator.setPerformanceMetrics(performanceMetrics);
 
+  // Wire Agora service into orchestrator for sending agoraReplies
+  // from Subconscious/Ego structured JSON output
+  if (agoraService) {
+    orchestrator.setAgoraService(agoraService);
+  }
+
   // Endorsement interceptor — compliance circuit-breaker
   {
     const boundariesPath = path.join(config.substratePath, "BOUNDARIES.md");
