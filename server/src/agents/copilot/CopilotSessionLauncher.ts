@@ -7,7 +7,7 @@ import type {
   LaunchOptions,
 } from "../claude/ISessionLauncher";
 
-const DEFAULT_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = "claude-sonnet-4.5";
 
 /**
  * ISessionLauncher implementation that invokes the Copilot CLI for agent
