@@ -28,6 +28,7 @@ import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { IMessageInjector } from "./IMessageInjector";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
 import { DriveQualityTracker } from "../evaluation/DriveQualityTracker";
+import { PerformanceMetrics } from "../evaluation/PerformanceMetrics";
 import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
@@ -59,6 +60,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Drive quality tracker for Id learning loop
   private driveQualityTracker: DriveQualityTracker | null = null;
+
+  // Performance metrics — records cycle timing, api_call events, and substrate_io events
+  private performanceMetrics: PerformanceMetrics | null = null;
 
   // SUPEREGO finding tracker for recurring finding escalation
   private findingTracker: SuperegoFindingTracker = new SuperegoFindingTracker();
@@ -299,6 +303,10 @@ export class LoopOrchestrator implements IMessageInjector {
     this.driveQualityTracker = tracker;
   }
 
+  setPerformanceMetrics(metrics: PerformanceMetrics): void {
+    this.performanceMetrics = metrics;
+  }
+
   setEndorsementInterceptor(interceptor: EndorsementInterceptor): void {
     this.endorsementInterceptor = interceptor;
   }
@@ -355,6 +363,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
     this.logger.debug(`cycle ${this.cycleNumber}: starting`);
     this.watchdog?.recordActivity();
+    const cycleStartMs = this.clock.now().getTime();
 
     // Drain deferred work from previous cycle before dispatching
     await this.deferredWork.drain();
@@ -404,6 +413,7 @@ export class LoopOrchestrator implements IMessageInjector {
         this.logger.debug(`cycle ${this.cycleNumber}: including ${pending.length} pending message(s) with task`);
       }
 
+      const apiCallStartMs = this.clock.now().getTime();
       const taskResult = await this.subconscious.execute(
         {
           taskId: dispatch.taskId,
@@ -412,6 +422,9 @@ export class LoopOrchestrator implements IMessageInjector {
         this.createLogCallback("SUBCONSCIOUS"),
         pending
       );
+      const apiCallDurationMs = this.clock.now().getTime() - apiCallStartMs;
+      // Best-effort — fire-and-forget so metrics never block the loop
+      this.performanceMetrics?.recordApiCall(apiCallDurationMs, "SUBCONSCIOUS", "execute").catch(() => {});
 
       const success = taskResult.result === "success";
 
@@ -480,6 +493,15 @@ export class LoopOrchestrator implements IMessageInjector {
       data: { cycleNumber: this.cycleNumber, action: result.action },
     });
     this.watchdog?.recordActivity();
+
+    // Record cycle timing to performance.jsonl — best-effort, fire-and-forget
+    const cycleDurationMs = this.clock.now().getTime() - cycleStartMs;
+    this.performanceMetrics?.recordCycleComplete(
+      this.cycleNumber,
+      result.action,
+      cycleDurationMs,
+      result.success,
+    ).catch(() => {});
 
     // Record last cycle diagnostics for health reporting
     this.lastCycleAt = this.clock.now();

@@ -20,6 +20,7 @@ import { ValidationScheduler } from "./ValidationScheduler";
 import { IScheduler } from "./IScheduler";
 import { SchedulerCoordinator } from "./SchedulerCoordinator";
 import { SelfImprovementMetricsCollector } from "../evaluation/SelfImprovementMetrics";
+import { PerformanceMetrics } from "../evaluation/PerformanceMetrics";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { AgoraService } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { LoopWatchdog } from "./LoopWatchdog";
@@ -299,6 +300,10 @@ export async function createLoopLayer(
   httpServer.setReportStore(reportStore);
   orchestrator.setReportStore(reportStore);
   orchestrator.setDriveQualityTracker(driveQualityTracker);
+
+  // Create performance metrics collector and wire into orchestrator
+  const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
+  orchestrator.setPerformanceMetrics(performanceMetrics);
 
   // Endorsement interceptor — compliance circuit-breaker
   {
