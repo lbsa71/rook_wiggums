@@ -116,6 +116,7 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     progressMaxBytes: config.progressMaxBytes,
     watchdog: config.watchdog,
     sessionLauncher: config.sessionLauncher,
+    ollamaBaseUrl: config.ollamaBaseUrl,
     defaultCodeBackend: config.defaultCodeBackend,
   });
   appForCleanup = app;
