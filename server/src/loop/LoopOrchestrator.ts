@@ -1,5 +1,5 @@
-import * as fs from "fs";
 import * as path from "path";
+import { IFileSystem } from "../substrate/abstractions/IFileSystem";
 import { Ego } from "../agents/roles/Ego";
 import { Subconscious, TaskResult, OutcomeEvaluation, AgoraReply } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
@@ -135,6 +135,7 @@ export class LoopOrchestrator implements IMessageInjector {
     findingTrackerSave?: () => Promise<void>,
     conversationSessionMaxDurationMs?: number,
     substratePath?: string,
+    private readonly fileSystem?: IFileSystem,
   ) {
     this.substratePath = substratePath ?? "";
     this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 20_000; // Default 20s
@@ -1227,9 +1228,12 @@ export class LoopOrchestrator implements IMessageInjector {
   }
 
   private async readEndpointState(): Promise<string> {
+    if (!this.fileSystem || !this.substratePath) {
+      return "[ENDPOINT STATE: UNKNOWN — no state file found or unreadable. Treat cautiously; probe before dispatching inference-gated tasks.]";
+    }
     const stateFilePath = path.join(this.substratePath, ".endpoint_state.json");
     try {
-      const raw = await fs.promises.readFile(stateFilePath, "utf8");
+      const raw = await this.fileSystem.readFile(stateFilePath);
       const state = JSON.parse(raw);
       return this.formatEndpointStateForInjection(state);
     } catch (err) {

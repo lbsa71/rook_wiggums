@@ -1,6 +1,8 @@
 import * as realFs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { IFileSystem } from "../../src/substrate/abstractions/IFileSystem";
+import { NodeFileSystem } from "../../src/substrate/abstractions/NodeFileSystem";
 import { LoopOrchestrator } from "../../src/loop/LoopOrchestrator";
 import { InMemoryEventSink } from "../../src/loop/InMemoryEventSink";
 import { ImmediateTimer } from "../../src/loop/ImmediateTimer";
@@ -71,7 +73,7 @@ async function setupIdleSubstrate(fs: InMemoryFileSystem) {
   await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
 }
 
-function createOrchestrator(substratePath?: string) {
+function createOrchestrator(substratePath?: string, fileSystem?: IFileSystem) {
   const deps = createDeps();
   const logger = new InMemoryLogger();
   const eventSink = new InMemoryEventSink();
@@ -82,6 +84,7 @@ function createOrchestrator(substratePath?: string) {
     config, logger,
     undefined, undefined, undefined, undefined, undefined,
     substratePath,
+    fileSystem,
   );
   return { orchestrator, logger, eventSink, deps };
 }
@@ -145,7 +148,8 @@ describe("readEndpointState() private helper", () => {
   });
 
   async function callReadEndpointState(substratePath: string): Promise<string> {
-    const { orchestrator } = createOrchestrator(substratePath);
+    const nodeFs = new NodeFileSystem();
+    const { orchestrator } = createOrchestrator(substratePath, nodeFs);
     return (orchestrator as unknown as { readEndpointState(): Promise<string> }).readEndpointState();
   }
 
