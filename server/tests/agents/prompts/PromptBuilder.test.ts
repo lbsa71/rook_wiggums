@@ -119,28 +119,43 @@ describe("PromptBuilder", () => {
   });
 
   describe("getEagerReferences", () => {
-    it("returns @ references only for eager files", async () => {
+    it("inlines content for eager files (not @ references)", async () => {
       const refs = await builder.getEagerReferences(AgentRole.SUBCONSCIOUS);
-      expect(refs).toContain("@/substrate/PLAN.md");
-      expect(refs).toContain("@/substrate/VALUES.md");
-      expect(refs).not.toContain("@/substrate/MEMORY.md");
-      expect(refs).not.toContain("@/substrate/PROGRESS.md");
+      // Eager files should be inlined with their content
+      expect(refs).toContain("/substrate/PLAN.md:");
+      expect(refs).toContain("# Plan");
+      expect(refs).toContain("/substrate/VALUES.md:");
+      expect(refs).toContain("# Values");
+      // Non-eager files should not appear at all
+      expect(refs).not.toContain("MEMORY.md");
+      expect(refs).not.toContain("PROGRESS.md");
     });
 
-    it("ID has 3 eager files", async () => {
+    it("ID has 3 eager files inlined", async () => {
       const refs = await builder.getEagerReferences(AgentRole.ID);
-      const atRefs = refs.split("\n").filter((l) => l.startsWith("@"));
-      expect(atRefs).toHaveLength(3); // ID, VALUES, PLAN
-      expect(refs).toContain("@/substrate/ID.md");
-      expect(refs).toContain("@/substrate/VALUES.md");
-      expect(refs).toContain("@/substrate/PLAN.md");
+      // Should contain inlined content, not @ references
+      expect(refs).toContain("/substrate/ID.md:");
+      expect(refs).toContain("# Id");
+      expect(refs).toContain("/substrate/VALUES.md:");
+      expect(refs).toContain("/substrate/PLAN.md:");
+      // No @ references when files are readable
+      expect(refs).not.toContain("@/substrate/ID.md");
+      expect(refs).not.toContain("@/substrate/VALUES.md");
+      expect(refs).not.toContain("@/substrate/PLAN.md");
     });
 
-    it("Superego eager loads all files", async () => {
+    it("Superego eager loads all readable files inlined", async () => {
       const refs = await builder.getEagerReferences(AgentRole.SUPEREGO);
+      // Readable files should be inlined (not @ references)
+      expect(refs).toContain("/substrate/PLAN.md:");
+      expect(refs).toContain("# Plan");
+      expect(refs).toContain("/substrate/VALUES.md:");
+      expect(refs).toContain("# Values");
+      expect(refs).not.toContain("@/substrate/PLAN.md");
+      expect(refs).not.toContain("@/substrate/VALUES.md");
+      // Unreadable files (not in InMemoryFileSystem) fall back to @ references
       const atRefs = refs.split("\n").filter((l) => l.startsWith("@"));
-      const totalFileTypes = Object.values(SubstrateFileType).length;
-      expect(atRefs).toHaveLength(totalFileTypes);
+      expect(atRefs.length).toBeGreaterThan(0); // Some files don't exist in test fs
     });
 
     it("inlines last N lines when maxLines is set for a file", async () => {
@@ -158,13 +173,18 @@ describe("PromptBuilder", () => {
       expect(refs).not.toContain("Line 1");
     });
 
-    it("still uses @ reference for files without a maxLines cap", async () => {
+    it("inlines files without maxLines cap and truncates files with maxLines", async () => {
       const refs = await builder.getEagerReferences(AgentRole.SUPEREGO, {
         maxLines: { [SubstrateFileType.PROGRESS]: 200 },
       });
-      expect(refs).toContain("@/substrate/PLAN.md");
-      expect(refs).toContain("@/substrate/MEMORY.md");
-      expect(refs).not.toContain("@/substrate/PROGRESS.md");
+      // Files without maxLines should be inlined (not @ references)
+      expect(refs).toContain("/substrate/PLAN.md:");
+      expect(refs).toContain("# Plan");
+      expect(refs).toContain("/substrate/MEMORY.md:");
+      expect(refs).toContain("# Memory");
+      expect(refs).not.toContain("@/substrate/PLAN.md");
+      expect(refs).not.toContain("@/substrate/MEMORY.md");
+      // File with maxLines should use the truncated format
       expect(refs).toContain("/substrate/PROGRESS.md (last 200 lines):");
     });
 
@@ -174,6 +194,22 @@ describe("PromptBuilder", () => {
         maxLines: { [SubstrateFileType.PEERS]: 50 },
       });
       expect(refs).toContain("@/substrate/PEERS.md");
+    });
+
+    it("falls back to @ reference when eager file cannot be read", async () => {
+      // Create a builder with a path that has no files
+      const emptyFs = new InMemoryFileSystem();
+      const emptyConfig = new SubstrateConfig("/empty");
+      const emptyReader = new SubstrateFileReader(emptyFs, emptyConfig);
+      const emptyBuilder = new PromptBuilder(emptyReader, checker, {
+        substratePath: "/empty",
+        sourceCodePath: "/home/user/substrate",
+      });
+      const refs = await emptyBuilder.getEagerReferences(AgentRole.ID);
+      // Unreadable files should fall back to @ references
+      expect(refs).toContain("@/empty/ID.md");
+      expect(refs).toContain("@/empty/VALUES.md");
+      expect(refs).toContain("@/empty/PLAN.md");
     });
   });
 

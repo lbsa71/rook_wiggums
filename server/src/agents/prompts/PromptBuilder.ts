@@ -109,7 +109,13 @@ export class PromptBuilder {
           parts.push(`@${substratePath}/${fileName}`);
         }
       } else {
-        parts.push(`@${substratePath}/${fileName}`);
+        try {
+          const fileContent = await this.reader.read(ft);
+          parts.push(`${substratePath}/${fileName}:\n${fileContent.rawMarkdown}`);
+        } catch {
+          // File unreadable — fall back to @ reference so Claude CLI can still expand it
+          parts.push(`@${substratePath}/${fileName}`);
+        }
       }
     }
     return parts.join("\n");
