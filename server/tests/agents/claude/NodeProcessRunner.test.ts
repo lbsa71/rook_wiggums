@@ -150,9 +150,9 @@ describe("NodeProcessRunner", () => {
       const result = await runner.run(
         NODE,
         ["-e", "process.stdout.write(process.cwd())"],
-        { cwd: "/home/bishop" },
+        { cwd: "/tmp" },
       );
-      expect(result.stdout).toBe("/home/bishop");
+      expect(result.stdout).toBe("/tmp");
     });
   });
 

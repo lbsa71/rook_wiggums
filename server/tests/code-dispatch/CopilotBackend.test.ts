@@ -45,8 +45,9 @@ describe("CopilotBackend", () => {
     expect(args[0]).toBe("-p");
     // args[1] is the prompt
     expect(args[2]).toBe("--allow-all-tools");
-    expect(args[3]).toBe("--add-dir");
-    expect(args[4]).toBe("/tmp/test-repo");
+    expect(args[3]).toBe("--silent");
+    expect(args[4]).toBe("--add-dir");
+    expect(args[5]).toBe("/tmp/test-repo");
   });
 
   it("includes --model when provided in constructor", async () => {
