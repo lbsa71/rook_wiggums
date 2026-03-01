@@ -311,6 +311,16 @@ export async function createLoopLayer(
     orchestrator.setAgoraService(agoraService);
   }
 
+  // INS (Involuntary Nervous System) — pre-cycle deterministic rule checks
+  {
+    const { INSHook, ComplianceStateManager, defaultINSConfig } = await import("./ins");
+    const insConfig = defaultINSConfig(config.substratePath);
+    const complianceState = await ComplianceStateManager.load(insConfig.statePath, fs, logger);
+    const insHook = new INSHook(reader, fs, clock, logger, insConfig, complianceState);
+    orchestrator.setINSHook(insHook);
+    // ComplianceStateManager saves after each state change in INSHook — no shutdown hook needed.
+  }
+
   // Endorsement interceptor — compliance circuit-breaker
   {
     const boundariesPath = path.join(config.substratePath, "BOUNDARIES.md");

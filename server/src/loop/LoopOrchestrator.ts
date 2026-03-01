@@ -33,6 +33,8 @@ import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
 import type { IAgoraService } from "../agora/IAgoraService";
+import type { INSResult } from "./ins/types";
+import type { INSHook } from "./ins/INSHook";
 
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
@@ -94,6 +96,11 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Agora service — sends agoraReplies from Subconscious/Ego structured JSON output
   private agoraService: IAgoraService | null = null;
+
+  // INS (Involuntary Nervous System) — pre-cycle deterministic rule checks
+  private insHook: INSHook | null = null;
+  private lastINSResult: INSResult | null = null;
+  private lastTaskResult: { result: string; summary?: string } | null = null;
 
   // Conversation session gate
   private conversationSessionActive = false;
@@ -324,6 +331,16 @@ export class LoopOrchestrator implements IMessageInjector {
     this.agoraService = service;
   }
 
+  /** Set the INS pre-cycle hook for deterministic rule checks. */
+  setINSHook(hook: INSHook): void {
+    this.insHook = hook;
+  }
+
+  /** Get the last INS result for observability/testing. */
+  getLastINSResult(): INSResult | null {
+    return this.lastINSResult;
+  }
+
   requestRestart(): void {
     this.logger.debug("requestRestart() called — exiting for supervisor restart");
     this.eventSink.emit({
@@ -380,6 +397,35 @@ export class LoopOrchestrator implements IMessageInjector {
 
     // Drain deferred work from previous cycle before dispatching
     await this.deferredWork.drain();
+
+    // INS pre-cycle hook — deterministic rule checks
+    if (this.insHook) {
+      try {
+        this.lastINSResult = await this.insHook.evaluate(
+          this.cycleNumber,
+          this.lastTaskResult ?? undefined,
+        );
+        if (!this.lastINSResult.noop) {
+          // Inject INS flags into pending messages so Ego sees them
+          this.pendingMessages.push(this.formatINSMessage(this.lastINSResult));
+          this.eventSink.emit({
+            type: "ins_complete",
+            timestamp: this.clock.now().toISOString(),
+            data: {
+              cycleNumber: this.cycleNumber,
+              actionCount: this.lastINSResult.actions.length,
+              actionTypes: this.lastINSResult.actions.map((a) => a.type),
+            },
+          });
+        }
+      } catch (err) {
+        // INS must never block the cycle
+        this.logger.debug(
+          `ins: hook failed — ${err instanceof Error ? err.message : String(err)}`,
+        );
+        this.lastINSResult = { noop: true, actions: [] };
+      }
+    }
 
     const dispatch = await this.ego.dispatchNext();
 
@@ -442,6 +488,9 @@ export class LoopOrchestrator implements IMessageInjector {
       this.performanceMetrics?.recordApiCall(apiCallDurationMs, "SUBCONSCIOUS", "execute").catch(() => {});
 
       const success = taskResult.result === "success";
+
+      // Store for INS consecutive-partial detection
+      this.lastTaskResult = { result: taskResult.result, summary: taskResult.summary };
 
       this.logger.debug(`cycle ${this.cycleNumber}: task "${dispatch.taskId}" ${success ? "succeeded" : "failed"} — ${taskResult.summary}`);
 
@@ -1044,6 +1093,14 @@ export class LoopOrchestrator implements IMessageInjector {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.debug(`drive-quality: failed to record rating — ${msg}`);
     }
+  }
+
+  private formatINSMessage(result: INSResult): string {
+    const lines = [`[INS] Pre-cycle check flagged ${result.actions.length} issue(s):`];
+    for (const action of result.actions) {
+      lines.push(`- ${action.type}: ${action.target} — ${action.detail}`);
+    }
+    return lines.join("\n");
   }
 
   private async sendAgoraReplies(replies: AgoraReply[]): Promise<void> {
