@@ -5,7 +5,9 @@ import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "imp
 
 class MockAgoraService implements IAgoraService {
   public sentMessages: Array<{ peerName: string; type: string; payload: unknown; inReplyTo?: string }> = [];
+  public repliedEnvelopes: Array<{ targetPubkey: string; type: string; payload: unknown; inReplyTo: string }> = [];
   public shouldFailSend = false;
+  public shouldFailReply = false;
 
   async sendMessage(options: { peerName: string; type: string; payload: unknown; inReplyTo?: string }) {
     if (this.shouldFailSend) {
@@ -13,6 +15,14 @@ class MockAgoraService implements IAgoraService {
     }
     this.sentMessages.push(options);
     return { ok: true, status: 200 };
+  }
+
+  async replyToEnvelope(options: { targetPubkey: string; type: string; payload: unknown; inReplyTo: string }) {
+    if (this.shouldFailReply) {
+      return { ok: false, status: 0, error: "Mock reply error" };
+    }
+    this.repliedEnvelopes.push(options);
+    return { ok: true, status: 0 };
   }
 
   async decodeInbound(_message: string) {
@@ -238,6 +248,85 @@ describe("AgoraOutboundProvider", () => {
       });
 
       await expect(provider.send(message)).rejects.toThrow("All sends failed");
+    });
+
+    it("should route targetPubkey to replyToEnvelope", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          targetPubkey: "302a300506032b6570032100deadbeef",
+          type: "publish",
+          payload: { text: "hello stranger" },
+          inReplyTo: "envelope-abc-123",
+        },
+      });
+
+      await provider.send(message);
+
+      expect(agoraService.repliedEnvelopes).toHaveLength(1);
+      expect(agoraService.repliedEnvelopes[0]).toEqual({
+        targetPubkey: "302a300506032b6570032100deadbeef",
+        type: "publish",
+        payload: { text: "hello stranger" },
+        inReplyTo: "envelope-abc-123",
+      });
+      // Should NOT have used sendMessage
+      expect(agoraService.sentMessages).toHaveLength(0);
+    });
+
+    it("should reject targetPubkey without inReplyTo", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          targetPubkey: "302a300506032b6570032100deadbeef",
+          type: "publish",
+          payload: { text: "no reply ref" },
+        },
+      });
+
+      await expect(provider.send(message)).rejects.toThrow("targetPubkey requires inReplyTo");
+    });
+
+    it("should throw when reply to pubkey fails", async () => {
+      agoraService.shouldFailReply = true;
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          targetPubkey: "302a300506032b6570032100deadbeef",
+          type: "publish",
+          payload: { text: "will fail" },
+          inReplyTo: "envelope-fail",
+        },
+      });
+
+      await expect(provider.send(message)).rejects.toThrow("Reply to pubkey failed");
+    });
+
+    it("should prefer targetPubkey over peerName when both present", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          peerName: "test-peer",
+          targetPubkey: "302a300506032b6570032100deadbeef",
+          type: "publish",
+          payload: { text: "both set" },
+          inReplyTo: "envelope-both",
+        },
+      });
+
+      await provider.send(message);
+
+      // Should use replyToEnvelope, not sendMessage
+      expect(agoraService.repliedEnvelopes).toHaveLength(1);
+      expect(agoraService.sentMessages).toHaveLength(0);
     });
   });
 

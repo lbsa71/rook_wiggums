@@ -11,9 +11,12 @@ import type { ILogger } from "../logging";
  *
  * Expected message format:
  * - type: "agora.send"
- * - payload: { peerName?: string; type: string; payload: unknown; inReplyTo?: string }
+ * - payload: { peerName?: string; targetPubkey?: string; type: string; payload: unknown; inReplyTo?: string }
  *
- * Broadcast: omit peerName or set to "all" to send to every configured peer.
+ * Routing priority:
+ * 1. targetPubkey: reply via relay to any pubkey (RFC-002 Phase 1, requires inReplyTo)
+ * 2. peerName: send to named peer (HTTP first, relay fallback)
+ * 3. Broadcast: omit peerName or set to "all" to send to every configured peer.
  * Partial failures in broadcast mode are logged but don't throw unless ALL sends fail.
  */
 export class AgoraOutboundProvider implements Provider {
@@ -64,6 +67,7 @@ export class AgoraOutboundProvider implements Provider {
 
     const payload = message.payload as {
       peerName?: string;
+      targetPubkey?: string;
       type: string;
       payload: unknown;
       inReplyTo?: string;
@@ -71,6 +75,29 @@ export class AgoraOutboundProvider implements Provider {
 
     if (!payload.type) {
       throw new Error("Invalid agora.send payload: missing type");
+    }
+
+    // RFC-002 Phase 1: reply to any pubkey via relay (no peer config needed)
+    if (payload.targetPubkey) {
+      if (!payload.inReplyTo) {
+        throw new Error("Invalid agora.send payload: targetPubkey requires inReplyTo");
+      }
+      this.logger?.debug(
+        `[AGORA-OUT] Replying to pubkey: ...${payload.targetPubkey.slice(-8)} type=${payload.type} inReplyTo=${payload.inReplyTo}`
+      );
+      const result = await this.agoraService.replyToEnvelope({
+        targetPubkey: payload.targetPubkey,
+        type: payload.type,
+        payload: payload.payload,
+        inReplyTo: payload.inReplyTo,
+      });
+      if (!result.ok) {
+        throw new Error(`Reply to pubkey failed: ${result.error ?? "unknown error"} (status=${result.status})`);
+      }
+      this.logger?.debug(
+        `[AGORA-OUT] Reply sent successfully: ...${payload.targetPubkey.slice(-8)}`
+      );
+      return;
     }
 
     // Broadcast: if peerName is omitted or "all", send to every configured peer
