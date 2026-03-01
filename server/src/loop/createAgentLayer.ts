@@ -95,7 +95,7 @@ export async function createAgentLayer(
   } else if (config.sessionLauncher === "copilot") {
     logger.debug("agent-layer: using CopilotSessionLauncher for cognitive roles");
     const copilotLauncher = new CopilotSessionLauncher(
-      new NodeProcessRunner(), clock, config.model, randomUUID, [config.substratePath],
+      new NodeProcessRunner(), clock, config.model, randomUUID, [config.substratePath], mcpServers,
     );
     gatedLauncher = new SemaphoreSessionLauncher(copilotLauncher, apiSemaphore);
   } else if (config.sessionLauncher === "ollama") {

@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { IProcessRunner } from "../claude/IProcessRunner";
 import type { IClock } from "../../substrate/abstractions/IClock";
 import type {
@@ -29,6 +32,7 @@ const DEFAULT_MODEL = "claude-sonnet-4.5";
 export class CopilotSessionLauncher implements ISessionLauncher {
   private readonly model: string;
   private readonly sessionIds = new Map<string, string>();
+  private readonly mcpServers: Record<string, { type: string; url: string }>;
 
   constructor(
     private readonly processRunner: IProcessRunner,
@@ -36,8 +40,10 @@ export class CopilotSessionLauncher implements ISessionLauncher {
     model?: string,
     private readonly generateUUID: () => string = randomUUID,
     private readonly additionalDirs: string[] = [],
+    mcpServers?: Record<string, { type: string; url: string }>,
   ) {
     this.model = model ?? DEFAULT_MODEL;
+    this.mcpServers = mcpServers ?? {};
   }
 
   async launch(
@@ -70,6 +76,16 @@ export class CopilotSessionLauncher implements ISessionLauncher {
       args.push("--resume", this.sessionIds.get(options.cwd)!);
     }
 
+    // Write MCP server config to a temp file and pass via --mcp-config
+    let mcpConfigPath: string | undefined;
+    const mcpEntries = Object.keys(this.mcpServers);
+    if (mcpEntries.length > 0) {
+      const mcpConfig = { mcpServers: this.mcpServers };
+      mcpConfigPath = path.join(os.tmpdir(), `copilot-mcp-${this.generateUUID()}.json`);
+      fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig));
+      args.push("--mcp-config", mcpConfigPath);
+    }
+
     try {
       const result = await this.processRunner.run("copilot", args, {
         cwd: options?.cwd,
@@ -94,6 +110,10 @@ export class CopilotSessionLauncher implements ISessionLauncher {
         success: false,
         error: err instanceof Error ? err.message : String(err),
       };
+    } finally {
+      if (mcpConfigPath) {
+        try { fs.unlinkSync(mcpConfigPath); } catch { /* best-effort cleanup */ }
+      }
     }
   }
 }
