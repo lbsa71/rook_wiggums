@@ -292,7 +292,7 @@ export class AgoraMessageHandler {
     let injected = false;
     const replyInstruction = knownPeer
       ? `Respond to this message if appropriate. Use the TinyBus MCP tool (${"`"}mcp__tinybus__send_message${"`"} in Claude Code, or ${"`"}send_message${"`"} in Gemini CLI) with type "agora.send" to reply. Example: { type: "agora.send", payload: { peerName: "${knownPeer}", type: "publish", payload: { text: "your response" }, inReplyTo: "${envelope.id}" } }`
-      : `Note: Sender (${senderDisplayName}) is not registered in PEERS.md. Replying via Agora is not possible unless the peer is added first.`;
+      : `Respond to this message if appropriate. Note: Sender (${senderDisplayName}) is not in PEERS.md, but you can reply via relay using targetPubkey. Use the TinyBus MCP tool (${"`"}mcp__tinybus__send_message${"`"} in Claude Code, or ${"`"}send_message${"`"} in Gemini CLI) with type "agora.send". Example: { type: "agora.send", payload: { targetPubkey: "${envelope.sender}", type: "publish", payload: { text: "your response" }, inReplyTo: "${envelope.id}" } }`;
     try {
       const agentPrompt = `[AGORA MESSAGE from ${senderDisplayName}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
       injected = this.messageInjector.injectMessage(agentPrompt);

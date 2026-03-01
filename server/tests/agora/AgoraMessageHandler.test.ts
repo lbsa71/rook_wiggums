@@ -68,6 +68,10 @@ class MockAgoraService implements IAgoraService {
     return { ok: true, status: 200 };
   }
 
+  async replyToEnvelope(_options: { targetPubkey: string; type: string; payload: unknown; inReplyTo: string }) {
+    return { ok: true, status: 0 };
+  }
+
   async decodeInbound(_message: string) {
     return { ok: false, reason: "not implemented" };
   }
@@ -525,6 +529,42 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries).toHaveLength(1);
       expect(conversationManager.appendedEntries[0].entry).toContain("**[UNPROCESSED]**");
       expect(messageInjector.injectedMessages).toHaveLength(0);
+    });
+
+    it("should include targetPubkey reply instruction for unknown senders with 'allow' policy", async () => {
+      const emptyAgoraService = new MockAgoraService();
+      const allowHandler = new AgoraMessageHandler(
+        emptyAgoraService,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'allow',
+        defaultRateLimitConfig
+      );
+
+      await allowHandler.processEnvelope(unknownEnvelope, "webhook");
+
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+      const injectedMsg = messageInjector.injectedMessages[0];
+      // Should contain targetPubkey instruction, not "not possible"
+      expect(injectedMsg).toContain("targetPubkey");
+      expect(injectedMsg).toContain(unknownEnvelope.sender);
+      expect(injectedMsg).not.toContain("not possible");
+      expect(injectedMsg).not.toContain("unless the peer is added first");
+    });
+
+    it("should include peerName reply instruction for known senders", async () => {
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+      const injectedMsg = messageInjector.injectedMessages[0];
+      // Should contain peerName instruction, not targetPubkey
+      expect(injectedMsg).toContain("peerName");
+      expect(injectedMsg).not.toContain("targetPubkey");
     });
   });
 
