@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { Ego } from "../agents/roles/Ego";
 import { Subconscious, TaskResult, OutcomeEvaluation, AgoraReply } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
@@ -114,6 +116,8 @@ export class LoopOrchestrator implements IMessageInjector {
   private onSleepEnter: (() => Promise<void>) | null = null;
   private onSleepExit: (() => Promise<void>) | null = null;
 
+  private readonly substratePath: string;
+
   constructor(
     private readonly ego: Ego,
     private readonly subconscious: Subconscious,
@@ -130,7 +134,9 @@ export class LoopOrchestrator implements IMessageInjector {
     findingTracker?: SuperegoFindingTracker,
     findingTrackerSave?: () => Promise<void>,
     conversationSessionMaxDurationMs?: number,
+    substratePath?: string,
   ) {
+    this.substratePath = substratePath ?? "";
     this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 20_000; // Default 20s
     this.conversationSessionMaxDurationMs = conversationSessionMaxDurationMs ?? 300_000; // Default 5 min
     if (findingTracker) {
@@ -425,6 +431,20 @@ export class LoopOrchestrator implements IMessageInjector {
         );
         this.lastINSResult = { noop: true, actions: [] };
       }
+    }
+
+    // Endpoint state injection — read current state and inject into pending messages
+    const endpointStateContext = await this.readEndpointState();
+    this.pendingMessages.unshift(`[SYSTEM: CURRENT ENDPOINT STATE]\n${endpointStateContext}`);
+
+    // R2 pre-dispatch ceiling check (deterministic, no LLM)
+    if (this.metrics.successfulCycles >= 50) {
+      this.logger.warn(`[R2] Session dispatch ceiling reached (${this.metrics.successfulCycles} cycles) — halting`);
+      this.pendingMessages.push(`[SYSTEM] R2 ceiling reached: ${this.metrics.successfulCycles} successful cycles. Session halted to prevent runaway dispatch cost. Escalate to partner.`);
+      this.stop();
+      return { cycleNumber: this.cycleNumber, action: "idle" as const, success: true, summary: "R2 session ceiling halt" };
+    } else if (this.metrics.successfulCycles >= 30) {
+      this.logger.warn(`[R2] Session dispatch warning: ${this.metrics.successfulCycles}/50 cycles`);
     }
 
     const dispatch = await this.ego.dispatchNext();
@@ -1204,5 +1224,31 @@ export class LoopOrchestrator implements IMessageInjector {
         },
       });
     }
+  }
+
+  private async readEndpointState(): Promise<string> {
+    const stateFilePath = path.join(this.substratePath, ".endpoint_state.json");
+    try {
+      const raw = await fs.promises.readFile(stateFilePath, "utf8");
+      const state = JSON.parse(raw);
+      return this.formatEndpointStateForInjection(state);
+    } catch (err) {
+      this.logger.debug(`readEndpointState: ${err instanceof Error ? err.message : String(err)}`);
+      return "[ENDPOINT STATE: UNKNOWN — no state file found or unreadable. Treat cautiously; probe before dispatching inference-gated tasks.]";
+    }
+  }
+
+  private formatEndpointStateForInjection(state: { status?: string; lastChecked?: string; lastSeen?: string; consecutiveDown?: number; consecutiveDegraded?: number }): string {
+    const ts = state.lastChecked ?? this.clock.now().toISOString();
+    if (!state.status || state.status === "unknown") {
+      return "[ENDPOINT STATE: UNKNOWN — endpoint not yet probed this session. Status in MEMORY.md may be stale.]";
+    }
+    if (state.status === "up") {
+      return `[ENDPOINT STATE as of ${ts}]\nStatus: UP — Connectivity ok, inference ok.\nLast probed: ${ts} | Consecutive down: ${state.consecutiveDown ?? 0}\nOllama-gated tasks: GO.`;
+    }
+    if (state.status === "degraded") {
+      return `[ENDPOINT STATE as of ${ts}]\nStatus: DEGRADED — Connectivity ok but inference timing out (HTTP 524).\nSince: ${state.lastSeen ?? "unknown"} | Consecutive degraded cycles: ${state.consecutiveDegraded ?? 0}\nACTION: Skip inference-gated tasks this cycle.`;
+    }
+    return `[ENDPOINT STATE as of ${ts}]\nStatus: DOWN — Cloudflare tunnel unreachable.\nSince: ${state.lastSeen ?? "unknown"} | Consecutive down cycles: ${state.consecutiveDown ?? 0}\nACTION: Skip ALL Ollama-gated tasks this cycle.`;
   }
 }
