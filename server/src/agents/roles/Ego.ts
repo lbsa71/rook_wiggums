@@ -76,7 +76,7 @@ export class Ego {
     private readonly workingDirectory?: string
   ) {}
 
-  async decide(onLogEntry?: (entry: ProcessLogEntry) => void): Promise<EgoDecision> {
+  async decide(onLogEntry?: (entry: ProcessLogEntry) => void, runtimeContext?: string): Promise<EgoDecision> {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.EGO);
       const eagerRefs = await this.promptBuilder.getEagerReferences(AgentRole.EGO);
@@ -85,7 +85,8 @@ export class Ego {
       const message = this.promptBuilder.buildAgentMessage(
         eagerRefs,
         lazyRefs,
-        `Analyze the current context. What should we do next?`
+        `Analyze the current context. What should we do next?`,
+        runtimeContext
       );
       
       const model = this.taskClassifier.getModel({ role: AgentRole.EGO, operation: "decide" });

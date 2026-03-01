@@ -178,6 +178,16 @@ describe("Ego agent", () => {
       expect(decision.taskId).toBe("t1");
       expect(decision.agoraReplies).toEqual([]);
     });
+
+    it("includes [RUNTIME STATE] in message when runtimeContext is provided", async () => {
+      launcher.enqueueSuccess(JSON.stringify({ action: "idle", agoraReplies: [] }));
+
+      await ego.decide(undefined, "Status: UP — endpoint healthy");
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].request.message).toContain("[RUNTIME STATE]");
+      expect(launches[0].request.message).toContain("Status: UP — endpoint healthy");
+    });
   });
 
   describe("readPlan", () => {

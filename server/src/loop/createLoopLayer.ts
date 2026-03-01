@@ -120,6 +120,7 @@ export async function createLoopLayer(
     substrate.findingTracker,
     substrate.findingTrackerSave,
     config.conversationSessionMaxDurationMs,
+    config.substratePath,
   );
 
   // Wire up sleep/wake infrastructure

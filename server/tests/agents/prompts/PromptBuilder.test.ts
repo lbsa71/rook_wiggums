@@ -266,5 +266,25 @@ describe("PromptBuilder", () => {
       const msg = builder.buildAgentMessage("", "", "Just do it.");
       expect(msg).toBe("Just do it.");
     });
+
+    it("includes [RUNTIME STATE] section when runtimeContext is provided", () => {
+      const msg = builder.buildAgentMessage("@/substrate/PLAN.md", "- /substrate/MEMORY.md — notes", "Execute.", "Status: UP");
+      expect(msg).toContain("[RUNTIME STATE]\nStatus: UP");
+      expect(msg.endsWith("Execute.")).toBe(true);
+    });
+
+    it("places [RUNTIME STATE] between [FILES] and instruction", () => {
+      const msg = builder.buildAgentMessage("@/substrate/PLAN.md", "- /substrate/MEMORY.md — notes", "Execute.", "Status: UP");
+      const filesIdx = msg.indexOf("[FILES — read on demand]");
+      const runtimeIdx = msg.indexOf("[RUNTIME STATE]");
+      const instrIdx = msg.indexOf("Execute.");
+      expect(filesIdx).toBeLessThan(runtimeIdx);
+      expect(runtimeIdx).toBeLessThan(instrIdx);
+    });
+
+    it("omits [RUNTIME STATE] when runtimeContext is undefined", () => {
+      const msg = builder.buildAgentMessage("@/substrate/PLAN.md", "", "Execute.");
+      expect(msg).not.toContain("[RUNTIME STATE]");
+    });
   });
 });

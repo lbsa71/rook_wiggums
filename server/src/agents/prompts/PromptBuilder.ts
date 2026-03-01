@@ -121,13 +121,16 @@ export class PromptBuilder {
     return parts.join("\n");
   }
 
-  buildAgentMessage(eagerRefs: string, lazyRefs: string, instruction: string): string {
+  buildAgentMessage(eagerRefs: string, lazyRefs: string, instruction: string, runtimeContext?: string): string {
     let message = "";
     if (eagerRefs) {
       message += `[CONTEXT]\n${eagerRefs}\n\n`;
     }
     if (lazyRefs) {
       message += `[FILES — read on demand]\n${lazyRefs}\n\n`;
+    }
+    if (runtimeContext) {
+      message += `[RUNTIME STATE]\n${runtimeContext}\n\n`;
     }
     message += instruction;
     return message;
