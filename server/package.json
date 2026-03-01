@@ -1,6 +1,6 @@
 {
   "name": "@substrate/server",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "private": true,
   "description": "Substrate backend execution loop",
   "type": "module",
@@ -34,7 +34,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.37",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@rookdaemon/agora": "^0.3.0",
+    "@rookdaemon/agora": "^0.4.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "ws": "^8.19.0",
