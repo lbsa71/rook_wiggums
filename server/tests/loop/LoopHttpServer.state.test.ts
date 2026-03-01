@@ -78,6 +78,7 @@ describe("LoopHttpServer - State Endpoint", () => {
   });
 
   it("should require authentication", async () => {
+    server.setApiToken("secret-token");
     const port = await server.listen(0);
     const resp = await makeRequest(port, "GET", "/api/state");
 
