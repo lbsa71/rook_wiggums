@@ -202,4 +202,50 @@ describe("CopilotSessionLauncher", () => {
 
     expect(result.durationMs).toBe(0);
   });
+
+  describe("MCP server config", () => {
+    it("passes --additional-mcp-config with correct JSON when mcpServers provided", async () => {
+      const mcpServers = {
+        tinybus: { type: "http", url: "http://localhost:3001/mcp" },
+      };
+      const mcpLauncher = new CopilotSessionLauncher(
+        runner, clock, undefined, () => FIXED_UUID, [], mcpServers,
+      );
+      runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+      await mcpLauncher.launch(makeRequest());
+
+      const args = runner.getCalls()[0].args;
+      expect(args).toContain("--additional-mcp-config");
+      const configIdx = args.indexOf("--additional-mcp-config");
+      const configJson = args[configIdx + 1];
+      const parsed = JSON.parse(configJson);
+      expect(parsed).toEqual({
+        mcpServers: {
+          tinybus: { type: "http", url: "http://localhost:3001/mcp" },
+        },
+      });
+    });
+
+    it("omits --additional-mcp-config when no mcpServers provided", async () => {
+      runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+      await launcher.launch(makeRequest());
+
+      const args = runner.getCalls()[0].args;
+      expect(args).not.toContain("--additional-mcp-config");
+    });
+
+    it("omits --additional-mcp-config when mcpServers is empty", async () => {
+      const emptyLauncher = new CopilotSessionLauncher(
+        runner, clock, undefined, () => FIXED_UUID, [], {},
+      );
+      runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+
+      await emptyLauncher.launch(makeRequest());
+
+      const args = runner.getCalls()[0].args;
+      expect(args).not.toContain("--additional-mcp-config");
+    });
+  });
 });
