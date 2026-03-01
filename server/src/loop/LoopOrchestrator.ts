@@ -434,10 +434,6 @@ export class LoopOrchestrator implements IMessageInjector {
       }
     }
 
-    // Endpoint state injection — read current state and inject into pending messages
-    const endpointStateContext = await this.readEndpointState();
-    this.pendingMessages.unshift(`[SYSTEM: CURRENT ENDPOINT STATE]\n${endpointStateContext}`);
-
     // R2 pre-dispatch ceiling check (deterministic, no LLM)
     if (this.metrics.successfulCycles >= 50) {
       this.logger.warn(`[R2] Session dispatch ceiling reached (${this.metrics.successfulCycles} cycles) — halting`);
@@ -488,6 +484,10 @@ export class LoopOrchestrator implements IMessageInjector {
       });
     } else {
       this.logger.debug(`cycle ${this.cycleNumber}: dispatching task "${dispatch.taskId}"`);
+
+      // Endpoint state injection — provide runtime context alongside task dispatch
+      const endpointStateContext = await this.readEndpointState();
+      this.pendingMessages.unshift(`[SYSTEM: CURRENT ENDPOINT STATE]\n${endpointStateContext}`);
 
       const pending = this.pendingMessages.length > 0 ? [...this.pendingMessages] : undefined;
       if (pending?.length) {
