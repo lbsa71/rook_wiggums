@@ -78,6 +78,7 @@ const AppConfigSchema = z
     progressMaxBytes: z.number().int().min(1).optional(),
     sessionLauncher: z.enum(["claude", "gemini", "copilot", "ollama"]).optional(),
     ollamaBaseUrl: z.string().url().optional(),
+    ollamaModel: z.string().optional(),
     defaultCodeBackend: z.enum(["claude", "copilot", "gemini", "auto"]).optional(),
   })
   .refine(
@@ -182,6 +183,8 @@ export interface AppConfig {
   sessionLauncher?: "claude" | "gemini" | "copilot" | "ollama";
   /** Base URL for the Ollama server when sessionLauncher is "ollama" (default: "http://localhost:11434"). */
   ollamaBaseUrl?: string;
+  /** Model name for Ollama when sessionLauncher is "ollama" (default: "qwen3:14b"). Separate from `model` which is the Claude/Gemini model name. */
+  ollamaModel?: string;
   /** Default code backend to use for code dispatch tasks (default: "claude"). */
   defaultCodeBackend?: "claude" | "copilot" | "gemini" | "auto";
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
@@ -356,6 +359,7 @@ export async function resolveConfig(
     progressMaxBytes: fileConfig.progressMaxBytes ?? defaults.progressMaxBytes,
     sessionLauncher: fileConfig.sessionLauncher ?? defaults.sessionLauncher,
     ollamaBaseUrl: fileConfig.ollamaBaseUrl,
+    ollamaModel: fileConfig.ollamaModel,
     defaultCodeBackend: fileConfig.defaultCodeBackend ?? defaults.defaultCodeBackend,
     watchdog: fileConfig.watchdog
       ? {
