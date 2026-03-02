@@ -77,4 +77,35 @@ describe("parseRateLimitReset", () => {
     );
     expect(result).toEqual(new Date("2026-02-09T17:00:00Z"));
   });
+
+  it("fallback: detects API format 'Your account has hit a rate limit'", () => {
+    const now = new Date("2026-02-09T14:00:00Z");
+    const result = parseRateLimitReset(
+      "Task execution failed: Your account has hit a rate limit.",
+      now,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.getTime()).toBeGreaterThan(now.getTime());
+    expect(result!.getTime()).toBeLessThanOrEqual(now.getTime() + 6 * 60 * 1000); // within 6 min
+  });
+
+  it("fallback: detects 'rate_limit_error'", () => {
+    const now = new Date("2026-02-09T14:00:00Z");
+    const result = parseRateLimitReset(
+      "Task execution failed: rate_limit_error",
+      now,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  it("fallback: detects 'rate limited'", () => {
+    const now = new Date("2026-02-09T14:00:00Z");
+    const result = parseRateLimitReset(
+      "Claude session error: rate limited",
+      now,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.getTime()).toBeGreaterThan(now.getTime());
+  });
 });

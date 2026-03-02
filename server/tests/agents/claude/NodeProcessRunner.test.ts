@@ -6,8 +6,12 @@
  * Timeout-trigger tests use explicit short timeoutMs/idleTimeoutMs values
  * (≤ 200ms) and carry an explicit per-test timeout of 2000ms.
  */
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { NodeProcessRunner } from "../../../src/agents/claude/NodeProcessRunner";
 import { ProcessRunOptions } from "../../../src/agents/claude/IProcessRunner";
+import { toPosix } from "../../../src/substrate/abstractions/pathUtils";
 
 // Shared inline node commands ─────────────────────────────────────────────
 const NODE = "node";
@@ -147,12 +151,18 @@ describe("NodeProcessRunner", () => {
 
   describe("cwd option", () => {
     it("runs the process in the specified working directory", async () => {
-      const result = await runner.run(
-        NODE,
-        ["-e", "process.stdout.write(process.cwd())"],
-        { cwd: "/tmp" },
-      );
-      expect(result.stdout).toBe("/tmp");
+      const cwd = path.join(os.tmpdir(), "node-process-runner-cwd-test");
+      await fs.mkdir(cwd, { recursive: true });
+      try {
+        const result = await runner.run(
+          NODE,
+          ["-e", "process.stdout.write(process.cwd())"],
+          { cwd },
+        );
+        expect(toPosix(result.stdout)).toBe(toPosix(cwd));
+      } finally {
+        await fs.rm(cwd, { recursive: true }).catch(() => {});
+      }
     });
   });
 

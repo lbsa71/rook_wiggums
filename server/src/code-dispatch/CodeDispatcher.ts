@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import type { IFileSystem } from "../substrate/abstractions/IFileSystem";
+import { toPosix } from "../substrate/abstractions/pathUtils";
 import type { IClock } from "../substrate/abstractions/IClock";
 import type { IProcessRunner } from "../agents/claude/IProcessRunner";
 import type { ICodeBackend, SubstrateSlice } from "./ICodeBackend";
@@ -26,7 +27,7 @@ export class CodeDispatcher {
     // 1. Load CODING_CONTEXT.md (optional — proceed without it if absent)
     let codingContext = "";
     try {
-      const contextPath = path.join(this.substratePath, "..", "CODING_CONTEXT.md");
+      const contextPath = toPosix(path.join(this.substratePath, "..", "CODING_CONTEXT.md"));
       codingContext = await this.fs.readFile(contextPath);
     } catch {
       // CODING_CONTEXT.md is optional; continue without it

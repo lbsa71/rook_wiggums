@@ -1,34 +1,35 @@
 import * as fs from "node:fs/promises";
 import { IFileSystem, FileStat } from "./IFileSystem";
+import { toPosix } from "./pathUtils";
 
 export class NodeFileSystem implements IFileSystem {
-  async readFile(path: string): Promise<string> {
-    return fs.readFile(path, "utf-8");
+  async readFile(p: string): Promise<string> {
+    return fs.readFile(toPosix(p), "utf-8");
   }
 
-  async writeFile(path: string, content: string): Promise<void> {
-    await fs.writeFile(path, content, "utf-8");
+  async writeFile(p: string, content: string): Promise<void> {
+    await fs.writeFile(toPosix(p), content, "utf-8");
   }
 
-  async appendFile(path: string, content: string): Promise<void> {
-    await fs.appendFile(path, content, "utf-8");
+  async appendFile(p: string, content: string): Promise<void> {
+    await fs.appendFile(toPosix(p), content, "utf-8");
   }
 
-  async exists(path: string): Promise<boolean> {
+  async exists(p: string): Promise<boolean> {
     try {
-      await fs.access(path);
+      await fs.access(toPosix(p));
       return true;
     } catch {
       return false;
     }
   }
 
-  async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
-    await fs.mkdir(path, options);
+  async mkdir(p: string, options?: { recursive?: boolean }): Promise<void> {
+    await fs.mkdir(toPosix(p), options);
   }
 
-  async stat(path: string): Promise<FileStat> {
-    const stat = await fs.stat(path);
+  async stat(p: string): Promise<FileStat> {
+    const stat = await fs.stat(toPosix(p));
     return {
       mtimeMs: stat.mtimeMs,
       isFile: stat.isFile(),
@@ -37,15 +38,15 @@ export class NodeFileSystem implements IFileSystem {
     };
   }
 
-  async readdir(path: string): Promise<string[]> {
-    return fs.readdir(path);
+  async readdir(p: string): Promise<string[]> {
+    return fs.readdir(toPosix(p));
   }
 
   async copyFile(src: string, dest: string): Promise<void> {
-    await fs.copyFile(src, dest);
+    await fs.copyFile(toPosix(src), toPosix(dest));
   }
 
-  async unlink(path: string): Promise<void> {
-    await fs.unlink(path);
+  async unlink(p: string): Promise<void> {
+    await fs.unlink(toPosix(p));
   }
 }

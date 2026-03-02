@@ -1,4 +1,5 @@
 import { IFileSystem, FileStat } from "./IFileSystem";
+import { toPosix } from "./pathUtils";
 
 interface FileEntry {
   content: string;
@@ -20,7 +21,8 @@ export class InMemoryFileSystem implements IFileSystem {
     this.dirMeta.set("/", { mtimeMs: this.nextMtime++ });
   }
 
-  async readFile(path: string): Promise<string> {
+  async readFile(p: string): Promise<string> {
+    const path = toPosix(p);
     const entry = this.files.get(path);
     if (!entry) {
       throw new Error(`ENOENT: no such file '${path}'`);
@@ -28,7 +30,8 @@ export class InMemoryFileSystem implements IFileSystem {
     return entry.content;
   }
 
-  async writeFile(path: string, content: string): Promise<void> {
+  async writeFile(p: string, content: string): Promise<void> {
+    const path = toPosix(p);
     this.files.set(path, { content, mtimeMs: this.nextMtime++ });
   }
 
@@ -42,7 +45,8 @@ export class InMemoryFileSystem implements IFileSystem {
     }
   }
 
-  async exists(path: string): Promise<boolean> {
+  async exists(p: string): Promise<boolean> {
+    const path = toPosix(p);
     return this.files.has(path) || this.dirs.has(path);
   }
 
@@ -67,7 +71,8 @@ export class InMemoryFileSystem implements IFileSystem {
     }
   }
 
-  async stat(path: string): Promise<FileStat> {
+  async stat(p: string): Promise<FileStat> {
+    const path = toPosix(p);
     const file = this.files.get(path);
     if (file) {
       return {
@@ -110,14 +115,17 @@ export class InMemoryFileSystem implements IFileSystem {
   }
 
   async copyFile(src: string, dest: string): Promise<void> {
-    const entry = this.files.get(src);
+    const srcNorm = toPosix(src);
+    const destNorm = toPosix(dest);
+    const entry = this.files.get(srcNorm);
     if (!entry) {
       throw new Error(`ENOENT: no such file '${src}'`);
     }
-    this.files.set(dest, { content: entry.content, mtimeMs: this.nextMtime++ });
+    this.files.set(destNorm, { content: entry.content, mtimeMs: this.nextMtime++ });
   }
 
-  async unlink(path: string): Promise<void> {
+  async unlink(p: string): Promise<void> {
+    const path = toPosix(p);
     if (!this.files.has(path)) {
       throw new Error(`ENOENT: no such file '${path}'`);
     }

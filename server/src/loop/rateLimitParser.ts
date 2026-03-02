@@ -1,10 +1,13 @@
 /**
  * Parses rate limit reset time from Claude SDK output.
- * Matches two patterns:
- *   - "resets 7pm (UTC)" — same-day or next-day reset
- *   - "resets Feb 14, 10am (UTC)" — specific date reset
+ * Matches:
+ *   - "resets 7pm (UTC)" — same-day or next-day reset (Claude Code UI)
+ *   - "resets Feb 14, 10am (UTC)" — specific date reset (Claude Code UI)
+ *   - Fallback: "rate limit", "rate_limit", "hit a rate limit" — API/CLI format
+ *     when no reset time is given, uses DEFAULT_FALLBACK_MS.
  * Returns the parsed UTC Date, or null if not a rate limit message.
  */
+const DEFAULT_FALLBACK_MS = 5 * 60 * 1000; // 5 minutes when reset time unknown
 
 const MONTH_MAP: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
@@ -61,6 +64,18 @@ export function parseRateLimitReset(
     }
 
     return reset;
+  }
+
+  // Fallback: API returns "Your account has hit a rate limit." or SDK uses
+  // "rate_limit_error" / "rate limited" without a reset time. Use conservative backoff.
+  const lower = output.toLowerCase();
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("rate_limit") ||
+    lower.includes("hit a rate limit")
+  ) {
+    const fallback = new Date(now.getTime() + DEFAULT_FALLBACK_MS);
+    return fallback;
   }
 
   return null;

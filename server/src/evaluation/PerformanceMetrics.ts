@@ -1,5 +1,6 @@
 import { IFileSystem } from "../substrate/abstractions/IFileSystem";
 import { IClock } from "../substrate/abstractions/IClock";
+import { toPosix } from "../substrate/abstractions/pathUtils";
 import * as path from "node:path";
 
 /**
@@ -66,8 +67,8 @@ export class PerformanceMetrics {
     private readonly clock: IClock,
     substratePath: string,
   ) {
-    this.metricsDir = path.join(substratePath, ".metrics");
-    this.metricsPath = path.join(this.metricsDir, "performance.jsonl");
+    this.metricsDir = toPosix(path.join(substratePath, ".metrics"));
+    this.metricsPath = toPosix(path.join(this.metricsDir, "performance.jsonl"));
   }
 
   /**

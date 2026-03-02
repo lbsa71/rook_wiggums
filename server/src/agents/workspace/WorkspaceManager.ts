@@ -1,5 +1,6 @@
 import * as path from "path";
 import { IFileSystem } from "../../substrate/abstractions/IFileSystem";
+import { toPosix } from "../../substrate/abstractions/pathUtils";
 import { AgentRole } from "../types";
 
 const ALL_ROLES = [AgentRole.EGO, AgentRole.SUBCONSCIOUS, AgentRole.SUPEREGO, AgentRole.ID];
@@ -11,7 +12,7 @@ export class WorkspaceManager {
   ) {}
 
   workspacePath(role: AgentRole): string {
-    return path.join(this.layerPath, "workspaces", role.toLowerCase());
+    return toPosix(path.join(this.layerPath, "workspaces", role.toLowerCase()));
   }
 
   async ensureWorkspaces(): Promise<void> {
