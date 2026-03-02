@@ -97,8 +97,8 @@ export async function createAgentLayer(
     gatedLauncher = new SemaphoreSessionLauncher(copilotLauncher, apiSemaphore);
   } else if (config.sessionLauncher === "ollama") {
     const ollamaBaseUrl = config.ollamaBaseUrl ?? "http://localhost:11434";
-    logger.debug(`agent-layer: using OllamaSessionLauncher for cognitive roles (${ollamaBaseUrl}, model: ${config.model})`);
-    const ollamaLauncher = new OllamaSessionLauncher(new FetchHttpClient(), clock, config.model, ollamaBaseUrl);
+    logger.debug(`agent-layer: using OllamaSessionLauncher for cognitive roles (${ollamaBaseUrl}, model: ${config.ollamaModel ?? "default"})`);
+    const ollamaLauncher = new OllamaSessionLauncher(new FetchHttpClient(), clock, config.ollamaModel, ollamaBaseUrl);
     gatedLauncher = new SemaphoreSessionLauncher(ollamaLauncher, apiSemaphore);
   } else {
     gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);

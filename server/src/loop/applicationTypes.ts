@@ -77,6 +77,8 @@ export interface ApplicationConfig {
   sessionLauncher?: "claude" | "gemini" | "ollama";
   /** Base URL for the Ollama server when sessionLauncher is "ollama" (default: "http://localhost:11434"). */
   ollamaBaseUrl?: string;
+  /** Model name for Ollama when sessionLauncher is "ollama" (default: "qwen3:14b"). Separate from `model` which is the Claude/Gemini model name. */
+  ollamaModel?: string;
   /** Default code backend to use for code dispatch tasks (default: "claude"). */
   defaultCodeBackend?: "claude" | "copilot" | "gemini" | "auto";
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
