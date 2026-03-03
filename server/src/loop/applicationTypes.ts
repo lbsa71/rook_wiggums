@@ -87,6 +87,12 @@ export interface ApplicationConfig {
     /** When true, ConversationCompactor tries Ollama first, falls back to primary launcher. */
     enabled: boolean;
   };
+  /** Path to Google AI API key file for Vertex subprocess fallback.
+   *  Enables VertexSessionLauncher as a middle-tier fallback between Ollama and Claude
+   *  for subprocess tasks (compaction, summarization). Never logged. */
+  vertexKeyPath?: string;
+  /** Model name for Vertex subprocess tasks (default: "gemini-2.5-flash"). */
+  vertexModel?: string;
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */

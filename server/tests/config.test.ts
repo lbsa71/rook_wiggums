@@ -440,5 +440,52 @@ describe("resolveConfig", () => {
       await writeConfig({ evaluateOutcome: { enabled: true, qualityThreshold: 101 } });
       await expect(resolveConfig(fs, opts)).rejects.toThrow(ConfigValidationError);
     });
+
+    it("rejects sessionLauncher: 'vertex' with specific error (cognitive role guard)", async () => {
+      await writeConfig({ sessionLauncher: "vertex" });
+      await expect(resolveConfig(fs, opts)).rejects.toThrow("not allowed for cognitive roles");
+    });
+  });
+
+  describe("vertex config", () => {
+    it("reads vertexKeyPath from config file", async () => {
+      await fs.mkdir("/project", { recursive: true });
+      await fs.writeFile("/project/config.json", JSON.stringify({
+        vertexKeyPath: "/home/rook/.config/google/google_api_key.txt",
+      }));
+
+      const config = await resolveConfig(fs, {
+        appPaths: TEST_PATHS,
+        cwd: "/project",
+        env: {},
+      });
+
+      expect(config.vertexKeyPath).toBe("/home/rook/.config/google/google_api_key.txt");
+    });
+
+    it("reads vertexModel from config file", async () => {
+      await fs.mkdir("/project", { recursive: true });
+      await fs.writeFile("/project/config.json", JSON.stringify({
+        vertexModel: "gemini-1.5-flash",
+      }));
+
+      const config = await resolveConfig(fs, {
+        appPaths: TEST_PATHS,
+        cwd: "/project",
+        env: {},
+      });
+
+      expect(config.vertexModel).toBe("gemini-1.5-flash");
+    });
+
+    it("defaults vertexKeyPath and vertexModel to undefined", async () => {
+      const config = await resolveConfig(fs, {
+        appPaths: TEST_PATHS,
+        env: {},
+      });
+
+      expect(config.vertexKeyPath).toBeUndefined();
+      expect(config.vertexModel).toBeUndefined();
+    });
   });
 });

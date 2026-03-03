@@ -8,6 +8,7 @@ import { OllamaSessionLauncher } from "../agents/ollama/OllamaSessionLauncher";
 import { OllamaInferenceClient } from "../agents/ollama/OllamaInferenceClient";
 import { OllamaOffloadService } from "../agents/ollama/OllamaOffloadService";
 import { FetchHttpClient } from "../agents/ollama/FetchHttpClient";
+import { VertexSessionLauncher } from "../agents/vertex/VertexSessionLauncher";
 import { ProcessTracker, ProcessTrackerConfig } from "../agents/claude/ProcessTracker";
 import { NodeProcessKiller } from "../agents/claude/NodeProcessKiller";
 import { NodeProcessRunner } from "../agents/claude/NodeProcessRunner";
@@ -140,8 +141,39 @@ export async function createAgentLayer(
     ollamaOffloadService = new OllamaOffloadService(inferenceClient, clock, logger);
   }
 
+  // Vertex subprocess launcher — middle-tier fallback between Ollama and Claude
+  let vertexSubprocessLauncher: VertexSessionLauncher | undefined;
+  if (config.vertexKeyPath) {
+    try {
+      const { readFileSync } = await import("node:fs");
+      const apiKey = readFileSync(config.vertexKeyPath, "utf8").trim();
+      if (apiKey) {
+        const vertexLauncher = new VertexSessionLauncher(
+          new FetchHttpClient(),
+          clock,
+          apiKey,
+          config.vertexModel,
+        );
+        // Startup health probe — fail-fast if key is invalid (Bishop Q2)
+        const isHealthy = await vertexLauncher.healthy();
+        if (isHealthy) {
+          vertexSubprocessLauncher = vertexLauncher;
+          logger.debug(`agent-layer: Vertex subprocess launcher enabled (model: ${config.vertexModel ?? "gemini-2.5-flash"})`);
+        } else {
+          logger.debug("agent-layer: Vertex subprocess launcher health check FAILED — key may be invalid, disabling");
+        }
+      } else {
+        logger.debug("agent-layer: Vertex key file is empty — disabling subprocess launcher");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Log path existence failure without revealing path contents (security: key path is [REDACTED])
+      logger.debug(`agent-layer: Cannot read Vertex key file — disabling subprocess launcher (${msg.replace(config.vertexKeyPath, "[REDACTED]")})`);
+    }
+  }
+
   // Conversation manager with compaction and optional archiving
-  const compactor = new ConversationCompactor(gatedLauncher, cwd, ollamaOffloadService, logger);
+  const compactor = new ConversationCompactor(gatedLauncher, cwd, ollamaOffloadService, logger, vertexSubprocessLauncher);
 
   let archiver: ConversationArchiver | undefined;
   let archiveConfig: ConversationArchiveConfig | undefined;

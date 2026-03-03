@@ -119,6 +119,9 @@ export async function startServer(config: AppConfig, options?: StartServerOption
     ollamaBaseUrl: config.ollamaBaseUrl,
     ollamaModel: config.ollamaModel,
     defaultCodeBackend: config.defaultCodeBackend,
+    ollamaOffload: config.ollamaOffload,
+    vertexKeyPath: config.vertexKeyPath,
+    vertexModel: config.vertexModel,
   });
   appForCleanup = app;
 

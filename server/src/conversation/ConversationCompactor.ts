@@ -6,9 +6,13 @@ import type { ILogger } from "../logging";
 /**
  * Compacts CONVERSATION.md by summarizing older content.
  *
- * Phase 2: Optionally offloads summarization to a local Ollama instance
- * via OllamaOffloadService. Falls back to the primary session launcher
- * (Claude/Gemini) when Ollama is unavailable or quality gate fails.
+ * Fallback chain (hardcoded order per Bishop Challenge-002 review):
+ *   1. Ollama offload (free, local — via OllamaOffloadService)
+ *   2. Vertex subprocess launcher (GCP credits — via VertexSessionLauncher)
+ *   3. Primary session launcher (Claude/Gemini — paid API)
+ *
+ * Each tier is optional and only tried when configured. The chain always
+ * terminates at the primary session launcher (guaranteed available).
  */
 export class ConversationCompactor implements IConversationCompactor {
   constructor(
@@ -16,6 +20,7 @@ export class ConversationCompactor implements IConversationCompactor {
     private readonly cwd?: string,
     private readonly offloadService?: IOllamaOffloadService,
     private readonly logger?: ILogger,
+    private readonly subprocessLauncher?: ISessionLauncher,
   ) {}
 
   async compact(currentContent: string, oneHourAgo: string): Promise<string> {
@@ -54,7 +59,7 @@ export class ConversationCompactor implements IConversationCompactor {
 
     const oldContent = oldLines.join('\n');
 
-    // Build the summarization prompt (shared between offload and primary paths)
+    // Build the summarization prompt (shared between offload and subprocess paths)
     const summarizationPrompt =
       `You are helping to compact a CONVERSATION.md file to conserve tokens.\n` +
       `You will be given conversation history older than one hour.\n` +
@@ -65,12 +70,17 @@ export class ConversationCompactor implements IConversationCompactor {
 
     let summary: string | undefined;
 
-    // Phase 2: Try Ollama offload first when available
+    // Tier 1: Try Ollama offload (free, local)
     if (this.offloadService) {
       summary = await this.tryOllamaOffload(summarizationPrompt);
     }
 
-    // Fallback: use primary session launcher (Claude/Gemini)
+    // Tier 2: Try Vertex subprocess launcher (GCP credits)
+    if (!summary && this.subprocessLauncher) {
+      summary = await this.trySubprocessLauncher(oldContent, oldLines.length);
+    }
+
+    // Tier 3: Primary session launcher (Claude/Gemini — always available)
     if (!summary) {
       summary = await this.trySessionLauncher(oldContent, oldLines.length);
     }
@@ -110,18 +120,57 @@ export class ConversationCompactor implements IConversationCompactor {
         return result.result;
       }
 
-      this.logger?.debug(`[COMPACTION] Ollama offload failed: ${result.reason} — falling back to session launcher`);
+      this.logger?.debug(`[COMPACTION] Ollama offload failed: ${result.reason} — trying next tier`);
       return undefined;
     } catch (err) {
       // Safety net — offload() should never throw, but just in case
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger?.debug(`[COMPACTION] Ollama offload unexpected error: ${msg} — falling back to session launcher`);
+      this.logger?.debug(`[COMPACTION] Ollama offload unexpected error: ${msg} — trying next tier`);
       return undefined;
     }
   }
 
   /**
-   * Fallback: use the primary session launcher for summarization.
+   * Tier 2: Try subprocess launcher (Vertex) for summarization.
+   * Returns the summary on success, or undefined on failure.
+   */
+  private async trySubprocessLauncher(oldContent: string, lineCount: number): Promise<string | undefined> {
+    try {
+      this.logger?.debug("[COMPACTION] Attempting Vertex subprocess launcher for conversation compaction");
+
+      const systemPrompt =
+        `You are helping to compact a CONVERSATION.md file to conserve tokens.\n` +
+        `You will be given conversation history older than one hour.\n` +
+        `Summarize it concisely in the form: "I said X, then you said Y, we decided Z, I did W, etc."\n` +
+        `Keep it brief but capture key decisions, actions, and context.\n` +
+        `Respond with ONLY the summary text — no JSON, no markdown code blocks, no wrapper.`;
+
+      const message = `Summarize this conversation history:\n\n${oldContent}`;
+
+      const request: ClaudeSessionRequest = { systemPrompt, message };
+      const result = await this.subprocessLauncher!.launch(request, { cwd: this.cwd });
+
+      if (result.success && result.rawOutput) {
+        const trimmed = result.rawOutput.trim();
+        if (compactionQualityGate(trimmed)) {
+          this.logger?.debug("[COMPACTION] Vertex subprocess launcher succeeded");
+          return trimmed;
+        }
+        this.logger?.debug("[COMPACTION] Vertex subprocess launcher quality gate failed — falling back to primary launcher");
+      } else {
+        this.logger?.debug(`[COMPACTION] Vertex subprocess launcher failed: ${result.error ?? "no output"} — falling back to primary launcher`);
+      }
+
+      return undefined;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger?.debug(`[COMPACTION] Vertex subprocess launcher unexpected error: ${msg} — falling back to primary launcher`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Tier 3: Use the primary session launcher for summarization (always available).
    */
   private async trySessionLauncher(oldContent: string, lineCount: number): Promise<string> {
     const systemPrompt =

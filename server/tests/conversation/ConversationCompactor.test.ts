@@ -345,3 +345,156 @@ describe("ConversationCompactor with Ollama offload", () => {
     expect(debugMessages.some(m => m.includes("Ollama offload succeeded"))).toBe(true);
   });
 });
+
+// ── Vertex subprocess launcher fallback tests ──
+
+describe("ConversationCompactor with Vertex subprocess launcher", () => {
+  let sessionLauncher: InMemorySessionLauncher;
+  let subprocessLauncher: InMemorySessionLauncher;
+  let offloadService: MockOffloadService;
+  let logger: InMemoryLogger;
+
+  beforeEach(() => {
+    sessionLauncher = new InMemorySessionLauncher();
+    subprocessLauncher = new InMemorySessionLauncher();
+    offloadService = new MockOffloadService();
+    logger = new InMemoryLogger();
+  });
+
+  it("uses subprocess launcher when Ollama offload fails", async () => {
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, offloadService, logger, subprocessLauncher
+    );
+
+    offloadService.enqueueFailure("unavailable");
+    subprocessLauncher.enqueue({
+      rawOutput: "Vertex summarized the conversation about feature X planning",
+      exitCode: 0,
+      durationMs: 500,
+      success: true,
+    });
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Vertex summarized the conversation about feature X planning");
+    // Ollama tried and failed
+    expect(offloadService.offloadCalls).toBe(1);
+    // Vertex was called
+    expect(subprocessLauncher.getLaunches().length).toBe(1);
+    // Claude was NOT called (Vertex handled it)
+    expect(sessionLauncher.getLaunches().length).toBe(0);
+  });
+
+  it("falls back to session launcher when subprocess launcher also fails", async () => {
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, offloadService, logger, subprocessLauncher
+    );
+
+    offloadService.enqueueFailure("unavailable");
+    subprocessLauncher.enqueue({
+      rawOutput: "",
+      exitCode: 1,
+      durationMs: 100,
+      success: false,
+      error: "Vertex API error",
+    });
+    sessionLauncher.enqueue({
+      rawOutput: "Claude saved the day after both Ollama and Vertex failed",
+      exitCode: 0,
+      durationMs: 200,
+      success: true,
+    });
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Claude saved the day after both Ollama and Vertex failed");
+    expect(offloadService.offloadCalls).toBe(1);
+    expect(subprocessLauncher.getLaunches().length).toBe(1);
+    expect(sessionLauncher.getLaunches().length).toBe(1);
+  });
+
+  it("skips subprocess launcher when Ollama offload succeeds", async () => {
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, offloadService, logger, subprocessLauncher
+    );
+
+    offloadService.enqueueSuccess(
+      "Ollama produced a great summary of the conversation about feature X"
+    );
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Ollama produced a great summary");
+    // Only Ollama was called
+    expect(offloadService.offloadCalls).toBe(1);
+    expect(subprocessLauncher.getLaunches().length).toBe(0);
+    expect(sessionLauncher.getLaunches().length).toBe(0);
+  });
+
+  it("uses subprocess launcher directly when no offload service configured", async () => {
+    // No Ollama offload, but Vertex is configured
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, undefined, logger, subprocessLauncher
+    );
+
+    subprocessLauncher.enqueue({
+      rawOutput: "Vertex summarized without Ollama being involved at all",
+      exitCode: 0,
+      durationMs: 300,
+      success: true,
+    });
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Vertex summarized without Ollama being involved at all");
+    expect(subprocessLauncher.getLaunches().length).toBe(1);
+    expect(sessionLauncher.getLaunches().length).toBe(0);
+  });
+
+  it("applies quality gate to subprocess launcher output", async () => {
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, undefined, logger, subprocessLauncher
+    );
+
+    // Return very short output that fails quality gate (< 20 chars)
+    subprocessLauncher.enqueue({
+      rawOutput: "ok",
+      exitCode: 0,
+      durationMs: 100,
+      success: true,
+    });
+    sessionLauncher.enqueue({
+      rawOutput: "Claude produced a proper summary after Vertex quality gate failed",
+      exitCode: 0,
+      durationMs: 200,
+      success: true,
+    });
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Claude produced a proper summary after Vertex quality gate failed");
+    expect(subprocessLauncher.getLaunches().length).toBe(1);
+    expect(sessionLauncher.getLaunches().length).toBe(1);
+  });
+
+  it("handles subprocess launcher throwing unexpectedly", async () => {
+    const throwingLauncher: import("../../src/agents/claude/ISessionLauncher").ISessionLauncher = {
+      launch: async () => { throw new Error("Vertex exploded"); },
+    };
+    const compactor = new ConversationCompactor(
+      sessionLauncher, undefined, undefined, logger, throwingLauncher
+    );
+
+    sessionLauncher.enqueue({
+      rawOutput: "Claude recovered after Vertex threw an unexpected error",
+      exitCode: 0,
+      durationMs: 100,
+      success: true,
+    });
+
+    const result = await compactor.compact(OLD_NEW_CONTENT, ONE_HOUR_AGO);
+
+    expect(result).toContain("Claude recovered after Vertex threw an unexpected error");
+    expect(sessionLauncher.getLaunches().length).toBe(1);
+  });
+});

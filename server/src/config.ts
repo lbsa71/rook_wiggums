@@ -76,7 +76,7 @@ const AppConfigSchema = z
     apiToken: z.string().optional(),
     enableFileReadCache: z.boolean().optional(),
     progressMaxBytes: z.number().int().min(1).optional(),
-    sessionLauncher: z.enum(["claude", "gemini", "copilot", "ollama"]).optional(),
+    sessionLauncher: z.enum(["claude", "gemini", "copilot", "ollama", "vertex"]).optional(),
     ollamaBaseUrl: z.string().url().optional(),
     ollamaModel: z.string().optional(),
     defaultCodeBackend: z.enum(["claude", "copilot", "gemini", "auto"]).optional(),
@@ -85,6 +85,8 @@ const AppConfigSchema = z
         enabled: z.boolean(),
       })
       .optional(),
+    vertexKeyPath: z.string().optional(),
+    vertexModel: z.string().optional(),
   })
   .refine(
     (data) =>
@@ -94,6 +96,13 @@ const AppConfigSchema = z
     {
       message: "cycleDelayMs must be greater than conversationIdleTimeoutMs",
       path: ["cycleDelayMs"],
+    }
+  )
+  .refine(
+    (data) => data.sessionLauncher !== "vertex",
+    {
+      message: "sessionLauncher: \"vertex\" is not allowed for cognitive roles. Vertex is for subprocess tasks only (compaction, summarization). Use vertexKeyPath to enable it as a subprocess fallback.",
+      path: ["sessionLauncher"],
     }
   );
 
@@ -184,7 +193,8 @@ export interface AppConfig {
   enableFileReadCache?: boolean;
   /** Maximum size of PROGRESS.md in bytes before rotation (default: 512 * 1024 = 512 KB). */
   progressMaxBytes?: number;
-  /** Which session launcher to use for agent reasoning sessions (default: "claude"). */
+  /** Which session launcher to use for agent reasoning sessions (default: "claude").
+   *  "vertex" is NOT allowed here — Vertex is for subprocess tasks only. Use vertexKeyPath instead. */
   sessionLauncher?: "claude" | "gemini" | "copilot" | "ollama";
   /** Base URL for the Ollama server when sessionLauncher is "ollama" (default: "http://localhost:11434"). */
   ollamaBaseUrl?: string;
@@ -198,6 +208,12 @@ export interface AppConfig {
     /** When true, ConversationCompactor tries Ollama first for summarization, falls back to primary launcher. */
     enabled: boolean;
   };
+  /** Path to Google AI API key file for Vertex subprocess fallback.
+   *  When set, VertexSessionLauncher is created as a middle-tier fallback between Ollama and Claude
+   *  for subprocess tasks (compaction, summarization). Never logged (path or contents). */
+  vertexKeyPath?: string;
+  /** Model name for Vertex subprocess tasks (default: "gemini-2.5-flash"). */
+  vertexModel?: string;
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */
@@ -377,6 +393,8 @@ export async function resolveConfig(
           enabled: fileConfig.ollamaOffload.enabled ?? false,
         }
       : undefined,
+    vertexKeyPath: fileConfig.vertexKeyPath,
+    vertexModel: fileConfig.vertexModel,
     watchdog: fileConfig.watchdog
       ? {
           disabled: fileConfig.watchdog.disabled ?? false,
