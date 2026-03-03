@@ -893,6 +893,36 @@ describe("AgoraMessageHandler", () => {
   });
 
   describe("Dedup persistence: getProcessedEnvelopeIds / setProcessedEnvelopeIds", () => {
+    it("ignorePeer adds sender to blocklist and processEnvelope drops early", async () => {
+      const added = handler.ignorePeer(testEnvelope.sender);
+      expect(added).toBe(true);
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      expect(conversationManager.appendedEntries).toHaveLength(0);
+      expect(messageInjector.injectedMessages).toHaveLength(0);
+      expect(eventSink.events).toHaveLength(0);
+    });
+
+    it("unignorePeer removes sender and processing resumes", async () => {
+      handler.ignorePeer(testEnvelope.sender);
+      const removed = handler.unignorePeer(testEnvelope.sender);
+      expect(removed).toBe(true);
+
+      await handler.processEnvelope(testEnvelope, "webhook");
+
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+      expect(eventSink.events).toHaveLength(1);
+    });
+
+    it("listIgnoredPeers returns sorted blocklist", () => {
+      handler.ignorePeer("peer-z");
+      handler.ignorePeer("peer-a");
+
+      expect(handler.listIgnoredPeers()).toEqual(["peer-a", "peer-z"]);
+    });
+
     it("getProcessedEnvelopeIds returns empty array when no envelopes processed", () => {
       expect(handler.getProcessedEnvelopeIds()).toEqual([]);
     });

@@ -11,7 +11,7 @@ export class WorkspaceManager {
   ) {}
 
   workspacePath(role: AgentRole): string {
-    return path.join(this.layerPath, "workspaces", role.toLowerCase());
+    return path.join(this.layerPath, "workspaces", role.toLowerCase()).replace(/\\/g, "/");
   }
 
   async ensureWorkspaces(): Promise<void> {

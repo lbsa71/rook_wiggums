@@ -328,7 +328,11 @@ export class LoopHttpServer {
 
   private async handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     try {
-      const mcpServer = createTinyBusMcpServer({ tinyBus: this.tinyBus!, agoraService: this.agoraService });
+      const mcpServer = createTinyBusMcpServer({
+        tinyBus: this.tinyBus!,
+        agoraService: this.agoraService,
+        ignoredPeersManager: this.agoraMessageHandler,
+      });
       if (this.codeDispatcher) {
         addCodeDispatchTools(mcpServer, this.codeDispatcher);
       }

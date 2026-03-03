@@ -67,6 +67,7 @@ export class AgoraMessageHandler {
   private readonly contentDedup: Map<string, number> = new Map();
   private readonly CONTENT_DEDUP_WINDOW_MS = 1800000; // 30 minutes
   private readonly MAX_CONTENT_DEDUP_SIZE = 5000;
+  private readonly ignoredPeers: Set<string> = new Set();
 
   constructor(
     private readonly agoraService: IAgoraService | null,
@@ -87,6 +88,24 @@ export class AgoraMessageHandler {
    */
   getProcessedEnvelopeIds(): string[] {
     return Array.from(this.processedEnvelopeIds);
+  }
+
+  ignorePeer(publicKey: string): boolean {
+    const normalized = publicKey.trim();
+    if (!normalized) {
+      return false;
+    }
+    const wasNew = !this.ignoredPeers.has(normalized);
+    this.ignoredPeers.add(normalized);
+    return wasNew;
+  }
+
+  unignorePeer(publicKey: string): boolean {
+    return this.ignoredPeers.delete(publicKey.trim());
+  }
+
+  listIgnoredPeers(): string[] {
+    return Array.from(this.ignoredPeers.values()).sort();
   }
 
   /**
@@ -290,6 +309,11 @@ export class AgoraMessageHandler {
   }
 
   async processEnvelope(envelope: Envelope, source: "webhook" | "relay" = "webhook", relayNameHint?: string): Promise<void> {
+    if (this.ignoredPeers.has(envelope.sender)) {
+      this.logger.debug(`[AGORA] Ignoring message from blocked sender ${shortKey(envelope.sender)}: envelopeId=${envelope.id}`);
+      return;
+    }
+
     // Check for duplicate envelope ID early - return without processing if duplicate
     if (this.isDuplicate(envelope.id)) {
       return;

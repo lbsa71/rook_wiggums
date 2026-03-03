@@ -20,35 +20,53 @@ export class InMemoryFileSystem implements IFileSystem {
     this.dirMeta.set("/", { mtimeMs: this.nextMtime++ });
   }
 
+  private normalizePath(inputPath: string): string {
+    const withSlashes = inputPath.replace(/\\/g, "/");
+    if (withSlashes === "") {
+      return "/";
+    }
+    if (withSlashes === "/") {
+      return "/";
+    }
+    return withSlashes.endsWith("/") && withSlashes.length > 1
+      ? withSlashes.slice(0, -1)
+      : withSlashes;
+  }
+
   async readFile(path: string): Promise<string> {
-    const entry = this.files.get(path);
+    const normalizedPath = this.normalizePath(path);
+    const entry = this.files.get(normalizedPath);
     if (!entry) {
-      throw new Error(`ENOENT: no such file '${path}'`);
+      throw new Error(`ENOENT: no such file '${normalizedPath}'`);
     }
     return entry.content;
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    this.files.set(path, { content, mtimeMs: this.nextMtime++ });
+    const normalizedPath = this.normalizePath(path);
+    this.files.set(normalizedPath, { content, mtimeMs: this.nextMtime++ });
   }
 
   async appendFile(path: string, content: string): Promise<void> {
-    const existing = this.files.get(path);
+    const normalizedPath = this.normalizePath(path);
+    const existing = this.files.get(normalizedPath);
     if (existing) {
       existing.content += content;
       existing.mtimeMs = this.nextMtime++;
     } else {
-      this.files.set(path, { content, mtimeMs: this.nextMtime++ });
+      this.files.set(normalizedPath, { content, mtimeMs: this.nextMtime++ });
     }
   }
 
   async exists(path: string): Promise<boolean> {
-    return this.files.has(path) || this.dirs.has(path);
+    const normalizedPath = this.normalizePath(path);
+    return this.files.has(normalizedPath) || this.dirs.has(normalizedPath);
   }
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
+    const normalizedPath = this.normalizePath(path);
     if (options?.recursive) {
-      const parts = path.split("/").filter(Boolean);
+      const parts = normalizedPath.split("/").filter(Boolean);
       let current = "";
       for (const part of parts) {
         current += "/" + part;
@@ -58,17 +76,18 @@ export class InMemoryFileSystem implements IFileSystem {
         }
       }
     } else {
-      const parent = path.substring(0, path.lastIndexOf("/")) || "/";
+      const parent = normalizedPath.substring(0, normalizedPath.lastIndexOf("/")) || "/";
       if (!this.dirs.has(parent)) {
         throw new Error(`ENOENT: no such directory '${parent}'`);
       }
-      this.dirs.add(path);
-      this.dirMeta.set(path, { mtimeMs: this.nextMtime++ });
+      this.dirs.add(normalizedPath);
+      this.dirMeta.set(normalizedPath, { mtimeMs: this.nextMtime++ });
     }
   }
 
   async stat(path: string): Promise<FileStat> {
-    const file = this.files.get(path);
+    const normalizedPath = this.normalizePath(path);
+    const file = this.files.get(normalizedPath);
     if (file) {
       return {
         mtimeMs: file.mtimeMs,
@@ -77,18 +96,19 @@ export class InMemoryFileSystem implements IFileSystem {
         size: Buffer.byteLength(file.content, "utf-8"),
       };
     }
-    if (this.dirs.has(path)) {
-      const meta = this.dirMeta.get(path)!;
+    if (this.dirs.has(normalizedPath)) {
+      const meta = this.dirMeta.get(normalizedPath)!;
       return { mtimeMs: meta.mtimeMs, isFile: false, isDirectory: true, size: 0 };
     }
-    throw new Error(`ENOENT: no such file or directory '${path}'`);
+    throw new Error(`ENOENT: no such file or directory '${normalizedPath}'`);
   }
 
   async readdir(path: string): Promise<string[]> {
-    if (!this.dirs.has(path)) {
-      throw new Error(`ENOENT: no such directory '${path}'`);
+    const normalizedPath = this.normalizePath(path);
+    if (!this.dirs.has(normalizedPath)) {
+      throw new Error(`ENOENT: no such directory '${normalizedPath}'`);
     }
-    const prefix = path === "/" ? "/" : path + "/";
+    const prefix = normalizedPath === "/" ? "/" : normalizedPath + "/";
     const entries: string[] = [];
     for (const filePath of this.files.keys()) {
       if (filePath.startsWith(prefix)) {
@@ -99,7 +119,7 @@ export class InMemoryFileSystem implements IFileSystem {
       }
     }
     for (const dirPath of this.dirs) {
-      if (dirPath.startsWith(prefix) && dirPath !== path) {
+      if (dirPath.startsWith(prefix) && dirPath !== normalizedPath) {
         const rest = dirPath.slice(prefix.length);
         if (!rest.includes("/")) {
           entries.push(rest);
@@ -110,17 +130,20 @@ export class InMemoryFileSystem implements IFileSystem {
   }
 
   async copyFile(src: string, dest: string): Promise<void> {
-    const entry = this.files.get(src);
+    const normalizedSrc = this.normalizePath(src);
+    const normalizedDest = this.normalizePath(dest);
+    const entry = this.files.get(normalizedSrc);
     if (!entry) {
-      throw new Error(`ENOENT: no such file '${src}'`);
+      throw new Error(`ENOENT: no such file '${normalizedSrc}'`);
     }
-    this.files.set(dest, { content: entry.content, mtimeMs: this.nextMtime++ });
+    this.files.set(normalizedDest, { content: entry.content, mtimeMs: this.nextMtime++ });
   }
 
   async unlink(path: string): Promise<void> {
-    if (!this.files.has(path)) {
-      throw new Error(`ENOENT: no such file '${path}'`);
+    const normalizedPath = this.normalizePath(path);
+    if (!this.files.has(normalizedPath)) {
+      throw new Error(`ENOENT: no such file '${normalizedPath}'`);
     }
-    this.files.delete(path);
+    this.files.delete(normalizedPath);
   }
 }

@@ -7,6 +7,7 @@
  * (≤ 200ms) and carry an explicit per-test timeout of 2000ms.
  */
 import { NodeProcessRunner } from "../../../src/agents/claude/NodeProcessRunner";
+import * as path from "node:path";
 import { ProcessRunOptions } from "../../../src/agents/claude/IProcessRunner";
 
 // Shared inline node commands ─────────────────────────────────────────────
@@ -147,12 +148,13 @@ describe("NodeProcessRunner", () => {
 
   describe("cwd option", () => {
     it("runs the process in the specified working directory", async () => {
+      const requestedCwd = "/tmp";
       const result = await runner.run(
         NODE,
         ["-e", "process.stdout.write(process.cwd())"],
-        { cwd: "/tmp" },
+        { cwd: requestedCwd },
       );
-      expect(result.stdout).toBe("/tmp");
+      expect(path.normalize(result.stdout)).toBe(path.normalize(path.resolve(requestedCwd)));
     });
   });
 

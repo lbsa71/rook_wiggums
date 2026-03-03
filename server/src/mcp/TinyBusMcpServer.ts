@@ -7,9 +7,16 @@ import { TinyBus } from "../tinybus/core/TinyBus";
 import { createMessage } from "../tinybus/core/Message";
 import type { IAgoraService } from "../agora/IAgoraService";
 
+export interface IgnoredPeersManager {
+  ignorePeer(publicKey: string): boolean;
+  unignorePeer(publicKey: string): boolean;
+  listIgnoredPeers(): string[];
+}
+
 export interface McpServerOptions {
   tinyBus: TinyBus;
   agoraService?: IAgoraService | null;
+  ignoredPeersManager?: IgnoredPeersManager | null;
 }
 
 /**
@@ -21,6 +28,7 @@ export function createTinyBusMcpServer(tinyBus: TinyBus): McpServer;
 export function createTinyBusMcpServer(arg: TinyBus | McpServerOptions): McpServer {
   const tinyBus = arg instanceof TinyBus ? arg : arg.tinyBus;
   const agoraService = arg instanceof TinyBus ? null : (arg.agoraService ?? null);
+  const ignoredPeersManager = arg instanceof TinyBus ? null : (arg.ignoredPeersManager ?? null);
   const server = new McpServer({
     name: "granules",
     version: "1.0.0",
@@ -182,6 +190,74 @@ export function createTinyBusMcpServer(arg: TinyBus | McpServerOptions): McpServ
             {
               type: "text",
               text: JSON.stringify({ peers }),
+            },
+          ],
+        };
+      }
+    );
+  }
+
+  if (ignoredPeersManager) {
+    server.tool(
+      "ignore_peer",
+      "Ignore a peer public key so inbound Agora messages from it are dropped",
+      {
+        publicKey: z.string().min(1).describe("Peer public key to ignore"),
+      },
+      async ({ publicKey }) => {
+        const added = ignoredPeersManager.ignorePeer(publicKey);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                ignored: publicKey,
+                added,
+                ignoredPeers: ignoredPeersManager.listIgnoredPeers(),
+              }),
+            },
+          ],
+        };
+      }
+    );
+
+    server.tool(
+      "unignore_peer",
+      "Remove a peer public key from the ignored Agora blocklist",
+      {
+        publicKey: z.string().min(1).describe("Peer public key to unignore"),
+      },
+      async ({ publicKey }) => {
+        const removed = ignoredPeersManager.unignorePeer(publicKey);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                unignored: publicKey,
+                removed,
+                ignoredPeers: ignoredPeersManager.listIgnoredPeers(),
+              }),
+            },
+          ],
+        };
+      }
+    );
+
+    server.tool(
+      "list_ignored_peers",
+      "List peer public keys currently ignored for inbound Agora messages",
+      {},
+      async () => {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ignoredPeers: ignoredPeersManager.listIgnoredPeers(),
+              }),
             },
           ],
         };

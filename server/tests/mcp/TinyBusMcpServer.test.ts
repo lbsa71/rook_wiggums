@@ -4,6 +4,7 @@ import { createTinyBusMcpServer } from "../../src/mcp/TinyBusMcpServer";
 import { TinyBus } from "../../src/tinybus/core/TinyBus";
 import { MemoryProvider } from "../../src/tinybus/providers/MemoryProvider";
 import type { IAgoraService } from "../../src/agora/IAgoraService";
+import type { IgnoredPeersManager } from "../../src/mcp/TinyBusMcpServer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,8 +28,9 @@ function makeMockAgoraService(peers: string[] = []): IAgoraService {
 async function buildClient(
   tinyBus: TinyBus,
   agoraService?: IAgoraService | null,
+  ignoredPeersManager?: IgnoredPeersManager | null,
 ): Promise<{ client: Client; cleanup: () => Promise<void> }> {
-  const server = createTinyBusMcpServer({ tinyBus, agoraService });
+  const server = createTinyBusMcpServer({ tinyBus, agoraService, ignoredPeersManager });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: "test-client", version: "1.0.0" });
@@ -38,6 +40,19 @@ async function buildClient(
     cleanup: async () => {
       await client.close();
     },
+  };
+}
+
+function makeIgnoredPeersManager(initial: string[] = []): IgnoredPeersManager {
+  const peers = new Set(initial);
+  return {
+    ignorePeer: jest.fn((publicKey: string) => {
+      const before = peers.size;
+      peers.add(publicKey);
+      return peers.size > before;
+    }),
+    unignorePeer: jest.fn((publicKey: string) => peers.delete(publicKey)),
+    listIgnoredPeers: jest.fn(() => Array.from(peers.values()).sort()),
   };
 }
 
@@ -390,6 +405,65 @@ describe("TinyBusMcpServer", () => {
       const data = parseResult(result as Parameters<typeof parseResult>[0]) as Record<string, unknown>;
       expect(data.success).toBe(true);
       cleanup = async () => { await c.close(); };
+    });
+  });
+
+  describe("ignored peers tools", () => {
+    it("registers ignore_peer, unignore_peer, list_ignored_peers when manager is provided", async () => {
+      bus = await startedBus();
+      const manager = makeIgnoredPeersManager();
+      ({ client, cleanup } = await buildClient(bus, null, manager));
+      const tools = await client.listTools();
+      const names = tools.tools.map((t) => t.name);
+      expect(names).toContain("ignore_peer");
+      expect(names).toContain("unignore_peer");
+      expect(names).toContain("list_ignored_peers");
+    });
+
+    it("does not register ignored-peers tools when manager is absent", async () => {
+      bus = await startedBus();
+      ({ client, cleanup } = await buildClient(bus, null, null));
+      const tools = await client.listTools();
+      const names = tools.tools.map((t) => t.name);
+      expect(names).not.toContain("ignore_peer");
+      expect(names).not.toContain("unignore_peer");
+      expect(names).not.toContain("list_ignored_peers");
+    });
+
+    it("ignore_peer adds key and list_ignored_peers reflects it", async () => {
+      bus = await startedBus();
+      const manager = makeIgnoredPeersManager();
+      ({ client, cleanup } = await buildClient(bus, null, manager));
+
+      await client.callTool({
+        name: "ignore_peer",
+        arguments: { publicKey: "peer-abc" },
+      });
+
+      const listResult = await client.callTool({
+        name: "list_ignored_peers",
+        arguments: {},
+      });
+      const data = parseResult(listResult as Parameters<typeof parseResult>[0]) as { ignoredPeers: string[] };
+      expect(data.ignoredPeers).toEqual(["peer-abc"]);
+    });
+
+    it("unignore_peer removes key", async () => {
+      bus = await startedBus();
+      const manager = makeIgnoredPeersManager(["peer-abc"]);
+      ({ client, cleanup } = await buildClient(bus, null, manager));
+
+      await client.callTool({
+        name: "unignore_peer",
+        arguments: { publicKey: "peer-abc" },
+      });
+
+      const listResult = await client.callTool({
+        name: "list_ignored_peers",
+        arguments: {},
+      });
+      const data = parseResult(listResult as Parameters<typeof parseResult>[0]) as { ignoredPeers: string[] };
+      expect(data.ignoredPeers).toEqual([]);
     });
   });
 });
