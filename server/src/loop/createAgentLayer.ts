@@ -5,6 +5,8 @@ import { AgentSdkLauncher, SdkQueryFn } from "../agents/claude/AgentSdkLauncher"
 import { GeminiSessionLauncher } from "../agents/gemini/GeminiSessionLauncher";
 import { CopilotSessionLauncher } from "../agents/copilot/CopilotSessionLauncher";
 import { OllamaSessionLauncher } from "../agents/ollama/OllamaSessionLauncher";
+import { OllamaInferenceClient } from "../agents/ollama/OllamaInferenceClient";
+import { OllamaOffloadService } from "../agents/ollama/OllamaOffloadService";
 import { FetchHttpClient } from "../agents/ollama/FetchHttpClient";
 import { ProcessTracker, ProcessTrackerConfig } from "../agents/claude/ProcessTracker";
 import { NodeProcessKiller } from "../agents/claude/NodeProcessKiller";
@@ -123,8 +125,23 @@ export async function createAgentLayer(
 
   const cwd = config.workingDirectory;
 
+  // Ollama offload service — offloads compaction to local Ollama when configured
+  let ollamaOffloadService: OllamaOffloadService | undefined;
+  if (config.ollamaOffload?.enabled) {
+    const ollamaBaseUrl = config.ollamaBaseUrl ?? "http://localhost:11434";
+    const ollamaModel = config.ollamaModel ?? "qwen3:14b";
+    logger.debug(`agent-layer: Ollama offload enabled (${ollamaBaseUrl}, model: ${ollamaModel})`);
+    const inferenceClient = new OllamaInferenceClient(
+      new FetchHttpClient(),
+      ollamaBaseUrl,
+      ollamaModel,
+      logger,
+    );
+    ollamaOffloadService = new OllamaOffloadService(inferenceClient, clock, logger);
+  }
+
   // Conversation manager with compaction and optional archiving
-  const compactor = new ConversationCompactor(gatedLauncher, cwd);
+  const compactor = new ConversationCompactor(gatedLauncher, cwd, ollamaOffloadService, logger);
 
   let archiver: ConversationArchiver | undefined;
   let archiveConfig: ConversationArchiveConfig | undefined;

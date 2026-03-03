@@ -80,6 +80,11 @@ const AppConfigSchema = z
     ollamaBaseUrl: z.string().url().optional(),
     ollamaModel: z.string().optional(),
     defaultCodeBackend: z.enum(["claude", "copilot", "gemini", "auto"]).optional(),
+    ollamaOffload: z
+      .object({
+        enabled: z.boolean(),
+      })
+      .optional(),
   })
   .refine(
     (data) =>
@@ -187,6 +192,12 @@ export interface AppConfig {
   ollamaModel?: string;
   /** Default code backend to use for code dispatch tasks (default: "claude"). */
   defaultCodeBackend?: "claude" | "copilot" | "gemini" | "auto";
+  /** Configuration for Ollama offload — offloads maintenance tasks (compaction) to local Ollama.
+   *  Uses ollamaBaseUrl/ollamaModel for endpoint config. Works regardless of sessionLauncher setting. */
+  ollamaOffload?: {
+    /** When true, ConversationCompactor tries Ollama first for summarization, falls back to primary launcher. */
+    enabled: boolean;
+  };
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */
@@ -361,6 +372,11 @@ export async function resolveConfig(
     ollamaBaseUrl: fileConfig.ollamaBaseUrl,
     ollamaModel: fileConfig.ollamaModel,
     defaultCodeBackend: fileConfig.defaultCodeBackend ?? defaults.defaultCodeBackend,
+    ollamaOffload: fileConfig.ollamaOffload
+      ? {
+          enabled: fileConfig.ollamaOffload.enabled ?? false,
+        }
+      : undefined,
     watchdog: fileConfig.watchdog
       ? {
           disabled: fileConfig.watchdog.disabled ?? false,

@@ -1,4 +1,5 @@
 import type { IOllamaInferenceClient } from "./OllamaInferenceClient";
+import type { IOllamaOffloadService } from "./IOllamaOffloadService";
 import type { IClock } from "../../substrate/abstractions/IClock";
 import type { ILogger } from "../../logging";
 
@@ -39,7 +40,7 @@ interface AvailabilityState {
  *
  * Phase 1 scope: conversation compaction only.
  */
-export class OllamaOffloadService {
+export class OllamaOffloadService implements IOllamaOffloadService {
   private state: AvailabilityState = {
     lastStatus: "unknown",
     consecutiveFailures: 0,

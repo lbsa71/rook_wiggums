@@ -81,6 +81,12 @@ export interface ApplicationConfig {
   ollamaModel?: string;
   /** Default code backend to use for code dispatch tasks (default: "claude"). */
   defaultCodeBackend?: "claude" | "copilot" | "gemini" | "auto";
+  /** Configuration for Ollama offload — offloads maintenance tasks (compaction) to local Ollama.
+   *  Uses ollamaBaseUrl/ollamaModel for endpoint config. Works regardless of sessionLauncher setting. */
+  ollamaOffload?: {
+    /** When true, ConversationCompactor tries Ollama first, falls back to primary launcher. */
+    enabled: boolean;
+  };
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */
