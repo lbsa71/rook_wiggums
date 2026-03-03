@@ -19,8 +19,6 @@ function makeMockAgoraService(peers: string[] = []): IAgoraService {
     getPeerConfig: jest.fn(),
     connectRelay: jest.fn(),
     disconnectRelay: jest.fn(),
-    setRelayMessageHandler: jest.fn(),
-    setRelayMessageHandlerWithName: jest.fn(),
     isRelayConnected: jest.fn(() => false),
   } as unknown as IAgoraService;
 }

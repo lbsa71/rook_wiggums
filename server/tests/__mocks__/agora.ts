@@ -130,11 +130,23 @@ export function verifyEnvelope(envelope: Envelope): { valid: boolean; reason?: s
 export class AgoraService {
   private config: AgoraServiceConfig;
   private relayClient: RelayClientLike | null = null;
-  private relayMessageHandler: RelayMessageHandler | null = null;
+  private onRelayMessage: ((e: Envelope, from: string, fromName?: string) => void) | null = null;
   private logger: Logger | null = null;
   private relayClientFactory: RelayClientFactory | null = null;
-  constructor(config: AgoraServiceConfig, logger?: Logger, relayClientFactory?: RelayClientFactory) { this.config = config; this.logger = logger ?? null; this.relayClientFactory = relayClientFactory ?? null; }
+  constructor(config: AgoraServiceConfig, onRelayMessage?: ((e: Envelope, from: string, fromName?: string) => void) | Logger, logger?: Logger | RelayClientFactory, relayClientFactory?: RelayClientFactory) {
+    this.config = config;
+    if (typeof onRelayMessage === "function") {
+      this.onRelayMessage = onRelayMessage;
+      this.logger = (logger as Logger) ?? null;
+      this.relayClientFactory = relayClientFactory ?? null;
+    } else {
+      // legacy: (config, logger?, relayClientFactory?)
+      this.logger = (onRelayMessage as Logger) ?? null;
+      this.relayClientFactory = (logger as RelayClientFactory) ?? null;
+    }
+  }
   async sendMessage(o: { peerName: string; type?: string; payload?: unknown; inReplyTo?: string }) { const p = this.config.peers.get(o.peerName); if (!p) return { ok: false, status: 0, error: "Unknown peer: " + o.peerName }; return { ok: true, status: 200 }; }
+  async replyToEnvelope(_o: { targetPubkey: string; type: string; payload: unknown; inReplyTo: string }) { return { ok: true, status: 200 }; }
   async decodeInbound(m: string) { return { ok: false, reason: m.startsWith("[AGORA_ENVELOPE]") ? "invalid_base64" : "not_agora_message" }; }
   getPeers() { return Array.from(this.config.peers.keys()); }
   getPeerConfig(n: string) { return this.config.peers.get(n); }
@@ -144,10 +156,9 @@ export class AgoraService {
     if (this.relayClientFactory) this.relayClient = this.relayClientFactory(opts);
     else throw new Error("factory required");
     this.relayClient.on("error", (err: Error) => { this.logger?.debug("Agora relay error: " + err.message); });
-    this.relayClient.on("message", (e: Envelope) => { if (this.relayMessageHandler) this.relayMessageHandler(e); });
+    this.relayClient.on("message", (e: Envelope, from: string, fromName?: string) => { this.onRelayMessage?.(e, from, fromName); });
     try { await this.relayClient.connect(); } catch (e) { this.logger?.debug("Agora relay connect failed (" + url + "): " + (e instanceof Error ? e.message : String(e))); this.relayClient = null; }
   }
-  setRelayMessageHandler(h: RelayMessageHandler) { this.relayMessageHandler = h; }
   async disconnectRelay() { if (this.relayClient) { this.relayClient.disconnect(); this.relayClient = null; } }
   isRelayConnected() { return this.relayClient?.connected() ?? false; }
   static async loadConfig() { throw new Error("not implemented"); }

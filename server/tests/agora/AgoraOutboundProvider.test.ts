@@ -1,7 +1,6 @@
 import { AgoraOutboundProvider } from "../../src/agora/AgoraOutboundProvider";
 import { IAgoraService } from "../../src/agora/IAgoraService";
 import { createMessage } from "../../src/tinybus/core/Message";
-import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 
 class MockAgoraService implements IAgoraService {
   public sentMessages: Array<{ peerName: string; type: string; payload: unknown; inReplyTo?: string }> = [];
@@ -42,9 +41,6 @@ class MockAgoraService implements IAgoraService {
   async connectRelay(_url: string) {}
 
   async disconnectRelay() {}
-
-  setRelayMessageHandler(_handler: (envelope: Envelope) => void) {}
-  setRelayMessageHandlerWithName(_handler: (envelope: Envelope, from: string, fromName?: string) => void) {}
 
   isRelayConnected() {
     return false;

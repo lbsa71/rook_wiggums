@@ -97,14 +97,21 @@ export async function createLoopLayer(
   let agoraMessageHandler: AgoraMessageHandler | null = null;
   let agoraOutboundProvider: AgoraOutboundProvider | null = null;
   let agoraConfig: Awaited<ReturnType<typeof AgoraService.loadConfig>> | null = null;
+  // Mutable ref so the real relay handler can be wired in after AgoraMessageHandler is created.
+  // AgoraService v0.4.5+ receives onRelayMessage at construction time rather than via a setter.
+  let relayHandlerRef: ((envelope: Envelope, from: string, fromName?: string) => Promise<void>) | null = null;
   try {
     const agora = await import("@rookdaemon/agora");
     agoraConfig = await agora.AgoraService.loadConfig();
-    agoraService = new agora.AgoraService(agoraConfig, logger) as unknown as IAgoraService;
+    agoraService = new agora.AgoraService(
+      agoraConfig,
+      (envelope: Envelope, from: string, fromName?: string) => relayHandlerRef?.(envelope, from, fromName),
+      logger,
+    ) as unknown as IAgoraService;
 
     // Note: We'll create AgoraMessageHandler after orchestrator is created
     // so we can pass it as IMessageInjector
-    // IMPORTANT: connectRelay is deferred until after the message handler is registered
+    // IMPORTANT: connectRelay is deferred until after the handler ref is set
     // to avoid losing queued relay messages delivered immediately on connect.
   } catch (err) {
     // If Agora config doesn't exist, log and continue without Agora capability
@@ -187,7 +194,8 @@ export async function createLoopLayer(
     // Set up relay message handler if relay is configured
     if (agoraConfig.relay?.autoConnect && agoraConfig.relay.url) {
       const agora = await import("@rookdaemon/agora");
-      agoraService.setRelayMessageHandlerWithName(async (envelope: Envelope, from: string, fromName?: string) => {
+      // Wire the real handler into the ref captured by the AgoraService constructor closure.
+      relayHandlerRef = async (envelope: Envelope, from: string, fromName?: string) => {
         try {
           logger.debug(`[AGORA] Relay message received: envelopeId=${envelope.id} type=${envelope.type} from=${fromName || from}`);
 
@@ -209,7 +217,7 @@ export async function createLoopLayer(
         } catch (err) {
           logger.debug(`[AGORA] Failed to process relay message: ${err instanceof Error ? err.message : String(err)}`);
         }
-      });
+      };
 
       // Connect to relay AFTER handler is registered so queued messages aren't lost
       await agoraService.connectRelay(agoraConfig.relay.url);

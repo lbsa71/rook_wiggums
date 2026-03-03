@@ -13,7 +13,5 @@ export interface IAgoraService {
   getPeerConfig(name: string): { publicKey: string; url?: string; token?: string } | undefined;
   connectRelay(url: string): Promise<void>;
   disconnectRelay(): Promise<void>;
-  setRelayMessageHandler(handler: (envelope: Envelope) => void): void;
-  setRelayMessageHandlerWithName(handler: (envelope: Envelope, from: string, fromName?: string) => void): void;
   isRelayConnected(): boolean;
 }

@@ -5,7 +5,6 @@ import { registerAgoraTools, IgnoredPeersManager } from "../../src/agora/AgoraMc
 import { TinyBus } from "../../src/tinybus/core/TinyBus";
 import { MemoryProvider } from "../../src/tinybus/providers/MemoryProvider";
 import type { IAgoraService } from "../../src/agora/IAgoraService";
-import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,8 +30,6 @@ class MockAgoraService implements IAgoraService {
   getPeerConfig(_name: string) { return undefined; }
   async connectRelay(_url: string) {}
   async disconnectRelay() {}
-  setRelayMessageHandler(_handler: (envelope: Envelope) => void) {}
-  setRelayMessageHandlerWithName(_handler: (envelope: Envelope, from: string, fromName?: string) => void) {}
   isRelayConnected() { return false; }
 }
 
