@@ -37,6 +37,42 @@ export function saveIgnoredPeers(peers: string[], filePath?: string): void {
   writeFileSync(path, content, "utf-8");
 }
 
+export class IgnoredPeersManager {
+  private readonly filePath: string;
+  private readonly peers: Set<string>;
+
+  constructor(filePath?: string) {
+    this.filePath = filePath ?? getIgnoredPeersPath();
+    this.peers = new Set(loadIgnoredPeers(this.filePath));
+  }
+
+  ignorePeer(publicKey: string): boolean {
+    const normalized = publicKey.trim();
+    if (!normalized) {
+      return false;
+    }
+    const added = !this.peers.has(normalized);
+    this.peers.add(normalized);
+    if (added) {
+      saveIgnoredPeers(this.listIgnoredPeers(), this.filePath);
+    }
+    return added;
+  }
+
+  unignorePeer(publicKey: string): boolean {
+    const normalized = publicKey.trim();
+    const removed = this.peers.delete(normalized);
+    if (removed) {
+      saveIgnoredPeers(this.listIgnoredPeers(), this.filePath);
+    }
+    return removed;
+  }
+
+  listIgnoredPeers(): string[] {
+    return Array.from(this.peers.values()).sort();
+  }
+}
+
 export interface Envelope { id: string; type: string; sender: string; timestamp: number; payload: unknown; signature: string; inReplyTo?: string; }
 export interface AgoraServiceConfig { identity: { publicKey: string; privateKey: string; name?: string }; peers: Map<string, { publicKey: string; url: string; token: string }>; relay?: { url: string; autoConnect: boolean; name?: string; reconnectMaxMs?: number }; }
 export type RelayMessageHandler = (e: Envelope) => void;

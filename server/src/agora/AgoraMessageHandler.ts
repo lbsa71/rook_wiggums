@@ -6,7 +6,7 @@ import { IAgoraService } from "./IAgoraService";
 import { LoopState } from "../loop/types";
 import { AgentRole } from "../agents/types";
 import { shortKey } from "./utils";
-import { loadIgnoredPeers, saveIgnoredPeers } from "@rookdaemon/agora";
+import { IgnoredPeersManager } from "@rookdaemon/agora";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../logging";
 import { createHash } from "crypto";
@@ -68,7 +68,8 @@ export class AgoraMessageHandler {
   private readonly contentDedup: Map<string, number> = new Map();
   private readonly CONTENT_DEDUP_WINDOW_MS = 1800000; // 30 minutes
   private readonly MAX_CONTENT_DEDUP_SIZE = 5000;
-  private readonly ignoredPeers: Set<string> = new Set();
+  private readonly ignoredPeersManager: IgnoredPeersManager | null;
+  private readonly ignoredPeers: Set<string>;
 
   constructor(
     private readonly agoraService: IAgoraService | null,
@@ -86,12 +87,16 @@ export class AgoraMessageHandler {
   ) {
     if (this.ignoredPeersPath) {
       try {
-        for (const peer of loadIgnoredPeers(this.ignoredPeersPath)) {
-          this.ignoredPeers.add(peer);
-        }
+        this.ignoredPeersManager = new IgnoredPeersManager(this.ignoredPeersPath);
+        this.ignoredPeers = new Set(this.ignoredPeersManager.listIgnoredPeers());
       } catch (error) {
-        this.logger.debug(`[AGORA] Failed to load ignored peers from ${this.ignoredPeersPath}: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.debug(`[AGORA] Failed to initialize ignored peers manager: ${error instanceof Error ? error.message : String(error)}`);
+        this.ignoredPeersManager = null;
+        this.ignoredPeers = new Set();
       }
+    } else {
+      this.ignoredPeersManager = null;
+      this.ignoredPeers = new Set();
     }
   }
 
@@ -107,35 +112,25 @@ export class AgoraMessageHandler {
     if (!normalized) {
       return false;
     }
-    const wasNew = !this.ignoredPeers.has(normalized);
+    const added = !this.ignoredPeers.has(normalized);
     this.ignoredPeers.add(normalized);
-    if (wasNew) {
-      this.persistIgnoredPeers();
+    if (added && this.ignoredPeersManager) {
+      this.ignoredPeersManager.ignorePeer(normalized);
     }
-    return wasNew;
+    return added;
   }
 
   unignorePeer(publicKey: string): boolean {
-    const removed = this.ignoredPeers.delete(publicKey.trim());
-    if (removed) {
-      this.persistIgnoredPeers();
+    const normalized = publicKey.trim();
+    const removed = this.ignoredPeers.delete(normalized);
+    if (removed && this.ignoredPeersManager) {
+      this.ignoredPeersManager.unignorePeer(normalized);
     }
     return removed;
   }
 
   listIgnoredPeers(): string[] {
     return Array.from(this.ignoredPeers.values()).sort();
-  }
-
-  private persistIgnoredPeers(): void {
-    if (!this.ignoredPeersPath) {
-      return;
-    }
-    try {
-      saveIgnoredPeers(this.listIgnoredPeers(), this.ignoredPeersPath);
-    } catch (error) {
-      this.logger.debug(`[AGORA] Failed to persist ignored peers to ${this.ignoredPeersPath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
   }
 
   /**
