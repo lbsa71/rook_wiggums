@@ -134,7 +134,7 @@ export class ConversationCompactor implements IConversationCompactor {
    * Tier 2: Try subprocess launcher (Vertex) for summarization.
    * Returns the summary on success, or undefined on failure.
    */
-  private async trySubprocessLauncher(oldContent: string, lineCount: number): Promise<string | undefined> {
+  private async trySubprocessLauncher(oldContent: string, _lineCount: number): Promise<string | undefined> {
     try {
       this.logger?.debug("[COMPACTION] Attempting Vertex subprocess launcher for conversation compaction");
 

@@ -43,18 +43,6 @@ async function buildClient(
   };
 }
 
-function makeIgnoredPeersManager(initial: string[] = []): IgnoredPeersManager {
-  const peers = new Set(initial);
-  return {
-    ignorePeer: jest.fn((publicKey: string) => {
-      const before = peers.size;
-      peers.add(publicKey);
-      return peers.size > before;
-    }),
-    unignorePeer: jest.fn((publicKey: string) => peers.delete(publicKey)),
-    listIgnoredPeers: jest.fn(() => Array.from(peers.values()).sort()),
-  };
-}
 
 async function startedBus(...providerDefs: Array<{ id: string; types?: string[] }>): Promise<TinyBus> {
   const bus = new TinyBus();
