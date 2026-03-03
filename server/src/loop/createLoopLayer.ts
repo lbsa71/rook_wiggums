@@ -23,6 +23,7 @@ import { SelfImprovementMetricsCollector } from "../evaluation/SelfImprovementMe
 import { PerformanceMetrics } from "../evaluation/PerformanceMetrics";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { AgoraService } from "@rookdaemon/agora" with { "resolution-mode": "import" };
+import { getIgnoredPeersPath } from "@rookdaemon/agora";
 import { LoopWatchdog } from "./LoopWatchdog";
 import { getAppPaths } from "../paths";
 import { EndorsementInterceptor, EndorsementScreener } from "../agents/endorsement";
@@ -179,7 +180,8 @@ export async function createLoopLayer(
       rateLimitConfig,
       () => { // wakeLoop callback — wake orchestrator if sleeping on incoming Agora message
         try { orchestrator.wake(); } catch { /* not sleeping */ }
-      }
+      },
+      getIgnoredPeersPath(),
     );
 
     // Set up relay message handler if relay is configured

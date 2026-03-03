@@ -6,6 +6,7 @@ import { IAgoraService } from "./IAgoraService";
 import { LoopState } from "../loop/types";
 import { AgentRole } from "../agents/types";
 import { shortKey } from "./utils";
+import { loadIgnoredPeers, saveIgnoredPeers } from "@rookdaemon/agora";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../logging";
 import { createHash } from "crypto";
@@ -80,8 +81,19 @@ export class AgoraMessageHandler {
     private readonly logger: ILogger,
     private readonly unknownSenderPolicy: UnknownSenderPolicy = 'quarantine',
     private readonly rateLimitConfig: RateLimitConfig = { enabled: true, maxMessages: 10, windowMs: 60000 },
-    private readonly wakeLoop: (() => void) | null = null
-  ) {}
+    private readonly wakeLoop: (() => void) | null = null,
+    private readonly ignoredPeersPath: string | null = null,
+  ) {
+    if (this.ignoredPeersPath) {
+      try {
+        for (const peer of loadIgnoredPeers(this.ignoredPeersPath)) {
+          this.ignoredPeers.add(peer);
+        }
+      } catch (error) {
+        this.logger.debug(`[AGORA] Failed to load ignored peers from ${this.ignoredPeersPath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
 
   /**
    * Return all currently tracked processed envelope IDs (for persistence on shutdown).
@@ -97,15 +109,33 @@ export class AgoraMessageHandler {
     }
     const wasNew = !this.ignoredPeers.has(normalized);
     this.ignoredPeers.add(normalized);
+    if (wasNew) {
+      this.persistIgnoredPeers();
+    }
     return wasNew;
   }
 
   unignorePeer(publicKey: string): boolean {
-    return this.ignoredPeers.delete(publicKey.trim());
+    const removed = this.ignoredPeers.delete(publicKey.trim());
+    if (removed) {
+      this.persistIgnoredPeers();
+    }
+    return removed;
   }
 
   listIgnoredPeers(): string[] {
     return Array.from(this.ignoredPeers.values()).sort();
+  }
+
+  private persistIgnoredPeers(): void {
+    if (!this.ignoredPeersPath) {
+      return;
+    }
+    try {
+      saveIgnoredPeers(this.listIgnoredPeers(), this.ignoredPeersPath);
+    } catch (error) {
+      this.logger.debug(`[AGORA] Failed to persist ignored peers to ${this.ignoredPeersPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**

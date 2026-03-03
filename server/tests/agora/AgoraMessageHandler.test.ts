@@ -8,6 +8,9 @@ import { LoopState } from "../../src/loop/types";
 import { AgentRole } from "../../src/agents/types";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../../src/logging";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mock implementations
 class MockConversationManager implements IConversationManager {
@@ -921,6 +924,74 @@ describe("AgoraMessageHandler", () => {
       handler.ignorePeer("peer-a");
 
       expect(handler.listIgnoredPeers()).toEqual(["peer-a", "peer-z"]);
+    });
+
+    it("loads ignored peers from persistence file at startup", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "substrate-ignored-"));
+      const ignoredPath = join(tempDir, "IGNORED_PEERS.md");
+      try {
+        writeFileSync(
+          ignoredPath,
+          [
+            "# Ignored peers",
+            "peer-b",
+            "peer-a",
+            "",
+          ].join("\n"),
+          "utf-8",
+        );
+
+        const handlerWithPersistence = new AgoraMessageHandler(
+          agoraService,
+          conversationManager,
+          messageInjector,
+          eventSink,
+          clock,
+          getState,
+          isRateLimited,
+          logger,
+          'quarantine',
+          defaultRateLimitConfig,
+          null,
+          ignoredPath,
+        );
+
+        expect(handlerWithPersistence.listIgnoredPeers()).toEqual(["peer-a", "peer-b"]);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("persists blocklist changes when ignore/unignore are called", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "substrate-ignored-"));
+      const ignoredPath = join(tempDir, "IGNORED_PEERS.md");
+      try {
+        const handlerWithPersistence = new AgoraMessageHandler(
+          agoraService,
+          conversationManager,
+          messageInjector,
+          eventSink,
+          clock,
+          getState,
+          isRateLimited,
+          logger,
+          'quarantine',
+          defaultRateLimitConfig,
+          null,
+          ignoredPath,
+        );
+
+        handlerWithPersistence.ignorePeer("peer-z");
+        handlerWithPersistence.ignorePeer("peer-a");
+        handlerWithPersistence.unignorePeer("peer-z");
+
+        const persisted = readFileSync(ignoredPath, "utf-8");
+        expect(persisted).toContain("# Ignored peers");
+        expect(persisted).toContain("peer-a");
+        expect(persisted).not.toContain("peer-z");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("getProcessedEnvelopeIds returns empty array when no envelopes processed", () => {

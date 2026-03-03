@@ -1,4 +1,42 @@
 export function shortKey(p: string): string { return p.slice(-8) + "..."; }
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+export const IGNORED_FILE_NAME = "IGNORED_PEERS.md";
+
+export function getIgnoredPeersPath(storageDir?: string): string {
+  if (storageDir) {
+    return join(storageDir, IGNORED_FILE_NAME);
+  }
+  return join(process.cwd(), IGNORED_FILE_NAME);
+}
+
+export function loadIgnoredPeers(filePath?: string): string[] {
+  const path = filePath ?? getIgnoredPeersPath();
+  if (!existsSync(path)) return [];
+  const lines = readFileSync(path, "utf-8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+  return Array.from(new Set(lines));
+}
+
+export function saveIgnoredPeers(peers: string[], filePath?: string): void {
+  const path = filePath ?? getIgnoredPeersPath();
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  const unique = Array.from(new Set(peers.map((peer) => peer.trim()).filter(Boolean))).sort();
+  const content = [
+    "# Ignored peers",
+    "# One public key per line",
+    ...unique,
+    "",
+  ].join("\n");
+  writeFileSync(path, content, "utf-8");
+}
+
 export interface Envelope { id: string; type: string; sender: string; timestamp: number; payload: unknown; signature: string; inReplyTo?: string; }
 export interface AgoraServiceConfig { identity: { publicKey: string; privateKey: string; name?: string }; peers: Map<string, { publicKey: string; url: string; token: string }>; relay?: { url: string; autoConnect: boolean; name?: string; reconnectMaxMs?: number }; }
 export type RelayMessageHandler = (e: Envelope) => void;
