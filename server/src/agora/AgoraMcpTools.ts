@@ -92,10 +92,23 @@ export function registerAgoraTools(server: McpServer, options: AgoraToolsOptions
   // -------------------------------------------------------------------------
   server.tool(
     "list_peers",
-    "List all configured Agora peers",
+    "List all configured Agora peers with full public keys. Names are convenience labels only.",
     {},
     async () => {
-      const peers = agoraService.getPeers();
+      const peers = agoraService
+        .getPeers()
+        .map((peerRef: string) => {
+          const peerConfig = agoraService.getPeerConfig(peerRef);
+          if (!peerConfig) {
+            return null;
+          }
+          return {
+            name: peerConfig.name,
+            publicKey: peerConfig.publicKey,
+          };
+        })
+        .filter((peer: { name?: string; publicKey: string } | null): peer is { name?: string; publicKey: string } => peer !== null);
+
       return {
         content: [
           {

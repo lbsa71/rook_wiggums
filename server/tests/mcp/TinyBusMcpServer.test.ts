@@ -41,7 +41,6 @@ async function buildClient(
   };
 }
 
-
 async function startedBus(...providerDefs: Array<{ id: string; types?: string[] }>): Promise<TinyBus> {
   const bus = new TinyBus();
   for (const { id, types = [] } of providerDefs) {

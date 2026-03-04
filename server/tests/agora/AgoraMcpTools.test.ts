@@ -13,7 +13,20 @@ import type { IAgoraService } from "../../src/agora/IAgoraService";
 class MockAgoraService implements IAgoraService {
   public sentMessages: Array<{ peerName: string; type: string; payload: unknown; inReplyTo?: string }> = [];
   public repliedEnvelopes: Array<{ targetPubkey: string; type: string; payload: unknown; inReplyTo: string }> = [];
-  public peers: string[] = ["rook", "bishop", "stefan"];
+  public peers: Record<string, { publicKey: string; url?: string; token?: string; name?: string }> = {
+    rook: {
+      publicKey: "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      name: "rook",
+    },
+    bishop: {
+      publicKey: "302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      name: "bishop",
+    },
+    stefan: {
+      publicKey: "302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      name: "stefan",
+    },
+  };
 
   async sendMessage(options: { peerName: string; type: string; payload: unknown; inReplyTo?: string }) {
     this.sentMessages.push(options);
@@ -26,8 +39,8 @@ class MockAgoraService implements IAgoraService {
   }
 
   async decodeInbound(_message: string) { return { ok: false, reason: "not implemented" }; }
-  getPeers() { return this.peers; }
-  getPeerConfig(_name: string) { return undefined; }
+  getPeers() { return Object.keys(this.peers); }
+  getPeerConfig(name: string) { return this.peers[name]; }
   async connectRelay(_url: string) {}
   async disconnectRelay() {}
   isRelayConnected() { return false; }
@@ -167,10 +180,30 @@ describe("AgoraMcpTools", () => {
       ({ client, cleanup } = await buildClient(agora));
     });
 
-    it("returns configured peer names", async () => {
+    it("returns configured peers with name and full publicKey", async () => {
       const result = await client.callTool({ name: "list_peers", arguments: {} });
-      const data = parseResult(result as Parameters<typeof parseResult>[0]) as { peers: string[] };
-      expect(data.peers).toEqual(["rook", "bishop", "stefan"]);
+      const data = parseResult(result as Parameters<typeof parseResult>[0]) as {
+        peers: Array<{ name: string; publicKey: string }>;
+      };
+
+      expect(data.peers).toEqual([
+        {
+          name: "rook",
+          publicKey: "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+        {
+          name: "bishop",
+          publicKey: "302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        },
+        {
+          name: "stefan",
+          publicKey: "302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        },
+      ]);
+
+      for (const peer of data.peers) {
+        expect(peer.publicKey.includes("...")).toBe(false);
+      }
     });
   });
 
