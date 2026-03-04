@@ -218,16 +218,9 @@ export class AgoraMessageHandler {
     if (!this.agoraService) {
       return undefined;
     }
-
-    const peers = this.agoraService.getPeers();
-    for (const peerName of peers) {
-      const peerConfig = this.agoraService.getPeerConfig(peerName);
-      if (peerConfig && peerConfig.publicKey === publicKey) {
-        return peerName;
-      }
-    }
-
-    return undefined;
+    // agora v0.4.5: peers map is keyed by public key, so getPeerConfig resolves
+    // directly. Return the name field (the human-readable label), not the map key.
+    return this.agoraService.getPeerConfig(publicKey)?.name;
   }
 
   /**

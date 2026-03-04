@@ -65,7 +65,8 @@ class MockLogger implements ILogger {
 }
 
 class MockAgoraService implements IAgoraService {
-  private peers: Map<string, { publicKey: string; url: string; token: string }> = new Map();
+  // Keyed by publicKey to match agora v0.4.5 behaviour
+  private peers: Map<string, { name: string; publicKey: string; url: string; token: string }> = new Map();
 
   async sendMessage(_options: { peerName: string; type: string; payload: unknown; inReplyTo?: string }) {
     return { ok: true, status: 200 };
@@ -80,16 +81,18 @@ class MockAgoraService implements IAgoraService {
   }
 
   getPeers() {
-    return Array.from(this.peers.keys());
+    return Array.from(this.peers.keys()); // returns public keys
   }
 
-  getPeerConfig(name: string) {
-    return this.peers.get(name);
+  getPeerConfig(identifier: string) {
+    // resolve by public key (direct) or by name
+    return this.peers.get(identifier)
+      ?? Array.from(this.peers.values()).find(p => p.name === identifier);
   }
 
   // Helper for tests
   addPeer(name: string, publicKey: string) {
-    this.peers.set(name, { publicKey, url: "http://test", token: "test-token" });
+    this.peers.set(publicKey, { name, publicKey, url: "http://test", token: "test-token" });
   }
 
   async connectRelay(_url: string) {}
