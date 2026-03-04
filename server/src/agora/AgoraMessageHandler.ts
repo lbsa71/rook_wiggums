@@ -287,25 +287,28 @@ export class AgoraMessageHandler {
   }
 
   /**
-   * Resolve sender display name: try relay name hint first, then peer registry, fallback to short key
-   * Returns format: "name...9f38f6d0" if name found, or "...9f38f6d0" if not found
+   * Resolve sender name metadata (not identity): prefer relay hint, then local peer registry.
    */
-  private resolveSenderName(senderPublicKey: string, relayNameHint?: string): string {
+  private resolveSenderName(senderPublicKey: string, relayNameHint?: string): string | undefined {
     const keySuffix = shortKey(senderPublicKey);
-    // Prefer relay name hint if provided (most up-to-date), unless it's just the short key (avoid "...9f38f6d0...9f38f6d0")
-    if (relayNameHint && relayNameHint !== keySuffix && !/^\.\.\.[a-f0-9]{8}$/i.test(relayNameHint.trim())) {
-      return `${relayNameHint}...${keySuffix.slice(3)}`; // Remove "..." prefix from shortKey
+    const normalizedHint = relayNameHint?.trim();
+
+    // Prefer relay name hint if provided and not itself a short-key label.
+    if (normalizedHint && normalizedHint !== keySuffix && !/^\.\.\.[a-f0-9]{8}$/i.test(normalizedHint)) {
+      return normalizedHint;
     }
 
-    // Try to find peer name by matching public key in local registry
-    const peerName = this.findPeerByPublicKey(senderPublicKey);
-    if (peerName) {
-      // Found matching peer - return name...shortKey format
-      return `${peerName}...${shortKey(senderPublicKey).slice(3)}`; // Remove "..." prefix from shortKey
-    }
+    return this.findPeerByPublicKey(senderPublicKey);
+  }
 
-    // No matching peer found - return short key only
-    return shortKey(senderPublicKey);
+  /**
+   * Canonical sender identity format for durable logs/conversation:
+   * - fullKey(name) when name metadata is available
+   * - fullKey when no name metadata is available
+   */
+  private formatSenderIdentity(senderPublicKey: string, relayNameHint?: string): string {
+    const senderName = this.resolveSenderName(senderPublicKey, relayNameHint);
+    return senderName ? `${senderPublicKey}(${senderName})` : senderPublicKey;
   }
 
   /**
@@ -351,10 +354,10 @@ export class AgoraMessageHandler {
     }
 
     const timestamp = this.clock.now().toISOString();
-    const senderDisplayName = this.resolveSenderName(envelope.sender, relayNameHint);
+    const senderIdentity = this.formatSenderIdentity(envelope.sender, relayNameHint);
     const payloadStr = JSON.stringify(envelope.payload);
 
-    this.logger.debug(`[AGORA] Received ${source} message: envelopeId=${envelope.id} type=${envelope.type} from=${senderDisplayName}`);
+    this.logger.debug(`[AGORA] Received ${source} message: envelopeId=${envelope.id} type=${envelope.type} from=${senderIdentity}`);
     this.logger.verbose(`[AGORA] Envelope payload: envelopeId=${envelope.id} payload=${payloadStr}`);
 
     // Security check: enforce peer allowlist
@@ -368,7 +371,7 @@ export class AgoraMessageHandler {
       } else if (this.unknownSenderPolicy === 'quarantine') {
         this.logger.debug(`[AGORA] Quarantining message from unknown sender ${shortKey(senderPublicKey)} (policy: quarantine)`);
         const formattedPayload = this.formatPayload(payloadStr);
-        const conversationEntry = `**${senderDisplayName}** ${envelope.type}: **[UNPROCESSED]** ${formattedPayload}`.replace(/\n+/g, " ").trim();
+        const conversationEntry = `**${senderIdentity}** ${envelope.type}: **[UNPROCESSED]** ${formattedPayload}`.replace(/\n+/g, " ").trim();
         try {
           await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);
           this.logger.debug(`[AGORA] Quarantined message written to CONVERSATION.md: envelopeId=${envelope.id}`);
@@ -384,7 +387,7 @@ export class AgoraMessageHandler {
 
     // Check per-sender rate limit
     if (this.isRateLimitedSender(envelope.sender)) {
-      this.logger.debug(`[AGORA] Dropping rate-limited message: envelopeId=${envelope.id} from=${senderDisplayName}`);
+      this.logger.debug(`[AGORA] Dropping rate-limited message: envelopeId=${envelope.id} from=${senderIdentity}`);
       // Silently drop the message - don't reveal rate limit state to potential spammers
       return;
     }
@@ -401,9 +404,9 @@ export class AgoraMessageHandler {
     let injected = false;
     const replyInstruction = knownPeer
       ? `Respond to this message if appropriate. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: peerName="${knownPeer}", text="your response", inReplyTo="${envelope.id}"`
-      : `Respond to this message if appropriate. Note: Sender (${senderDisplayName}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelope.sender}", text="your response", inReplyTo="${envelope.id}"`;
+      : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelope.sender}", text="your response", inReplyTo="${envelope.id}"`;
     try {
-      const agentPrompt = `[AGORA MESSAGE from ${senderDisplayName}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
+      const agentPrompt = `[AGORA MESSAGE from ${senderIdentity}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
       injected = this.messageInjector.injectMessage(agentPrompt);
       this.logger.debug(`[AGORA] Injected message into orchestrator: envelopeId=${envelope.id} delivered=${injected}`);
     } catch (err) {
@@ -428,7 +431,7 @@ export class AgoraMessageHandler {
     const formattedPayload = this.formatPayload(payloadStr);
     const unprocessedBadge = isUnprocessed ? " **[UNPROCESSED]**" : "";
     // One line: sender, type, optional badge, payload
-    const conversationEntry = `**${senderDisplayName}** ${envelope.type}:${unprocessedBadge} ${formattedPayload}`.replace(/\n+/g, " ").trim();
+    const conversationEntry = `**${senderIdentity}** ${envelope.type}:${unprocessedBadge} ${formattedPayload}`.replace(/\n+/g, " ").trim();
 
     // Write to CONVERSATION.md (using SUBCONSCIOUS role as it handles message processing)
     try {
