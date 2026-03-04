@@ -10,12 +10,16 @@ export default defineConfig({
     port: CLIENT_PORT,
     strictPort: true,
     allowedHosts: true,
+    hmr: {
+      // Use a dedicated path so Vite HMR doesn't intercept /ws proxy upgrades
+      path: "/__vite_hmr",
+    },
     proxy: {
-      "/api": `http://localhost:${API_PORT}`,
       "/ws": {
         target: `ws://localhost:${API_PORT}`,
         ws: true,
       },
+      "/api": `http://localhost:${API_PORT}`,
     },
   },
 });

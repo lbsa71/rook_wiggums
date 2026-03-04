@@ -4,6 +4,7 @@ import { ILoopEventSink } from "./ILoopEventSink";
 import { LoopEvent } from "./types";
 
 const LOCALHOST_ORIGINS = ["localhost", "127.0.0.1", "::1"];
+const TRUSTED_SUFFIXES = [".lbsa71.net"];
 
 function isOriginAllowed(origin: string | undefined, allowlist: string[]): boolean {
   // Allow connections with no Origin header (e.g. CLI tools, curl)
@@ -12,7 +13,8 @@ function isOriginAllowed(origin: string | undefined, allowlist: string[]): boole
   if (allowlist.length === 0) return false;
   try {
     const host = new URL(origin).hostname;
-    return allowlist.some((allowed) => host === allowed);
+    if (allowlist.some((allowed) => host === allowed)) return true;
+    return TRUSTED_SUFFIXES.some((suffix) => host.endsWith(suffix));
   } catch {
     return false;
   }
