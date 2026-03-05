@@ -35,6 +35,7 @@ import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
 import type { IAgoraService } from "../agora/IAgoraService";
+import { buildPeerReferenceDirectory, resolvePeerReference } from "../agora/utils";
 import type { INSResult } from "./ins/types";
 import type { INSHook } from "./ins/INSHook";
 
@@ -1127,18 +1128,21 @@ export class LoopOrchestrator implements IMessageInjector {
   private async sendAgoraReplies(replies: AgoraReply[]): Promise<void> {
     if (!this.agoraService) return;
 
+    const peerDirectory = buildPeerReferenceDirectory(this.agoraService);
+
     for (const reply of replies) {
       try {
+        const peerRef = resolvePeerReference(reply.peerName, peerDirectory);
         const result = await this.agoraService.sendMessage({
-          peerName: reply.peerName,
+          peerName: peerRef,
           type: "publish",
           payload: { text: reply.text },
           inReplyTo: reply.inReplyTo,
         });
         if (result.ok) {
-          this.logger.debug(`agoraReplies: sent to ${reply.peerName} (status=${result.status})`);
+          this.logger.debug(`agoraReplies: sent to ${peerRef} (status=${result.status})`);
         } else {
-          this.logger.debug(`agoraReplies: failed to send to ${reply.peerName} — ${result.error ?? "unknown error"} (status=${result.status})`);
+          this.logger.debug(`agoraReplies: failed to send to ${peerRef} — ${result.error ?? "unknown error"} (status=${result.status})`);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

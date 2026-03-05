@@ -118,7 +118,8 @@ describe("AgoraMessageHandler", () => {
   const testEnvelope: Envelope = {
     id: "envelope-123",
     type: "request",
-    sender: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    from: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    to: ["302a300506032b6570032100dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
     timestamp: 1708000000000,
     payload: { question: "Hello?" },
     signature: "test-signature",
@@ -141,7 +142,7 @@ describe("AgoraMessageHandler", () => {
     isRateLimited = () => false;
 
     // Default handler with a known peer registered (so messages pass the allowlist filter)
-    agoraService.addPeer("test-peer", testEnvelope.sender);
+    agoraService.addPeer("test-peer", testEnvelope.from);
     handler = new AgoraMessageHandler(
       agoraService,
       conversationManager,
@@ -164,8 +165,10 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
       expect(entry.role).toBe(AgentRole.SUBCONSCIOUS);
-      expect(entry.entry).toContain("...cdefabcd(test-peer)");
-      expect(entry.entry).not.toContain(testEnvelope.sender);
+      expect(entry.entry).toContain("**FROM:**");
+      expect(entry.entry).toContain("**TO:**");
+      expect(entry.entry).toContain("test-peer...cdefabcd");
+      expect(entry.entry).not.toContain(testEnvelope.from);
       expect(entry.entry).toContain("question");
       expect(entry.entry).not.toContain("[UNPROCESSED]");
     });
@@ -253,8 +256,10 @@ describe("AgoraMessageHandler", () => {
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("[AGORA MESSAGE from");
-      expect(injected).toContain("...cdefabcd(test-peer)");
+      expect(injected).toContain("[AGORA MESSAGE]");
+      expect(injected).toContain("FROM:");
+      expect(injected).toContain("TO:");
+      expect(injected).toContain("test-peer...cdefabcd");
       expect(injected).toContain("Type: request");
       expect(injected).toContain("Envelope ID: envelope-123");
     });
@@ -264,9 +269,25 @@ describe("AgoraMessageHandler", () => {
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("[AGORA MESSAGE from");
+      expect(injected).toContain("[AGORA MESSAGE]");
       expect(injected).toContain("Type: request");
       expect(injected).toContain("Envelope ID: envelope-123");
+    });
+
+    it("should compact known inline @refs and include compact TO list in CONVERSATION entry", async () => {
+      const envelopeWithMention: Envelope = {
+        ...testEnvelope,
+        payload: { text: `cc @${testEnvelope.from}` },
+      };
+
+      await handler.processEnvelope(envelopeWithMention, "webhook");
+
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      const entry = conversationManager.appendedEntries[0].entry;
+      expect(entry).toContain("**FROM:**");
+      expect(entry).toContain("**TO:**");
+      expect(entry).toContain("...dddddddd");
+      expect(entry).toContain("@test-peer...cdefabcd");
     });
 
     it("should emit WebSocket event", async () => {
@@ -291,17 +312,17 @@ describe("AgoraMessageHandler", () => {
     });
 
     it("should ignore relay name hint when hint is a full public key and use registered peer name", async () => {
-      await handler.processEnvelope(testEnvelope, "relay", testEnvelope.sender);
+      await handler.processEnvelope(testEnvelope, "relay", testEnvelope.from);
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("...cdefabcd(test-peer)");
-      expect(entry.entry).not.toContain(`...cdefabcd(${testEnvelope.sender})`);
+      expect(entry.entry).toContain("test-peer...cdefabcd");
+      expect(entry.entry).not.toContain(testEnvelope.from);
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("...cdefabcd(test-peer)");
-      expect(injected).not.toContain(`...cdefabcd(${testEnvelope.sender})`);
+      expect(injected).toContain("test-peer...cdefabcd");
+      expect(injected).not.toContain(testEnvelope.from);
     });
 
     it("should prefer local peer name over relay name hint for known peers", async () => {
@@ -309,13 +330,13 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("...cdefabcd(test-peer)");
-      expect(entry.entry).not.toContain("...cdefabcd(relay-claimed-name)");
+      expect(entry.entry).toContain("test-peer...cdefabcd");
+      expect(entry.entry).not.toContain("relay-claimed-name...cdefabcd");
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("...cdefabcd(test-peer)");
-      expect(injected).not.toContain("...cdefabcd(relay-claimed-name)");
+      expect(injected).toContain("test-peer...cdefabcd");
+      expect(injected).not.toContain("relay-claimed-name...cdefabcd");
     });
   });
 
@@ -323,7 +344,8 @@ describe("AgoraMessageHandler", () => {
     const testEnvelope: Envelope = {
       id: "envelope-123",
       type: "request",
-      sender: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      from: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      to: ["302a300506032b6570032100dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
       timestamp: 1708000000000,
       payload: { question: "Hello?" },
       signature: "test-signature",
@@ -428,7 +450,8 @@ describe("AgoraMessageHandler", () => {
     const announceEnvelope: Envelope = {
       id: "announce-1",
       type: "announce",
-      sender: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      from: "302a300506032b6570032100abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      to: ["302a300506032b6570032100dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
       timestamp: 1708000000000,
       payload: { name: "kuro", version: "1.0.0", capabilities: ["crypto_analysis"] },
       signature: "test-signature",
@@ -486,7 +509,7 @@ describe("AgoraMessageHandler", () => {
       agoraService.addPeer("other-peer", sender2);
 
       const env1 = { ...announceEnvelope, id: "a-1" };
-      const env2 = { ...announceEnvelope, id: "a-2", sender: sender2 };
+      const env2 = { ...announceEnvelope, id: "a-2", from: sender2 };
 
       await handler.processEnvelope(env1, "relay");
       await handler.processEnvelope(env2, "relay");
@@ -498,7 +521,8 @@ describe("AgoraMessageHandler", () => {
       const request1: Envelope = {
         id: "req-1",
         type: "request",
-        sender: announceEnvelope.sender,
+        from: announceEnvelope.from,
+        to: announceEnvelope.to,
         timestamp: 1708000000000,
         payload: { question: "same question" },
         signature: "test-sig",
@@ -532,7 +556,7 @@ describe("AgoraMessageHandler", () => {
 
   describe("Security: peer allowlist", () => {
     it("should allow messages from known peers", async () => {
-      // testEnvelope.sender is already registered as "test-peer" in beforeEach
+      // testEnvelope.from is already registered as "test-peer" in beforeEach
       await handler.processEnvelope(testEnvelope, "webhook");
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
@@ -571,7 +595,8 @@ describe("AgoraMessageHandler", () => {
     const unknownEnvelope: Envelope = {
       id: "unknown-envelope-123",
       type: "request",
-      sender: "302a300506032b6570032100eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      from: "302a300506032b6570032100eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      to: ["302a300506032b6570032100dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
       timestamp: 1708000000000,
       payload: { message: "Hello from unknown" },
       signature: "test-signature-unknown",
@@ -620,8 +645,9 @@ describe("AgoraMessageHandler", () => {
       // Written to CONVERSATION.md with [UNPROCESSED] badge but NOT injected
       expect(conversationManager.appendedEntries).toHaveLength(1);
       expect(conversationManager.appendedEntries[0].entry).toContain("**[UNPROCESSED]**");
-      expect(conversationManager.appendedEntries[0].entry).toContain(unknownEnvelope.sender);
-      expect(conversationManager.appendedEntries[0].entry).not.toContain("...");
+      expect(conversationManager.appendedEntries[0].entry).toContain("**FROM:**");
+      expect(conversationManager.appendedEntries[0].entry).toContain("**TO:**");
+      expect(conversationManager.appendedEntries[0].entry).toContain("...eeeeeeee");
       expect(messageInjector.injectedMessages).toHaveLength(0);
       const quarantineLog = logger.debugMessages.find(m => m.includes("Quarantining") && m.includes("unknown sender"));
       expect(quarantineLog).toBeDefined();
@@ -694,7 +720,7 @@ describe("AgoraMessageHandler", () => {
       const injectedMsg = messageInjector.injectedMessages[0];
       // Should contain targetPubkey instruction, not "not possible"
       expect(injectedMsg).toContain("targetPubkey");
-      expect(injectedMsg).toContain(unknownEnvelope.sender);
+      expect(injectedMsg).toContain(unknownEnvelope.from);
       expect(injectedMsg).not.toContain("not possible");
       expect(injectedMsg).not.toContain("unless the peer is added first");
     });
@@ -714,7 +740,8 @@ describe("AgoraMessageHandler", () => {
     const testEnvelope2: Envelope = {
       id: "envelope-456",
       type: "request",
-      sender: "302a300506032b6570032100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      from: "302a300506032b6570032100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      to: ["302a300506032b6570032100dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
       timestamp: 1708000000000,
       payload: { question: "Different sender" },
       signature: "test-signature-2",
@@ -722,7 +749,7 @@ describe("AgoraMessageHandler", () => {
 
     beforeEach(() => {
       // Register testEnvelope2's sender as a known peer
-      agoraService.addPeer("test-peer-2", testEnvelope2.sender);
+      agoraService.addPeer("test-peer-2", testEnvelope2.from);
     });
 
     it("should allow messages under the rate limit", async () => {
@@ -832,7 +859,8 @@ describe("AgoraMessageHandler", () => {
           {
             ...testEnvelope,
             id: `envelope-${i}`,
-            sender,
+            from: sender,
+            to: testEnvelope.to,
           },
           "webhook"
         );
@@ -847,7 +875,8 @@ describe("AgoraMessageHandler", () => {
         {
           ...testEnvelope,
           id: "envelope-501",
-          sender: "sender-new",
+          from: "sender-new",
+          to: testEnvelope.to,
         },
         "webhook"
       );
@@ -929,7 +958,7 @@ describe("AgoraMessageHandler", () => {
 
   describe("Dedup persistence: getProcessedEnvelopeIds / setProcessedEnvelopeIds", () => {
     it("ignorePeer adds sender to blocklist and processEnvelope drops early", async () => {
-      const added = handler.ignorePeer(testEnvelope.sender);
+      const added = handler.ignorePeer(testEnvelope.from);
       expect(added).toBe(true);
 
       await handler.processEnvelope(testEnvelope, "webhook");
@@ -940,8 +969,8 @@ describe("AgoraMessageHandler", () => {
     });
 
     it("unignorePeer removes sender and processing resumes", async () => {
-      handler.ignorePeer(testEnvelope.sender);
-      const removed = handler.unignorePeer(testEnvelope.sender);
+      handler.ignorePeer(testEnvelope.from);
+      const removed = handler.unignorePeer(testEnvelope.from);
       expect(removed).toBe(true);
 
       await handler.processEnvelope(testEnvelope, "webhook");

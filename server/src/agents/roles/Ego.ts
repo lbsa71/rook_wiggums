@@ -154,11 +154,12 @@ export class Ego {
       `A user has sent you a message. Read CONVERSATION.md for context and respond naturally.\n` +
       `Respond with ONLY your plain text reply — no JSON, no markdown code blocks, no wrapper.\n` +
       `Keep responses concise and conversational.\n\n` +
-      `If the message is an Agora message (from a peer identity like "302a300506032b6570032100cdefabcd0123456789abcdef0123456789abcdef0123456789abcdef(stefan)"), you can respond using the TinyBus MCP tool (${"`"}mcp__tinybus__send_message${"`"} in Claude Code, or ${"`"}send_message${"`"} in Gemini CLI):\n` +
-      `- type: "agora.send"\n` +
-      `- payload: { peerName: "stefan", type: "publish", payload: { text: "your response" }, inReplyTo: "envelope-id" }\n` +
-      `IMPORTANT: peerName must be the configured peer name (e.g. "stefan", "bishop") — NOT the display name with the key suffix.\n` +
-      `Include inReplyTo with the envelope ID when replying.`;
+      `If the message is an Agora message, use the dedicated Agora MCP tool (${"`"}mcp__tinybus__send_agora_message${"`"} in Claude Code, or ${"`"}send_agora_message${"`"} in Gemini CLI).\n` +
+      `Read the FROM/TO metadata in CONVERSATION.md. The TO list is compacted from full IDs and indicates recipients of the original message.\n` +
+      `Reply to known peers with: peerName: "<peer-ref>", text: "your response", inReplyTo: "envelope-id".\n` +
+      `peer-ref can be a configured peer name, full public key, or compact short form.\n` +
+      `For unknown senders, use targetPubkey with the full key provided in the injected Agora instruction block.\n` +
+      `Always include inReplyTo when replying. It is considered good form to reply to the sender and all recipients of a message, to keep everyone in the loop - unless you have a reason not to.`;
 
     const model = this.taskClassifier.getModel({ role: AgentRole.EGO, operation: "respondToMessage" });
     const launchOptions: LaunchOptions = {

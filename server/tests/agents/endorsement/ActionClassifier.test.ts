@@ -25,7 +25,16 @@ describe("ActionClassifier", () => {
       expect(classifier.classifyFromLogEntries([textEntry("some output")])).toBeNull();
     });
 
-    it("detects agora send via mcp__tinybus__send_message", () => {
+    it("detects agora send via mcp__tinybus__send_agora_message", () => {
+      const result = classifier.classifyFromLogEntries([
+        toolEntry('{"tool":"mcp__tinybus__send_agora_message","args":{}}'),
+      ]);
+      expect(result).not.toBeNull();
+      expect(result!.actionType).toBe("agora_send");
+      expect(result!.isExternal).toBe(true);
+    });
+
+    it("detects agora send via legacy mcp__tinybus__send_message", () => {
       const result = classifier.classifyFromLogEntries([
         toolEntry('{"tool":"mcp__tinybus__send_message","args":{}}'),
       ]);
@@ -77,14 +86,14 @@ describe("ActionClassifier", () => {
 
     it("ignores non-tool_use entries even if they contain matching content", () => {
       const result = classifier.classifyFromLogEntries([
-        textEntry("mcp__tinybus__send_message"),
+        textEntry("mcp__tinybus__send_agora_message"),
       ]);
       expect(result).toBeNull();
     });
 
     it("returns first match when multiple external actions present", () => {
       const result = classifier.classifyFromLogEntries([
-        toolEntry("mcp__tinybus__send_message"),
+        toolEntry("mcp__tinybus__send_agora_message"),
         toolEntry("send_email"),
       ]);
       expect(result).not.toBeNull();
@@ -93,7 +102,7 @@ describe("ActionClassifier", () => {
 
     it("includes a description in the result", () => {
       const result = classifier.classifyFromLogEntries([
-        toolEntry("mcp__tinybus__send_message"),
+        toolEntry("mcp__tinybus__send_agora_message"),
       ]);
       expect(result!.description).toBeTruthy();
     });

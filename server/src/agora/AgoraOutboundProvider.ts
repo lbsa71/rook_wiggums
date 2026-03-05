@@ -1,6 +1,7 @@
 import { Message } from "../tinybus/core/Message";
 import { Provider } from "../tinybus/core/Provider";
 import { IAgoraService } from "./IAgoraService";
+import { buildPeerReferenceDirectory, resolvePeerReference } from "./utils";
 import type { ILogger } from "../logging";
 
 /**
@@ -78,6 +79,8 @@ export class AgoraOutboundProvider implements Provider {
       inReplyTo?: string;
     };
 
+    const peerDirectory = buildPeerReferenceDirectory(this.agoraService);
+
     if (!payload?.type) {
       throw new Error("Invalid agora.send payload: missing type");
     }
@@ -87,11 +90,12 @@ export class AgoraOutboundProvider implements Provider {
       if (!payload.inReplyTo) {
         throw new Error("Invalid agora.send payload: targetPubkey requires inReplyTo");
       }
+      const targetPubkey = resolvePeerReference(payload.targetPubkey, peerDirectory);
       this.logger?.debug(
-        `[AGORA-OUT] Replying to pubkey: ${payload.targetPubkey} type=${payload.type} inReplyTo=${payload.inReplyTo}`
+        `[AGORA-OUT] Replying to pubkey: ${targetPubkey} type=${payload.type} inReplyTo=${payload.inReplyTo}`
       );
       const result = await this.agoraService.replyToEnvelope({
-        targetPubkey: payload.targetPubkey,
+        targetPubkey,
         type: payload.type,
         payload: payload.payload,
         inReplyTo: payload.inReplyTo,
@@ -100,7 +104,7 @@ export class AgoraOutboundProvider implements Provider {
         throw new Error(`Reply to pubkey failed: ${result.error ?? "unknown error"} (status=${result.status})`);
       }
       this.logger?.debug(
-        `[AGORA-OUT] Reply sent successfully: ${payload.targetPubkey}`
+        `[AGORA-OUT] Reply sent successfully: ${targetPubkey}`
       );
       return;
     }
@@ -109,7 +113,7 @@ export class AgoraOutboundProvider implements Provider {
     const isBroadcast = !payload.peerName || payload.peerName === "all";
     const targets = isBroadcast
       ? this.agoraService.getPeers()
-      : [payload.peerName];
+      : [resolvePeerReference(payload.peerName!, peerDirectory)];
 
     if (isBroadcast) {
       this.logger?.debug(

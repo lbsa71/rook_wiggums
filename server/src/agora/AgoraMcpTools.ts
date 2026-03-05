@@ -36,10 +36,10 @@ export function registerAgoraTools(server: McpServer, options: AgoraToolsOptions
     "Send a message to an Agora peer. Use this for all Agora communication instead of the generic send_message tool.",
     {
       peerName: z.string().optional().describe(
-        "Named peer to send to (e.g. 'stefan', 'rook', 'bishop'). Omit or use 'all' to broadcast to all configured peers."
+        "Peer reference for the recipient (configured name, full public key, or compact short form such as ...abcd1234)."
       ),
       targetPubkey: z.string().optional().describe(
-        "Recipient public key for relay-only replies to unknown senders. Requires inReplyTo."
+        "Recipient public key (or compact short form) for relay-only replies to unknown senders. Requires inReplyTo."
       ),
       text: z.string().describe("Message text to send."),
       inReplyTo: z.string().optional().describe(

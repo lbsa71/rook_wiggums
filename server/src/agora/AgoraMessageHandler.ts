@@ -5,7 +5,7 @@ import { IClock } from "../substrate/abstractions/IClock";
 import { IAgoraService } from "./IAgoraService";
 import { LoopState } from "../loop/types";
 import { AgentRole } from "../agents/types";
-import { shortKey } from "./utils";
+import { buildPeerReferenceDirectory, compactKnownInlineReferences, compactPeerReference, shortKey } from "./utils";
 import { IgnoredPeersManager } from "@rookdaemon/agora";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../logging";
@@ -311,44 +311,86 @@ export class AgoraMessageHandler {
 
   /**
    * Sender identity format for durable logs/conversation:
-   * - known peers (present in peer registry): shortKey(name) or shortKey
-   * - unknown peers: fullKey(name) or fullKey
+   * - known peers: name...<last8>
+   * - unknown peers: <relayNameHint>...<last8> (when safe), else ...<last8>
    */
   private formatSenderIdentity(senderPublicKey: string, relayNameHint?: string): string {
+    const directory = buildPeerReferenceDirectory(this.agoraService);
+    if (directory[senderPublicKey]) {
+      return compactPeerReference(senderPublicKey, directory);
+    }
+
     const senderName = this.resolveSenderName(senderPublicKey, relayNameHint);
-    const isKnownPeer = this.findPeerByPublicKey(senderPublicKey) !== undefined;
-    const displayKey = isKnownPeer ? shortKey(senderPublicKey) : senderPublicKey;
-    return senderName ? `${displayKey}(${senderName})` : displayKey;
+    const suffix = senderPublicKey.slice(-8);
+    return senderName ? `${senderName}...${suffix}` : `...${suffix}`;
+  }
+
+  private formatRecipientIdentity(publicKey: string): string {
+    const directory = buildPeerReferenceDirectory(this.agoraService);
+    return compactPeerReference(publicKey, directory);
+  }
+
+  private compactPayloadValue(payload: unknown, directory: ReturnType<typeof buildPeerReferenceDirectory>): unknown {
+    if (typeof payload === "string") {
+      return compactKnownInlineReferences(payload, directory);
+    }
+
+    if (Array.isArray(payload)) {
+      return payload.map((item) => this.compactPayloadValue(item, directory));
+    }
+
+    if (payload && typeof payload === "object") {
+      const compacted: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+        compacted[key] = this.compactPayloadValue(value, directory);
+      }
+      return compacted;
+    }
+
+    return payload;
   }
 
   /**
    * Format a payload string for display in CONVERSATION.md.
    * Returns a user-friendly representation of the payload.
    */
-  private formatPayload(payloadStr: string): string {
-    try {
-      const parsed = JSON.parse(payloadStr);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        const keys = Object.keys(parsed);
-        if (keys.length === 1 && keys[0] === "text" && typeof parsed.text === "string") {
-          return parsed.text;
-        } else if (keys.length <= 5 && keys.every(k => typeof parsed[k] === "string" || typeof parsed[k] === "number" || typeof parsed[k] === "boolean")) {
-          return Object.entries(parsed)
-            .map(([k, v]) => `**${k}**: ${typeof v === "string" ? v : JSON.stringify(v)}`)
-            .join(", ");
-        } else {
-          return JSON.stringify(parsed, null, 2);
-        }
+  private formatPayload(payload: unknown): string {
+    const directory = buildPeerReferenceDirectory(this.agoraService);
+    const compactedPayload = this.compactPayloadValue(payload, directory);
+
+    if (typeof compactedPayload === "object" && compactedPayload !== null && !Array.isArray(compactedPayload)) {
+      const parsed = compactedPayload as Record<string, unknown>;
+      const keys = Object.keys(parsed);
+      if (keys.length === 1 && keys[0] === "text" && typeof parsed.text === "string") {
+        return parsed.text;
       }
-    } catch {
-      // fall through
+
+      if (keys.length <= 5 && keys.every((k) => {
+        const value = parsed[k];
+        return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+      })) {
+        return Object.entries(parsed)
+          .map(([k, v]) => `**${k}**: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+          .join(", ");
+      }
+
+      return JSON.stringify(parsed, null, 2);
     }
-    return payloadStr;
+
+    if (typeof compactedPayload === "string") {
+      return compactedPayload;
+    }
+
+    return JSON.stringify(compactedPayload);
   }
 
   async processEnvelope(envelope: Envelope, source: "webhook" | "relay" = "webhook", relayNameHint?: string): Promise<void> {
-    if (this.ignoredPeers.has(envelope.sender)) {
-      this.logger.debug(`[AGORA] Ignoring message from blocked sender ${shortKey(envelope.sender)}: envelopeId=${envelope.id}`);
+    const envelopeRouting = envelope as Envelope & { from?: string; to?: string[]; sender?: string };
+    const envelopeFrom = envelopeRouting.from ?? envelopeRouting.sender ?? "";
+    const envelopeTo = Array.isArray(envelopeRouting.to) ? envelopeRouting.to : [];
+
+    if (this.ignoredPeers.has(envelopeFrom)) {
+      this.logger.debug(`[AGORA] Ignoring message from blocked sender ${shortKey(envelopeFrom)}: envelopeId=${envelope.id}`);
       return;
     }
 
@@ -359,19 +401,22 @@ export class AgoraMessageHandler {
 
     // Content-based dedup (#238): catch identical messages with different envelope IDs
     // (e.g., announce heartbeat loops sending same payload every ~2 minutes)
-    if (this.isDuplicateContent(envelope.sender, envelope.type, envelope.payload)) {
+    if (this.isDuplicateContent(envelopeFrom, envelope.type, envelope.payload)) {
       return;
     }
 
     const timestamp = this.clock.now().toISOString();
-    const senderIdentity = this.formatSenderIdentity(envelope.sender, relayNameHint);
+    const senderIdentity = this.formatSenderIdentity(envelopeFrom, relayNameHint);
+    const toList = envelopeTo.length > 0
+      ? envelopeTo.map((recipient: string) => this.formatRecipientIdentity(recipient)).join(", ")
+      : "(none)";
     const payloadStr = JSON.stringify(envelope.payload);
 
     this.logger.debug(`[AGORA] Received ${source} message: envelopeId=${envelope.id} type=${envelope.type} from=${senderIdentity}`);
     this.logger.verbose(`[AGORA] Envelope payload: envelopeId=${envelope.id} payload=${payloadStr}`);
 
     // Security check: enforce peer allowlist
-    const senderPublicKey = envelope.sender;
+    const senderPublicKey = envelopeFrom;
     const knownPeer = this.findPeerByPublicKey(senderPublicKey);
 
     if (!knownPeer) {
@@ -380,8 +425,8 @@ export class AgoraMessageHandler {
         return;
       } else if (this.unknownSenderPolicy === 'quarantine') {
         this.logger.debug(`[AGORA] Quarantining message from unknown sender ${shortKey(senderPublicKey)} (policy: quarantine)`);
-        const formattedPayload = this.formatPayload(payloadStr);
-        const conversationEntry = `**${senderIdentity}** ${envelope.type}: **[UNPROCESSED]** ${formattedPayload}`.replace(/\n+/g, " ").trim();
+        const formattedPayload = this.formatPayload(envelope.payload);
+        const conversationEntry = `**FROM:** ${senderIdentity} **TO:** ${toList} ${envelope.type}: **[UNPROCESSED]** ${formattedPayload}`.replace(/\n+/g, " ").trim();
         try {
           await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);
           this.logger.debug(`[AGORA] Quarantined message written to CONVERSATION.md: envelopeId=${envelope.id}`);
@@ -396,7 +441,7 @@ export class AgoraMessageHandler {
     }
 
     // Check per-sender rate limit
-    if (this.isRateLimitedSender(envelope.sender)) {
+    if (this.isRateLimitedSender(envelopeFrom)) {
       this.logger.debug(`[AGORA] Dropping rate-limited message: envelopeId=${envelope.id} from=${senderIdentity}`);
       // Silently drop the message - don't reveal rate limit state to potential spammers
       return;
@@ -414,9 +459,9 @@ export class AgoraMessageHandler {
     let injected = false;
     const replyInstruction = knownPeer
       ? `Respond to this message if appropriate. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: peerName="${knownPeer}", text="your response", inReplyTo="${envelope.id}"`
-      : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelope.sender}", text="your response", inReplyTo="${envelope.id}"`;
+      : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelopeFrom}", text="your response", inReplyTo="${envelope.id}"`;
     try {
-      const agentPrompt = `[AGORA MESSAGE from ${senderIdentity}]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
+      const agentPrompt = `[AGORA MESSAGE]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nFROM: ${senderIdentity}\nTO: ${toList}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
       injected = this.messageInjector.injectMessage(agentPrompt);
       this.logger.debug(`[AGORA] Injected message into orchestrator: envelopeId=${envelope.id} delivered=${injected}`);
     } catch (err) {
@@ -438,10 +483,9 @@ export class AgoraMessageHandler {
       this.logger.debug(`[AGORA] Message marked as UNPROCESSED (delivered=${injected}, state=${state}, rateLimited=${this.isRateLimited()})`);
     }
 
-    const formattedPayload = this.formatPayload(payloadStr);
+    const formattedPayload = this.formatPayload(envelope.payload);
     const unprocessedBadge = isUnprocessed ? " **[UNPROCESSED]**" : "";
-    // One line: sender, type, optional badge, payload
-    const conversationEntry = `**${senderIdentity}** ${envelope.type}:${unprocessedBadge} ${formattedPayload}`.replace(/\n+/g, " ").trim();
+    const conversationEntry = `**FROM:** ${senderIdentity} **TO:** ${toList} ${envelope.type}:${unprocessedBadge} ${formattedPayload}`.replace(/\n+/g, " ").trim();
 
     // Write to CONVERSATION.md (using SUBCONSCIOUS role as it handles message processing)
     try {
@@ -461,7 +505,9 @@ export class AgoraMessageHandler {
           data: {
             envelopeId: envelope.id,
             messageType: envelope.type,
-            sender: envelope.sender,
+            from: envelopeFrom,
+            to: envelopeTo,
+            sender: envelopeFrom,
             payload: envelope.payload,
             source,
           },

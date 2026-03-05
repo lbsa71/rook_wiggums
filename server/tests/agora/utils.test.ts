@@ -1,4 +1,9 @@
-import { shortKey } from "../../src/agora/utils";
+import {
+  buildPeerReferenceDirectory,
+  compactKnownInlineReferences,
+  resolvePeerReference,
+  shortKey,
+} from "../../src/agora/utils";
 
 describe("Agora utils", () => {
   describe("shortKey", () => {
@@ -24,6 +29,53 @@ describe("Agora utils", () => {
 
     it("should work with empty string", () => {
       expect(shortKey("")).toBe("...");
+    });
+  });
+
+  describe("peer reference helpers", () => {
+    const mockService = {
+      getPeers: () => ["rook", "bishop"],
+      getPeerConfig: (ref: string) => {
+        if (ref === "rook") {
+          return {
+            publicKey: "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            name: "rook",
+          };
+        }
+        if (ref === "bishop") {
+          return {
+            publicKey: "302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            name: "bishop",
+          };
+        }
+        return undefined;
+      },
+    };
+
+    it("builds a peer directory keyed by public key", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      expect(Object.keys(directory)).toHaveLength(2);
+      expect(directory["302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].name).toBe("rook");
+    });
+
+    it("expands compact peer refs when resolvable", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      expect(resolvePeerReference("rook", directory)).toBe("302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(resolvePeerReference("...bbbbbbbb", directory)).toBe("302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    });
+
+    it("keeps unresolved refs unchanged", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      expect(resolvePeerReference("unknown-peer", directory)).toBe("unknown-peer");
+    });
+
+    it("compacts inline @refs only for IDs present in config", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      const text = "ping @302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa and @302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+      const compacted = compactKnownInlineReferences(text, directory);
+
+      expect(compacted).toContain("@rook...aaaaaaaa");
+      expect(compacted).toContain("@302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
     });
   });
 });

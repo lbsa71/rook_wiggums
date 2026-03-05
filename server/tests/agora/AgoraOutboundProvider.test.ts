@@ -29,13 +29,27 @@ class MockAgoraService implements IAgoraService {
   }
 
   public peers: string[] = ["test-peer", "other-peer", "third-peer"];
+  private peerConfigs: Record<string, { publicKey: string; name?: string }> = {
+    "test-peer": {
+      publicKey: "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      name: "test-peer",
+    },
+    "other-peer": {
+      publicKey: "302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      name: "other-peer",
+    },
+    "third-peer": {
+      publicKey: "302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      name: "third-peer",
+    },
+  };
 
   getPeers() {
     return this.peers;
   }
 
-  getPeerConfig(_name: string) {
-    return undefined;
+  getPeerConfig(name: string) {
+    return this.peerConfigs[name];
   }
 
   async connectRelay(_url: string) {}
@@ -72,8 +86,8 @@ describe("AgoraOutboundProvider", () => {
       await provider.send(message);
 
       expect(agoraService.sentMessages).toHaveLength(1);
-      expect(agoraService.sentMessages[0]).toEqual({
-        peerName: "test-peer",
+      expect(agoraService.sentMessages[0]).toMatchObject({
+        peerName: "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         type: "request",
         payload: { question: "Hello?" },
       });
@@ -95,6 +109,24 @@ describe("AgoraOutboundProvider", () => {
       await provider.send(message);
 
       expect(agoraService.sentMessages[0].inReplyTo).toBe("envelope-123");
+    });
+
+    it("should expand short peer refs before send", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          peerName: "...aaaaaaaa",
+          type: "publish",
+          payload: { text: "hello" },
+        },
+      });
+
+      await provider.send(message);
+
+      expect(agoraService.sentMessages).toHaveLength(1);
+      expect(agoraService.sentMessages[0].peerName).toBe("302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     });
 
     it("should ignore non-agora.send messages", async () => {
@@ -270,6 +302,25 @@ describe("AgoraOutboundProvider", () => {
       });
       // Should NOT have used sendMessage
       expect(agoraService.sentMessages).toHaveLength(0);
+    });
+
+    it("should expand short targetPubkey refs before reply", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          targetPubkey: "...bbbbbbbb",
+          type: "publish",
+          payload: { text: "reply" },
+          inReplyTo: "env-short-target",
+        },
+      });
+
+      await provider.send(message);
+
+      expect(agoraService.repliedEnvelopes).toHaveLength(1);
+      expect(agoraService.repliedEnvelopes[0].targetPubkey).toBe("302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     });
 
     it("should reject targetPubkey without inReplyTo", async () => {

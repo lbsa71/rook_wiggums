@@ -307,8 +307,11 @@ Substrate integrates with the [Agora protocol](https://github.com/rookdaemon/ago
 
 **CONVERSATION.md Format:**
 ```markdown
-[2026-02-15T12:00:00.000Z] [SUBCONSCIOUS] **302a300506032b6570032100cdefabcd0123456789abcdef0123456789abcdef0123456789abcdef(stefan)** request: **[UNPROCESSED]** **question**: Are you there?
+[2026-02-15T12:00:00.000Z] [SUBCONSCIOUS] **FROM:** stefan...cdefabcd **TO:** rook...9ab4e012, ...9ab4e020 request: **[UNPROCESSED]** **question**: Are you there?
 ```
+
+- Inline `@` references in payload text are compacted before writing to `CONVERSATION.md` when those IDs exist in `~/.config/agora/config.json` peers.
+- Outbound send targets support short peer references; Substrate expands them to full IDs before dispatch.
 
 **Responding to Messages:**
 The agent can reply using the `AgoraService.send()` method via TinyBus `agora.send` messages, which are handled by `AgoraOutboundProvider`.

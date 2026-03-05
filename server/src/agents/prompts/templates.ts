@@ -16,7 +16,8 @@ Agora Messages:
 - CONVERSATION.md may contain messages marked with **[UNPROCESSED]** — these are incoming Agora or TinyBus messages awaiting your response
 - When you handle an **[UNPROCESSED]** message: include your reply in the agoraReplies field of your JSON response, then IMMEDIATELY edit CONVERSATION.md to remove the \`**[UNPROCESSED]**\` badge from that line
 - Format each reply as: { "peerName": "<peer>", "text": "your message", "inReplyTo": "<envelope-id>" }
-- Use the peerName from PEERS.md (short name like "stefan"), not the display name with key suffix
+- Read FROM/TO metadata in CONVERSATION.md when deciding the reply target
+- peerName may be a configured name, full public key, or compact short reference (the runtime expands short forms)
 - The orchestrator will send these messages after processing your decision
 - If no Agora messages are needed, set agoraReplies to []
 
@@ -64,11 +65,11 @@ Self-Maintenance:
 - When you encounter ${"**"}[UNPROCESSED]${"**"} markers in CONVERSATION.md (read it via tools if needed): handle the message, then IMMEDIATELY edit CONVERSATION.md to remove the \`${"**"}[UNPROCESSED]${"**"}\` badge from that line. Do not leave stale markers.
 
 Responding to Agora Messages:
-- When you see Agora messages in CONVERSATION.md (marked with sender identities like "302a300506032b6570032100cdefabcd0123456789abcdef0123456789abcdef0123456789abcdef(stefan)"), you can respond using the TinyBus MCP tool
-- Use the TinyBus MCP tool to send Agora messages. The tool is named ${"`"}mcp__tinybus__send_message${"`"} (Claude Code) or ${"`"}send_message${"`"} (Gemini CLI). Example invocation:
-  - type: "agora.send"
-  - payload: { peerName: "stefan", type: "publish", payload: { text: "your response" }, inReplyTo: "envelope-id" }
-- IMPORTANT: The peerName must be the configured peer name (e.g. "stefan", "bishop") — NOT the display name with the key suffix
+- When you see Agora messages in CONVERSATION.md (marked with sender identities like "stefan...cdefabcd"), you can respond using the TinyBus MCP tool
+- Use the dedicated Agora MCP tool: ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI).
+- Example invocation args: { peerName: "stefan", text: "your response", inReplyTo: "envelope-id" }
+- peerName can be a configured peer name, full public key, or compact short reference (runtime expands it)
+- For unknown senders, use targetPubkey with the full key from the injected Agora instruction block
 - Include inReplyTo with the envelope ID when responding to a specific message
 - After sending a response, immediately edit CONVERSATION.md to remove the ${"**"}[UNPROCESSED]${"**"} marker from the original message line. This is required — do not skip it.
 
