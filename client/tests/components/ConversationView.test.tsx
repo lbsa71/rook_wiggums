@@ -137,8 +137,8 @@ describe("ConversationView", () => {
     const canonicalConversation = [
       "# Conversation",
       "",
-      "[2025-01-01T10:00:00.000Z] [SUBCONSCIOUS] **FROM:** stefan...cdefabcd **TO:** rook...9ab4e012 request: **[UNPROCESSED]** **question**: Are you there?",
-      "[2025-01-01T10:01:00.000Z] [SUBCONSCIOUS] **FROM:** ...ffffffff **TO:** ...9ab4e012 request: **[UNPROCESSED]** **question**: Unknown sender",
+      "[2025-01-01T10:00:00.000Z] [SUBCONSCIOUS] **FROM:** stefan@cdefabcd **TO:** rook@9ab4e012 request: **[UNPROCESSED]** **question**: Are you there?",
+      "[2025-01-01T10:01:00.000Z] [SUBCONSCIOUS] **FROM:** @ffffffff **TO:** @9ab4e012 request: **[UNPROCESSED]** **question**: Unknown sender",
       "[2025-01-01T10:02:00.000Z] [SUBCONSCIOUS] **loop.http** (event) **[UNPROCESSED]** **status**: queued",
     ].join("\n");
 

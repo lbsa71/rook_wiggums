@@ -23,10 +23,10 @@ const coreCompactKnownInlineReferences = (Agora as unknown as Record<string, unk
 
 export function shortKey(publicKey: string): string {
   const fromCore = coreShortKey ? coreShortKey(publicKey) : undefined;
-  if (fromCore && fromCore.startsWith("...")) {
+  if (fromCore && fromCore.startsWith("@")) {
     return fromCore;
   }
-  return `...${publicKey.slice(-8)}`;
+  return `@${publicKey.slice(-8)}`;
 }
 
 function expandLocal(shortId: string, directory: PeerReferenceDirectory): string | undefined {
@@ -41,6 +41,25 @@ function expandLocal(shortId: string, directory: PeerReferenceDirectory): string
     return direct.publicKey;
   }
 
+  // name@suffix8 (current canonical form)
+  const namedAtSuffix = token.match(/^(.+)@([0-9a-fA-F]{8})$/);
+  if (namedAtSuffix) {
+    const [, name, suffix] = namedAtSuffix;
+    const matches = entries.filter(
+      (entry) => entry.name === name && entry.publicKey.toLowerCase().endsWith(suffix.toLowerCase()),
+    );
+    return matches.length === 1 ? matches[0].publicKey : undefined;
+  }
+
+  // @suffix8 (current canonical form for unknown peers)
+  const atSuffixOnly = token.match(/^@([0-9a-fA-F]{8})$/);
+  if (atSuffixOnly) {
+    const [, suffix] = atSuffixOnly;
+    const matches = entries.filter((entry) => entry.publicKey.toLowerCase().endsWith(suffix.toLowerCase()));
+    return matches.length === 1 ? matches[0].publicKey : undefined;
+  }
+
+  // Legacy: name...suffix8
   const namedWithSuffix = token.match(/^(.+)\.\.\.([0-9a-fA-F]{8})$/);
   if (namedWithSuffix) {
     const [, name, suffix] = namedWithSuffix;
@@ -50,6 +69,7 @@ function expandLocal(shortId: string, directory: PeerReferenceDirectory): string
     return matches.length === 1 ? matches[0].publicKey : undefined;
   }
 
+  // Legacy: ...suffix8
   const suffixOnly = token.match(/^\.\.\.([0-9a-fA-F]{8})$/);
   if (suffixOnly) {
     const [, suffix] = suffixOnly;
@@ -65,9 +85,9 @@ function shortenLocal(id: string, directory?: PeerReferenceDirectory): string {
   const suffix = id.slice(-8);
   const entry = directory?.[id];
   if (!entry?.name) {
-    return `...${suffix}`;
+    return `@${suffix}`;
   }
-  return `${entry.name}...${suffix}`;
+  return `${entry.name}@${suffix}`;
 }
 
 /**

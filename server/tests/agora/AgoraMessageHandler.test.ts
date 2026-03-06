@@ -171,7 +171,7 @@ describe("AgoraMessageHandler", () => {
       expect(entry.role).toBe(AgentRole.SUBCONSCIOUS);
       expect(entry.entry).toContain("**FROM:**");
       expect(entry.entry).toContain("**TO:**");
-      expect(entry.entry).toContain("test-peer...cdefabcd");
+      expect(entry.entry).toContain("test-peer@cdefabcd");
       expect(entry.entry).not.toContain(testEnvelope.from);
       expect(entry.entry).toContain("question");
       expect(entry.entry).not.toContain("[UNPROCESSED]");
@@ -263,7 +263,7 @@ describe("AgoraMessageHandler", () => {
       expect(injected).toContain("[AGORA MESSAGE]");
       expect(injected).toContain("FROM:");
       expect(injected).toContain("TO:");
-      expect(injected).toContain("test-peer...cdefabcd");
+      expect(injected).toContain("test-peer@cdefabcd");
       expect(injected).toContain("Type: request");
       expect(injected).toContain("Envelope ID: envelope-123");
     });
@@ -290,8 +290,8 @@ describe("AgoraMessageHandler", () => {
       const entry = conversationManager.appendedEntries[0].entry;
       expect(entry).toContain("**FROM:**");
       expect(entry).toContain("**TO:**");
-      expect(entry).toContain("...dddddddd");
-      expect(entry).toContain("@test-peer...cdefabcd");
+      expect(entry).toContain("@dddddddd");
+      expect(entry).toContain("@test-peer@cdefabcd");
     });
 
     it("should emit WebSocket event", async () => {
@@ -320,12 +320,12 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("test-peer...cdefabcd");
+      expect(entry.entry).toContain("test-peer@cdefabcd");
       expect(entry.entry).not.toContain(testEnvelope.from);
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("test-peer...cdefabcd");
+      expect(injected).toContain("test-peer@cdefabcd");
       expect(injected).not.toContain(testEnvelope.from);
     });
 
@@ -334,13 +334,13 @@ describe("AgoraMessageHandler", () => {
 
       expect(conversationManager.appendedEntries).toHaveLength(1);
       const entry = conversationManager.appendedEntries[0];
-      expect(entry.entry).toContain("test-peer...cdefabcd");
-      expect(entry.entry).not.toContain("relay-claimed-name...cdefabcd");
+      expect(entry.entry).toContain("test-peer@cdefabcd");
+      expect(entry.entry).not.toContain("relay-claimed-name@cdefabcd");
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injected = messageInjector.injectedMessages[0];
-      expect(injected).toContain("test-peer...cdefabcd");
-      expect(injected).not.toContain("relay-claimed-name...cdefabcd");
+      expect(injected).toContain("test-peer@cdefabcd");
+      expect(injected).not.toContain("relay-claimed-name@cdefabcd");
     });
   });
 
@@ -651,7 +651,7 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries[0].entry).toContain("**[UNPROCESSED]**");
       expect(conversationManager.appendedEntries[0].entry).toContain("**FROM:**");
       expect(conversationManager.appendedEntries[0].entry).toContain("**TO:**");
-      expect(conversationManager.appendedEntries[0].entry).toContain("...eeeeeeee");
+      expect(conversationManager.appendedEntries[0].entry).toContain("@eeeeeeee");
       expect(messageInjector.injectedMessages).toHaveLength(0);
       const quarantineLog = logger.debugMessages.find(m => m.includes("Quarantining") && m.includes("unknown sender"));
       expect(quarantineLog).toBeDefined();

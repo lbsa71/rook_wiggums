@@ -280,49 +280,14 @@ export class AgoraMessageHandler {
   }
 
   /**
-   * Resolve sender name metadata (not identity).
-   * Local peer registry is authoritative for known senders.
-   * Relay hints are only considered for unknown senders.
-   */
-  private resolveSenderName(senderPublicKey: string, relayNameHint?: string): string | undefined {
-    const localPeerName = this.findPeerByPublicKey(senderPublicKey);
-    if (localPeerName) {
-      return localPeerName;
-    }
-
-    const keySuffix = shortKey(senderPublicKey);
-    const normalizedHint = relayNameHint?.trim();
-
-    // Prefer relay name hint if provided and not itself a key representation.
-    // Ignore hints that are:
-    // - short-key labels (e.g., ...9f38f6d0)
-    // - full public keys (hex strings)
-    // - exact sender public key echo
-    const isShortKeyHint = normalizedHint ? /^\.\.\.[a-f0-9]{8}$/i.test(normalizedHint) : false;
-    const isFullKeyHint = normalizedHint ? /^[a-f0-9]{32,}$/i.test(normalizedHint) : false;
-    const isSenderEcho = normalizedHint ? normalizedHint === senderPublicKey : false;
-
-    if (normalizedHint && !isShortKeyHint && !isFullKeyHint && !isSenderEcho && normalizedHint !== keySuffix) {
-      return normalizedHint;
-    }
-
-    return undefined;
-  }
-
-  /**
    * Sender identity format for durable logs/conversation:
-   * - known peers: name...<last8>
-   * - unknown peers: <relayNameHint>...<last8> (when safe), else ...<last8>
+   * - known peers: name@<last8>
+   * - unknown peers: @<last8>
+   * Claimed names from relay hints are never used.
    */
-  private formatSenderIdentity(senderPublicKey: string, relayNameHint?: string): string {
+  private formatSenderIdentity(senderPublicKey: string): string {
     const directory = buildPeerReferenceDirectory(this.agoraService);
-    if (directory[senderPublicKey]) {
-      return compactPeerReference(senderPublicKey, directory);
-    }
-
-    const senderName = this.resolveSenderName(senderPublicKey, relayNameHint);
-    const suffix = senderPublicKey.slice(-8);
-    return senderName ? `${senderName}...${suffix}` : `...${suffix}`;
+    return compactPeerReference(senderPublicKey, directory);
   }
 
   private formatRecipientIdentity(publicKey: string): string {
@@ -406,7 +371,7 @@ export class AgoraMessageHandler {
     }
 
     const timestamp = this.clock.now().toISOString();
-    const senderIdentity = this.formatSenderIdentity(envelopeFrom, relayNameHint);
+    const senderIdentity = this.formatSenderIdentity(envelopeFrom);
     const toList = envelopeTo.length > 0
       ? envelopeTo.map((recipient: string) => this.formatRecipientIdentity(recipient)).join(", ")
       : "(none)";
@@ -458,7 +423,7 @@ export class AgoraMessageHandler {
     // Format message as agent prompt similar to old checkAgoraInbox format
     let injected = false;
     const replyInstruction = knownPeer
-      ? `Respond to this message if appropriate. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: to="${knownPeer}", text="your response", inReplyTo="${envelope.id}"`
+      ? `Respond to this message if appropriate. Use ${"\`"}mcp__tinybus__send_agora_message${"\`"} (Claude Code) or ${"\`"}send_agora_message${"\`"} (Gemini CLI) with: to="${senderIdentity}", text="your response", inReplyTo="${envelope.id}"`
       : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelopeFrom}", text="your response", inReplyTo="${envelope.id}"`;
     try {
       const agentPrompt = `[AGORA MESSAGE]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nFROM: ${senderIdentity}\nTO: ${toList}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
