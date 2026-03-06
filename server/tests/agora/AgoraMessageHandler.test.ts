@@ -689,7 +689,7 @@ describe("AgoraMessageHandler", () => {
       expect(messageInjector.injectedMessages).toHaveLength(0);
     });
 
-    it("should include targetPubkey reply instruction for unknown senders with 'allow' policy", async () => {
+    it("should include moniker-based to reply instruction for unknown senders with 'allow' policy", async () => {
       const emptyAgoraService = new MockAgoraService();
       const allowHandler = new AgoraMessageHandler(
         emptyAgoraService,
@@ -708,11 +708,11 @@ describe("AgoraMessageHandler", () => {
 
       expect(messageInjector.injectedMessages).toHaveLength(1);
       const injectedMsg = messageInjector.injectedMessages[0];
-      // Should contain targetPubkey instruction, not "not possible"
-      expect(injectedMsg).toContain("targetPubkey");
-      expect(injectedMsg).toContain(unknownEnvelope.from);
+      // Unknown senders should still be replied to using verified moniker form.
+      expect(injectedMsg).toContain('to="@');
       expect(injectedMsg).not.toContain("not possible");
       expect(injectedMsg).not.toContain("unless the peer is added first");
+      expect(injectedMsg).not.toContain("targetPubkey");
     });
 
     it("should include to reply instruction for known senders", async () => {

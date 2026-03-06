@@ -306,12 +306,12 @@ export class AgoraMessageHandler {
    * Identity is always derived from verified public keys, never from claimed names.
    */
   private formatSenderIdentity(senderPublicKey: string): string {
-    const directory = buildPeerReferenceDirectory(this.agoraService);
+    const directory = buildPeerReferenceDirectory(this.agoraService, this.seenKeyStore ?? undefined);
     return compactPeerReference(senderPublicKey, directory);
   }
 
   private formatRecipientIdentity(publicKey: string): string {
-    const directory = buildPeerReferenceDirectory(this.agoraService);
+    const directory = buildPeerReferenceDirectory(this.agoraService, this.seenKeyStore ?? undefined);
     return compactPeerReference(publicKey, directory);
   }
 
@@ -340,7 +340,7 @@ export class AgoraMessageHandler {
    * Returns a user-friendly representation of the payload.
    */
   private formatPayload(payload: unknown): string {
-    const directory = buildPeerReferenceDirectory(this.agoraService);
+    const directory = buildPeerReferenceDirectory(this.agoraService, this.seenKeyStore ?? undefined);
     const compactedPayload = this.compactPayloadValue(payload, directory);
 
     if (typeof compactedPayload === "object" && compactedPayload !== null && !Array.isArray(compactedPayload)) {
@@ -390,9 +390,16 @@ export class AgoraMessageHandler {
       return;
     }
 
-    // Persist seen public key for identity resolution
-    if (envelopeFrom && this.seenKeyStore) {
-      this.seenKeyStore.record(envelopeFrom);
+    // Persist all encountered public keys for identity resolution.
+    if (this.seenKeyStore) {
+      if (envelopeFrom) {
+        this.seenKeyStore.record(envelopeFrom);
+      }
+      for (const recipient of envelopeTo) {
+        if (recipient) {
+          this.seenKeyStore.record(recipient);
+        }
+      }
       this.seenKeyStore.flush();
     }
 
@@ -450,7 +457,7 @@ export class AgoraMessageHandler {
     let injected = false;
     const replyInstruction = knownPeer
       ? `Respond to this message if appropriate. Use ${"\`"}mcp__tinybus__send_agora_message${"\`"} (Claude Code) or ${"\`"}send_agora_message${"\`"} (Gemini CLI) with: to="${senderIdentity}", text="your response", inReplyTo="${envelope.id}"`
-      : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: targetPubkey="${envelopeFrom}", text="your response", inReplyTo="${envelope.id}"`;
+      : `Respond to this message if appropriate. Note: Sender (${senderIdentity}) is not in PEERS.md, but you can reply via relay. Use ${"`"}mcp__tinybus__send_agora_message${"`"} (Claude Code) or ${"`"}send_agora_message${"`"} (Gemini CLI) with: to="${senderIdentity}", text="your response", inReplyTo="${envelope.id}"`;
     try {
       const agentPrompt = `[AGORA MESSAGE]\nType: ${envelope.type}\nEnvelope ID: ${envelope.id}\nTimestamp: ${timestamp}\nFROM: ${senderIdentity}\nTO: ${toList}\nPayload: ${payloadStr}\n\n${replyInstruction}`;
       injected = this.messageInjector.injectMessage(agentPrompt);
