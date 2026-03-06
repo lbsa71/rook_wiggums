@@ -90,6 +90,12 @@ export function buildPeerReferenceDirectory(agoraService: Pick<IAgoraService, "g
     };
   }
 
+  // Include self so own public key resolves to a name in TO fields
+  const self = agoraService.getSelfIdentity();
+  if (self?.publicKey) {
+    directory[self.publicKey] = { publicKey: self.publicKey, name: self.name };
+  }
+
   return directory;
 }
 

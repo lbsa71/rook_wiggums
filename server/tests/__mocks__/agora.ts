@@ -150,6 +150,7 @@ export class AgoraService {
   async decodeInbound(m: string) { return { ok: false, reason: m.startsWith("[AGORA_ENVELOPE]") ? "invalid_base64" : "not_agora_message" }; }
   getPeers() { return Array.from(this.config.peers.keys()); }
   getPeerConfig(n: string) { return this.config.peers.get(n); }
+  getSelfIdentity() { return { publicKey: this.config.identity.publicKey, name: this.config.identity.name }; }
   async connectRelay(url: string) {
     if (this.relayClient) return;
     const opts = { relayUrl: url, publicKey: this.config.identity.publicKey, privateKey: this.config.identity.privateKey, name: this.config.identity.name ?? this.config.relay?.name, pingInterval: 30000, maxReconnectDelay: this.config.relay?.reconnectMaxMs ?? 300000 };

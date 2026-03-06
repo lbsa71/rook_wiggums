@@ -13,6 +13,7 @@ export interface IAgoraService {
   decodeInbound(message: string): Promise<{ ok: boolean; envelope?: Envelope; reason?: string }>;
   getPeers(): string[];
   getPeerConfig(name: string): { publicKey: string; url?: string; token?: string; name?: string } | undefined;
+  getSelfIdentity(): { publicKey: string; name?: string } | undefined;
   connectRelay(url: string): Promise<void>;
   disconnectRelay(): Promise<void>;
   isRelayConnected(): boolean;

@@ -35,6 +35,10 @@ describe("Agora utils", () => {
   describe("peer reference helpers", () => {
     const mockService = {
       getPeers: () => ["rook", "bishop"],
+      getSelfIdentity: () => ({
+        publicKey: "302a300506032b6570032100selfselfselfselfselfselfselfselfselfselfselfself00000000",
+        name: "nova",
+      }),
       getPeerConfig: (ref: string) => {
         if (ref === "rook") {
           return {
@@ -54,7 +58,7 @@ describe("Agora utils", () => {
 
     it("builds a peer directory keyed by public key", () => {
       const directory = buildPeerReferenceDirectory(mockService as never);
-      expect(Object.keys(directory)).toHaveLength(2);
+      expect(Object.keys(directory)).toHaveLength(3); // rook + bishop + self
       expect(directory["302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].name).toBe("rook");
     });
 

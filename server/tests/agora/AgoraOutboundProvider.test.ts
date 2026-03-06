@@ -61,6 +61,10 @@ class MockAgoraService implements IAgoraService {
     return this.peerConfigs[name];
   }
 
+  getSelfIdentity() {
+    return { publicKey: "302a300506032b6570032100selfselfselfselfselfselfselfselfselfselfselfself00000000", name: "nova" };
+  }
+
   async connectRelay(_url: string) {}
 
   async disconnectRelay() {}

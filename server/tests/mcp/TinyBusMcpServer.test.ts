@@ -17,6 +17,7 @@ function makeMockAgoraService(peers: string[] = []): IAgoraService {
     replyToEnvelope: jest.fn(),
     decodeInbound: jest.fn(),
     getPeerConfig: jest.fn(),
+    getSelfIdentity: jest.fn(() => undefined),
     connectRelay: jest.fn(),
     disconnectRelay: jest.fn(),
     isRelayConnected: jest.fn(() => false),

@@ -123,6 +123,10 @@ export async function createLoopLayer(
       },
       logger,
     ) as unknown as IAgoraService;
+    // Patch getSelfIdentity — not present on upstream AgoraService
+    const capturedConfig = agoraConfig;
+    (agoraService as Record<string, unknown>).getSelfIdentity = () =>
+      capturedConfig ? { publicKey: capturedConfig.identity.publicKey, name: capturedConfig.identity.name } : undefined;
   } catch (err) {
     // If Agora config doesn't exist, log and continue without Agora capability
     logger.debug("Agora not configured: " + (err instanceof Error ? err.message : String(err)));

@@ -41,6 +41,7 @@ class MockAgoraService implements IAgoraService {
   async decodeInbound(_message: string) { return { ok: false, reason: "not implemented" }; }
   getPeers() { return Object.keys(this.peers); }
   getPeerConfig(name: string) { return this.peers[name]; }
+  getSelfIdentity() { return { publicKey: "302a300506032b6570032100selfselfselfselfselfselfselfselfselfselfselfself00000000", name: "nova" }; }
   async connectRelay(_url: string) {}
   async disconnectRelay() {}
   isRelayConnected() { return false; }

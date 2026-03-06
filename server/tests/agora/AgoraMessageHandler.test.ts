@@ -95,6 +95,10 @@ class MockAgoraService implements IAgoraService {
     this.peers.set(publicKey, { name, publicKey, url: "http://test", token: "test-token" });
   }
 
+  getSelfIdentity() {
+    return { publicKey: "302a300506032b6570032100selfselfselfselfselfselfselfselfselfselfselfself00000000", name: "nova" };
+  }
+
   async connectRelay(_url: string) {}
 
   async disconnectRelay() {}
