@@ -10,6 +10,7 @@ import { IgnoredPeersManager, SeenKeyStore } from "@rookdaemon/agora";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import type { ILogger } from "../logging";
 import { createHash } from "crypto";
+import { FlashGate, EvaluationContext } from "../gates/FlashGate";
 
 /**
  * Sliding window state for per-sender rate limiting
@@ -86,6 +87,7 @@ export class AgoraMessageHandler {
     private readonly wakeLoop: (() => void) | null = null,
     private readonly ignoredPeersPath: string | null = null,
     private readonly seenKeysPath: string | null = null,
+    private readonly flashGate: FlashGate | null = null,
   ) {
     if (this.ignoredPeersPath) {
       try {
@@ -449,6 +451,30 @@ export class AgoraMessageHandler {
     if (this.getState() === LoopState.SLEEPING && this.wakeLoop) {
       this.logger.debug(`[AGORA] Waking loop from SLEEPING state for incoming message: envelopeId=${envelope.id}`);
       this.wakeLoop();
+    }
+
+    // FlashGate evaluation: check input with architecture context to avoid false positives.
+    // Known peer messages receive elevated trust so that authorized Agora peers (e.g. stefan, nova,
+    // bishop) are not flagged for authorization-chain, thread-isolation, or command-misattribution
+    // issues (Issue A sub-modes 1–3).
+    if (this.flashGate) {
+      const agentInput = `Type: ${envelope.type}\nPayload: ${JSON.stringify(envelope.payload)}`;
+      const context: EvaluationContext = {
+        peerIdentity: knownPeer ? senderIdentity : null,
+        messageRole: "peer_message",
+        threadContext: null,
+      };
+      try {
+        const decision = await this.flashGate.evaluateInput(agentInput, context);
+        if (!decision.allow) {
+          this.logger.debug(`[AGORA] FlashGate blocked message: envelopeId=${envelope.id} reason=${decision.reason ?? "(none)"}`);
+          return;
+        }
+        this.logger.debug(`[AGORA] FlashGate allowed message: envelopeId=${envelope.id} reason=${decision.reason ?? "(none)"}`);
+      } catch (err) {
+        // Gate errors must not block delivery — fail open
+        this.logger.debug(`[AGORA] FlashGate error, failing open: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     // Inject message into orchestrator FIRST so we know if it was delivered to an active session.
