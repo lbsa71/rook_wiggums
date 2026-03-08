@@ -36,6 +36,10 @@ export interface TaskResult {
   memoryUpdates: string | null;
   proposals: SubconsciousProposal[];
   agoraReplies: AgoraReply[];
+  /** Phase 3 INS: explicit reason why result is "partial" (preferred over regex extraction from summary) */
+  blockedReason?: string;
+  /** Phase 3 INS: acknowledgment round-trip — Ego acknowledges compliance flags here */
+  insAcknowledgments?: import("../../loop/ins/types").InsAcknowledgment[];
 }
 
 /**
@@ -73,6 +77,19 @@ export const TASK_RESULT_SCHEMA = {
         required: ["to", "text"],
       },
     },
+    insAcknowledgments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          patternId: { type: "string" },
+          verdict: { type: "string", enum: ["real_constraint", "false_positive"] },
+          taskStatus: { type: "string", enum: ["deferred", "pending", "complete"] },
+        },
+        required: ["patternId", "verdict"],
+      },
+    },
+    blockedReason: { type: ["string", "null"] },
   },
   required: ["result", "summary", "progressEntry", "skillUpdates", "memoryUpdates", "proposals", "agoraReplies"],
 } as const;

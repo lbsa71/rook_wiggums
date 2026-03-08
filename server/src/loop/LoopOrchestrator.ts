@@ -104,7 +104,14 @@ export class LoopOrchestrator implements IMessageInjector {
   // INS (Involuntary Nervous System) — pre-cycle deterministic rule checks
   private insHook: INSHook | null = null;
   private lastINSResult: INSResult | null = null;
-  private lastTaskResult: { result: string; summary?: string } | null = null;
+  private lastTaskResult: {
+    result: string;
+    summary?: string;
+    role?: string;
+    taskId?: string;
+    blockedReason?: string;
+    insAcknowledgments?: import("./ins/types").InsAcknowledgment[];
+  } | null = null;
 
   // Conversation session gate
   private conversationSessionActive = false;
@@ -521,7 +528,14 @@ export class LoopOrchestrator implements IMessageInjector {
       const success = taskResult.result === "success";
 
       // Store for INS consecutive-partial detection
-      this.lastTaskResult = { result: taskResult.result, summary: taskResult.summary };
+      this.lastTaskResult = {
+        result: taskResult.result,
+        summary: taskResult.summary,
+        role: 'Subconscious', // Only Subconscious executes tasks in current architecture
+        taskId: dispatch.taskId,
+        blockedReason: taskResult.blockedReason,
+        insAcknowledgments: taskResult.insAcknowledgments,
+      };
 
       this.logger.debug(`cycle ${this.cycleNumber}: task "${dispatch.taskId}" ${success ? "succeeded" : "failed"} — ${taskResult.summary}`);
 

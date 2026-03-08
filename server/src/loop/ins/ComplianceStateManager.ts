@@ -1,13 +1,16 @@
 import { IFileSystem } from "../../substrate/abstractions/IFileSystem";
 import { ILogger } from "../../logging";
-import { ComplianceState, emptyComplianceState } from "./types";
+import { ComplianceState, CompliancePattern, InsAcknowledgment, emptyComplianceState } from "./types";
 
 /**
  * Manages persistent compliance state for INS consecutive-partial detection.
  * State is stored at .ins/state/compliance.json and survives restarts.
  *
+ * Phase 3: Updated schema uses patterns: CompliancePattern[] instead of
+ * the Phase 1 partials: Record<string, {...}> format. Old schema is
+ * migrated to fresh state on load.
+ *
  * Write frequency is low — only when a partial is recorded or cleared.
- * Follows the same pattern as SuperegoFindingTracker.load().
  */
 export class ComplianceStateManager {
   private state: ComplianceState;
@@ -30,55 +33,98 @@ export class ComplianceStateManager {
     const filePath = `${statePath}/compliance.json`;
     try {
       const raw = await fs.readFile(filePath);
-      const parsed = JSON.parse(raw) as ComplianceState;
-      // Basic validation
-      if (typeof parsed.partials !== "object" || parsed.partials === null) {
-        throw new Error("invalid partials field");
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      // Detect Phase 1 schema (has 'partials' field, not 'patterns') — migrate to fresh state
+      if ('partials' in parsed && !('patterns' in parsed)) {
+        logger.debug("ins: detected Phase 1 compliance schema — migrating to Phase 3 (starting fresh)");
+        return new ComplianceStateManager(fs, statePath, logger, emptyComplianceState());
       }
-      return new ComplianceStateManager(fs, statePath, logger, parsed);
+      // Validate Phase 3 schema
+      const state = parsed as ComplianceState;
+      if (!Array.isArray(state.patterns)) {
+        throw new Error("invalid patterns field");
+      }
+      return new ComplianceStateManager(fs, statePath, logger, state);
     } catch {
       logger.debug("ins: compliance state not found or invalid, starting fresh");
       return new ComplianceStateManager(fs, statePath, logger, emptyComplianceState());
     }
   }
 
-  recordPartial(precondition: string, cycleNumber: number): void {
-    const existing = this.state.partials[precondition];
+  /** Find a pattern by patternId */
+  findPattern(patternId: string): CompliancePattern | undefined {
+    return this.state.patterns.find(p => p.patternId === patternId);
+  }
+
+  /** Record or increment a partial pattern */
+  recordOrUpdatePattern(
+    patternId: string,
+    role: 'Superego' | 'Subconscious',
+    patternText: string,
+    cycleNumber: number,
+    taskId?: string,
+  ): CompliancePattern {
+    const existing = this.state.patterns.find(p => p.patternId === patternId);
     if (existing) {
-      existing.count++;
-      existing.lastCycle = cycleNumber;
+      existing.cyclesCount++;
+      existing.lastSeenCycle = cycleNumber;
+      existing.patternText = patternText; // update to most recent text
+      this.state.lastUpdatedCycle = cycleNumber;
+      this.dirty = true;
+      return existing;
     } else {
-      this.state.partials[precondition] = {
-        count: 1,
-        firstCycle: cycleNumber,
-        lastCycle: cycleNumber,
+      const pattern: CompliancePattern = {
+        patternId,
+        role,
+        patternText,
+        cyclesCount: 1,
+        firstSeenCycle: cycleNumber,
+        lastSeenCycle: cycleNumber,
+        taskId,
       };
+      this.state.patterns.push(pattern);
+      this.state.lastUpdatedCycle = cycleNumber;
+      this.dirty = true;
+      return pattern;
     }
-    this.state.lastUpdatedCycle = cycleNumber;
+  }
+
+  /** Apply an acknowledgment from Ego to a pattern */
+  applyAcknowledgment(
+    patternId: string,
+    ack: InsAcknowledgment,
+    now: Date,
+  ): void {
+    const pattern = this.findPattern(patternId);
+    if (!pattern) return;
+    const ttl = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    pattern.acknowledged = true;
+    pattern.acknowledgedAt = now.toISOString();
+    pattern.acknowledgedVerdict = ack.verdict;
+    pattern.acknowledgedTaskStatus = ack.taskStatus;
+    pattern.acknowledgedTTL = ttl.toISOString();
     this.dirty = true;
   }
 
-  getPartialCount(precondition: string): number {
-    return this.state.partials[precondition]?.count ?? 0;
-  }
-
-  clearPartial(precondition: string): void {
-    if (this.state.partials[precondition]) {
-      delete this.state.partials[precondition];
+  /** Clear a specific pattern (task resolved or acknowledged as false_positive) */
+  clearPattern(patternId: string): void {
+    const index = this.state.patterns.findIndex(p => p.patternId === patternId);
+    if (index !== -1) {
+      this.state.patterns.splice(index, 1);
       this.dirty = true;
     }
   }
 
-  /** Clear all tracked partials (e.g., on successful cycle with no partials) */
+  /** Clear all tracked patterns (legacy path — used when no taskId available on success) */
   clearAll(): void {
-    if (Object.keys(this.state.partials).length > 0) {
-      this.state.partials = {};
+    if (this.state.patterns.length > 0) {
+      this.state.patterns = [];
       this.dirty = true;
     }
   }
 
   getState(): ComplianceState {
-    return { ...this.state, partials: { ...this.state.partials } };
+    return { ...this.state, patterns: [...this.state.patterns] };
   }
 
   isDirty(): boolean {

@@ -3,7 +3,7 @@ import { SubstrateFileType } from "../../substrate/types";
 import { IFileSystem } from "../../substrate/abstractions/IFileSystem";
 import { IClock } from "../../substrate/abstractions/IClock";
 import { ILogger } from "../../logging";
-import { INSResult, INSAction, INSConfig } from "./types";
+import { INSResult, INSAction, INSConfig, InsAcknowledgment } from "./types";
 import { ComplianceStateManager } from "./ComplianceStateManager";
 
 /** Precondition extraction patterns — matches common blocking language in task summaries */
@@ -13,18 +13,36 @@ const PRECONDITION_PATTERNS = [
 ];
 
 /**
- * INS (Involuntary Nervous System) Phase 1: Rule Layer.
+ * Minimum token count for Jaccard similarity matching.
+ * Below this threshold, fall back to substring matching.
+ * Calibration note: set conservatively to avoid spurious matches on
+ * short, formulaic blockedReason strings. Revisit after 2-3 weeks
+ * production data.
+ */
+const JACCARD_MIN_TOKENS = 10;
+
+/** Jaccard similarity threshold for semantic equivalence matching */
+const JACCARD_THRESHOLD = 0.6;
+
+/** TTL for acknowledgments (7 days in ms) */
+const ACK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Re-trigger threshold for false_positive acknowledged patterns (half of normal threshold) */
+const FALSE_POSITIVE_RETRIGGER_DIVISOR = 2;
+
+/**
+ * INS (Involuntary Nervous System) Phase 3: Rule Layer + Compliance Pattern Detection.
  *
- * Deterministic pre-cycle hook that runs five substrate health checks.
+ * Deterministic pre-cycle hook that runs five substrate health checks (Phase 1)
+ * plus role-scoped compliance pattern detection (Phase 3).
+ *
+ * Phase 3 additions:
+ * - Role filter: Ego outputs are excluded from pattern tracking (circular by design)
+ * - PatternId scheme: "consecutive-partial::<taskId>" or hash fallback
+ * - Jaccard similarity matching with token-count floor for semantic equivalence
+ * - Acknowledgment round-trip: Ego can acknowledge patterns via insAcknowledgments
+ *
  * No model calls. Never throws. Returns INSResult with zero or more actions.
- *
- * Rules:
- * 1. CONVERSATION.md line count > threshold → compaction flag
- * 2. PROGRESS.md line count > threshold → compaction flag
- * 3. MEMORY.md char count > threshold → compaction flag
- * 4. Consecutive partial results with same precondition → compliance flag
- * 5. Files in memory/ older than N days with SUPERSEDED marker → archive flag
- *
  * Budget: < 500ms total. Noop cycles produce zero I/O.
  */
 export class INSHook {
@@ -39,7 +57,14 @@ export class INSHook {
 
   async evaluate(
     cycleNumber: number,
-    lastTaskResult?: { result: string; summary?: string },
+    lastTaskResult?: {
+      result: string;
+      summary?: string;
+      role?: string;
+      taskId?: string;
+      blockedReason?: string;
+      insAcknowledgments?: InsAcknowledgment[];
+    },
   ): Promise<INSResult> {
     const actions: INSAction[] = [];
 
@@ -64,9 +89,9 @@ export class INSHook {
       const memAction = await this.checkMemorySize();
       if (memAction) actions.push(memAction);
 
-      // Rule 4: Consecutive-partial detection
-      const partialAction = await this.checkConsecutivePartials(cycleNumber, lastTaskResult);
-      if (partialAction) actions.push(partialAction);
+      // Rule 4 (Phase 3): Consecutive-partial detection with role filter + Jaccard
+      const partialActions = await this.checkConsecutivePartials(cycleNumber, lastTaskResult);
+      actions.push(...partialActions);
 
       // Rule 5: Archive candidates
       const archiveActions = await this.checkArchiveCandidates();
@@ -129,37 +154,208 @@ export class INSHook {
     return null;
   }
 
+  /**
+   * Phase 3: Compliance pattern detection.
+   *
+   * Layer 3 scope: Superego and Subconscious role outputs ONLY.
+   * Ego outputs are excluded — monitoring Ego via Layer 3 is circular
+   * (same blind spots as the monitored output). Ego compliance is handled
+   * by EndorsementScreener/FlashGate, which is architecturally external to Ego.
+   */
   private async checkConsecutivePartials(
     cycleNumber: number,
-    lastTaskResult?: { result: string; summary?: string },
-  ): Promise<INSAction | null> {
-    if (!lastTaskResult) return null;
+    lastTaskResult?: {
+      result: string;
+      summary?: string;
+      role?: string;
+      taskId?: string;
+      blockedReason?: string;
+      insAcknowledgments?: InsAcknowledgment[];
+    },
+  ): Promise<INSAction[]> {
+    if (!lastTaskResult) return [];
+    const now = this.clock.now();
 
-    if (lastTaskResult.result === "partial") {
-      const precondition = this.extractPrecondition(lastTaskResult.summary);
-      if (precondition) {
-        this.complianceState.recordPartial(precondition, cycleNumber);
-        const count = this.complianceState.getPartialCount(precondition);
-        if (count >= this.config.consecutivePartialThreshold) {
-          await this.complianceState.save();
-          return {
-            type: "compliance_flag",
-            target: "Ego",
-            detail: `Consecutive-partial pattern detected (${count} cycles). Stated precondition: "${precondition}". Possible constructed constraint — examine whether this precondition is real.`,
-            flaggedPattern: precondition,
-          };
+    // Process acknowledgments first (from previous cycle's Ego response)
+    if (lastTaskResult.insAcknowledgments?.length) {
+      for (const ack of lastTaskResult.insAcknowledgments) {
+        this.complianceState.applyAcknowledgment(ack.patternId, ack, now);
+        // Clear false_positive patterns immediately
+        if (ack.verdict === 'false_positive') {
+          this.complianceState.clearPattern(ack.patternId);
         }
-        await this.complianceState.save();
       }
-    } else if (lastTaskResult.result === "success") {
-      // Success clears all partial tracking
-      this.complianceState.clearAll();
       if (this.complianceState.isDirty()) {
         await this.complianceState.save();
       }
     }
 
-    return null;
+    // Role filter: Ego outputs are excluded from pattern tracking
+    const role = lastTaskResult.role;
+    if (role === 'Ego') {
+      return [];
+    }
+
+    // Determine effective role for tracking (default to Subconscious for backward compat)
+    const effectiveRole: 'Superego' | 'Subconscious' =
+      role === 'Superego' ? 'Superego' : 'Subconscious';
+
+    if (lastTaskResult.result === "partial") {
+      // Extract the blocking reason
+      const patternText = lastTaskResult.blockedReason ??
+        this.extractPrecondition(lastTaskResult.summary) ??
+        lastTaskResult.summary ??
+        "";
+
+      if (!patternText) return [];
+
+      // Derive patternId
+      const patternId = lastTaskResult.taskId
+        ? `consecutive-partial::${lastTaskResult.taskId}`
+        : `consecutive-partial::${this.hashText(patternText)}`;
+
+      // Check if an existing pattern matches (by patternId or Jaccard similarity)
+      const existingPattern = this.complianceState.findPattern(patternId) ??
+        this.findPatternBySimilarity(patternText, cycleNumber);
+
+      const resolvedPatternId = existingPattern?.patternId ?? patternId;
+
+      // Record or increment
+      const pattern = this.complianceState.recordOrUpdatePattern(
+        resolvedPatternId,
+        effectiveRole,
+        patternText,
+        cycleNumber,
+        lastTaskResult.taskId,
+      );
+      await this.complianceState.save();
+
+      // Check if pattern has reached threshold and should emit a flag
+      return this.buildComplianceFlags([pattern]);
+    } else if (lastTaskResult.result === "success") {
+      // Clear patterns for this specific task if taskId is known
+      if (lastTaskResult.taskId) {
+        const patternId = `consecutive-partial::${lastTaskResult.taskId}`;
+        this.complianceState.clearPattern(patternId);
+      } else {
+        // Legacy path: no taskId available — clear all (backward-compat with Phase 1)
+        this.complianceState.clearAll();
+      }
+      if (this.complianceState.isDirty()) {
+        await this.complianceState.save();
+      }
+    }
+
+    return [];
+  }
+
+  /** Build compliance flag actions for patterns at or above threshold */
+  private buildComplianceFlags(patterns: ReturnType<ComplianceStateManager['findPattern']>[]): INSAction[] {
+    const actions: INSAction[] = [];
+    const threshold = this.config.consecutivePartialThreshold;
+    const now = this.clock.now();
+
+    for (const pattern of patterns) {
+      if (!pattern) continue;
+
+      // Determine effective threshold (false_positive verdict halves re-trigger threshold)
+      const effectiveThreshold = pattern.acknowledgedVerdict === 'false_positive'
+        ? Math.max(1, Math.ceil(threshold / FALSE_POSITIVE_RETRIGGER_DIVISOR))
+        : threshold;
+
+      if (pattern.cyclesCount < effectiveThreshold) continue;
+
+      // Check acknowledgment — suppress if acknowledged with valid TTL
+      if (pattern.acknowledged && pattern.acknowledgedTTL) {
+        const ttlExpiry = new Date(pattern.acknowledgedTTL);
+        if (now < ttlExpiry) {
+          // Still within TTL — suppress flag (unless false_positive re-trigger)
+          if (pattern.acknowledgedVerdict !== 'false_positive') continue;
+        }
+      }
+
+      actions.push({
+        type: "compliance_flag",
+        target: pattern.role,
+        detail: `Consecutive-partial pattern detected (${pattern.cyclesCount} cycles, ${pattern.role}). Stated precondition: "${pattern.patternText}". Not verified in PLAN.md or conversation history. Possible constructed constraint — examine whether this precondition is real.`,
+        flaggedPattern: pattern.patternText,
+        patternId: pattern.patternId,
+        cyclesCount: pattern.cyclesCount,
+        firstSeenCycle: pattern.firstSeenCycle,
+      });
+    }
+
+    return actions;
+  }
+
+  /** Find an existing pattern whose patternText is semantically equivalent */
+  private findPatternBySimilarity(
+    patternText: string,
+    _cycleNumber: number,
+  ): ReturnType<ComplianceStateManager['findPattern']> {
+    const state = this.complianceState.getState();
+    for (const pattern of state.patterns) {
+      if (this.patternsMatch(patternText, pattern.patternText)) {
+        return this.complianceState.findPattern(pattern.patternId);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Semantic equivalence check for blockedReason strings.
+   *
+   * Strategy:
+   * - Normalize both strings (lowercase, strip punctuation, collapse whitespace)
+   * - If either string has < JACCARD_MIN_TOKENS tokens: use substring matching
+   * - Otherwise: use Jaccard similarity with JACCARD_THRESHOLD
+   *
+   * Calibration note: JACCARD_MIN_TOKENS=10, JACCARD_THRESHOLD=0.6 are
+   * heuristic values. Calibrate from first 2-3 weeks of production data.
+   * For short, formulaic Superego blockedReason strings (e.g. "BLOCK: scope
+   * limit exceeded"), substring matching is more reliable than Jaccard.
+   */
+  private patternsMatch(a: string, b: string): boolean {
+    const normA = this.normalizeText(a);
+    const normB = this.normalizeText(b);
+    const tokensA = normA.split(/\s+/).filter(Boolean);
+    const tokensB = normB.split(/\s+/).filter(Boolean);
+    const minTokens = Math.min(tokensA.length, tokensB.length);
+
+    if (minTokens < JACCARD_MIN_TOKENS) {
+      // Short string path: substring matching
+      return normA.includes(normB) || normB.includes(normA);
+    }
+
+    return this.jaccardSimilarity(tokensA, tokensB) >= JACCARD_THRESHOLD;
+  }
+
+  private normalizeText(s: string): string {
+    return s.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private jaccardSimilarity(tokensA: string[], tokensB: string[]): number {
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+    if (setA.size === 0 && setB.size === 0) return 1.0;
+    if (setA.size === 0 || setB.size === 0) return 0.0;
+    let intersectionCount = 0;
+    for (const token of setA) {
+      if (setB.has(token)) intersectionCount++;
+    }
+    const unionSize = setA.size + setB.size - intersectionCount;
+    return intersectionCount / unionSize;
+  }
+
+  /** Simple FNV-1a-inspired hash for patternId fallback when taskId is absent */
+  private hashText(s: string): string {
+    const normalized = this.normalizeText(s).slice(0, 64);
+    let hash = 2166136261;
+    for (let i = 0; i < normalized.length; i++) {
+      hash ^= normalized.charCodeAt(i);
+      hash = (hash * 16777619) >>> 0;
+    }
+    return hash.toString(16);
   }
 
   private extractPrecondition(summary?: string): string | null {
