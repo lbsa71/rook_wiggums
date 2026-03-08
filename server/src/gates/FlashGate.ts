@@ -1,6 +1,7 @@
 import { ISessionLauncher } from "../agents/claude/ISessionLauncher";
 import { IClock } from "../substrate/abstractions/IClock";
 import { ILogger } from "../logging";
+import { appendFileSync } from "fs";
 
 /**
  * Architecture context passed to evaluateInput() to eliminate false positives
@@ -182,7 +183,6 @@ export class FlashGate {
       const verdict = decision.allow ? "ALLOW" : "BLOCK";
       const reason = decision.reason ?? "";
       const line = `[${ts}] ${verdict} peer=${peer} role=${role} reason="${reason}" input="${input.slice(0, 120).replace(/\n/g, " ")}"\n`;
-      const { appendFileSync } = await import("fs");
       appendFileSync(this.config.logPath, line, "utf8");
     } catch {
       // Non-fatal: log write failures must not block the gate verdict
