@@ -1115,6 +1115,40 @@ describe("AgoraMessageHandler", () => {
       expect(flashGate.calls[0].context.sender_verified).toBe(false);
     });
 
+    it("populates peer_context for known configured peers", async () => {
+      flashGate.enqueue({ verdict: "PROCEED", reasons: [] });
+      await handler.processEnvelope(publishEnvelope, "relay");
+
+      expect(flashGate.calls).toHaveLength(1);
+      expect(flashGate.calls[0].context.peer_context).toBeDefined();
+      expect(flashGate.calls[0].context.peer_context).toContain("test-peer");
+      expect(flashGate.calls[0].context.peer_context).toContain("known configured peer");
+    });
+
+    it("does not set peer_context for unknown senders", async () => {
+      const emptyAgora = new MockAgoraService();
+      const gatedHandler = new AgoraMessageHandler(
+        emptyAgora,
+        conversationManager,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'allow',
+        defaultRateLimitConfig,
+        null, null, null,
+        flashGate,
+      );
+
+      flashGate.enqueue({ verdict: "PROCEED", reasons: [] });
+      await gatedHandler.processEnvelope(publishEnvelope, "relay");
+
+      expect(flashGate.calls).toHaveLength(1);
+      expect(flashGate.calls[0].context.peer_context).toBeUndefined();
+    });
+
     it("works without F2 gate (null — backward compatible)", async () => {
       // Default handler has no flashGate
       const noGateHandler = new AgoraMessageHandler(

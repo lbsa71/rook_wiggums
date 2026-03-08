@@ -152,6 +152,13 @@ export class FlashGate implements IFlashGate {
       ``,
     ];
 
+    if (context.peer_context) {
+      lines.push(
+        `[SENDER CONTEXT] This message is from: ${context.peer_context}`,
+        ``,
+      );
+    }
+
     if (context.inReplyToSummary) {
       const { envelopeId, senderMoniker, text } = context.inReplyToSummary;
       lines.push(

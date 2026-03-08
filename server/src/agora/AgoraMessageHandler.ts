@@ -473,6 +473,7 @@ export class AgoraMessageHandler {
         );
       }
 
+      const peerContext = knownPeer ? `${senderIdentity} — known configured peer` : undefined;
       const messageText = this.extractMessageText(envelope.payload);
       const gateResult = await this.flashGate.evaluateF2({
         gate: "F2",
@@ -484,6 +485,7 @@ export class AgoraMessageHandler {
           envelope_id: envelope.id,
           timestamp,
           inReplyToSummary,
+          peer_context: peerContext,
         },
       });
 

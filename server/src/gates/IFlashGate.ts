@@ -23,6 +23,8 @@ export interface F2GateInput {
     timestamp: string;
     /** Optional context from the parent envelope when inReplyTo is set. */
     inReplyToSummary?: EnvelopeSummary;
+    /** Human-readable description of sender's role in the architecture. */
+    peer_context?: string;
   };
 }
 

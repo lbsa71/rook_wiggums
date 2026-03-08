@@ -66,6 +66,34 @@ describe("FlashGate", () => {
 
       expect(result.verdict).toBe("ESCALATE");
     });
+
+    it("includes [SENDER CONTEXT] in prompt when peer_context is provided", async () => {
+      launcher.enqueueSuccess(JSON.stringify({
+        verdict: "PROCEED",
+        reasons: ["r1", "r2", "r3", "r4", "r5"],
+      }));
+
+      await gate.evaluateF2(makeInput({
+        peer_context: "stefan@9f38f6d0 — known configured peer",
+      }));
+
+      const launch = launcher.getLaunches()[0];
+      expect(launch.request.message).toContain(
+        "[SENDER CONTEXT] This message is from: stefan@9f38f6d0 — known configured peer",
+      );
+    });
+
+    it("does not include [SENDER CONTEXT] when peer_context is absent", async () => {
+      launcher.enqueueSuccess(JSON.stringify({
+        verdict: "PROCEED",
+        reasons: ["r1", "r2", "r3", "r4", "r5"],
+      }));
+
+      await gate.evaluateF2(makeInput({ peer_context: undefined }));
+
+      const launch = launcher.getLaunches()[0];
+      expect(launch.request.message).not.toContain("[SENDER CONTEXT]");
+    });
   });
 
   describe("evaluateF2 — failure modes", () => {
