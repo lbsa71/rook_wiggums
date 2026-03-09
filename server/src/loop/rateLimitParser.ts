@@ -63,5 +63,10 @@ export function parseRateLimitReset(
     return reset;
   }
 
+  // Pattern 3: "You've hit your limit" fallback — resetsAt unknown, default 1-hour backoff
+  if (/You've hit your limit/i.test(output)) {
+    return new Date(now.getTime() + 60 * 60 * 1000);
+  }
+
   return null;
 }

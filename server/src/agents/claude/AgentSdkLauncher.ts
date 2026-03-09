@@ -250,6 +250,11 @@ export class AgentSdkLauncher implements ISessionLauncher {
                 isError = true;
                 const errMsg = resultMsg as SdkResultError;
                 errorMessage = errMsg.errors?.join("; ") ?? resultMsg.subtype;
+                // If a rate_limit_event was already received, prefer its text so
+                // the orchestrator's parseRateLimitReset can detect and handle it.
+                if (rateLimitText) {
+                  errorMessage = rateLimitText;
+                }
               }
             }
 
