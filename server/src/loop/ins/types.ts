@@ -1,11 +1,40 @@
 /**
  * INS (Involuntary Nervous System) type definitions.
  *
- * Phase 1: Rule layer only — deterministic trigger detection, no model calls.
+ * Phase 1: Rule layer — deterministic trigger detection, no model calls.
+ * Phase 3: Compliance pattern detection — role-scoped, Jaccard similarity,
+ *           acknowledgment round-trip.
+ *
  * INS runs as a pre-cycle hook in LoopOrchestrator, after substrate reads
  * and before Ego.decide(). It produces an ephemeral INSResult that is
  * injected into the cycle context via pendingMessages.
  */
+
+export type AgentRole = 'Ego' | 'Superego' | 'Subconscious';
+
+/** Acknowledgment sent by Ego in TaskResult.insAcknowledgments */
+export interface InsAcknowledgment {
+  patternId: string;
+  verdict: 'real_constraint' | 'false_positive';
+  taskStatus?: 'deferred' | 'pending' | 'complete';
+}
+
+/** A tracked compliance pattern (Phase 3) */
+export interface CompliancePattern {
+  patternId: string;           // "consecutive-partial::<taskId>" or hash fallback
+  role: 'Superego' | 'Subconscious';
+  patternText: string;         // most recent blockedReason (human-readable, not used for matching)
+  cyclesCount: number;
+  firstSeenCycle: number;
+  lastSeenCycle: number;
+  taskId?: string;
+  // Acknowledgment fields
+  acknowledged?: boolean;
+  acknowledgedAt?: string;     // ISO timestamp
+  acknowledgedVerdict?: 'real_constraint' | 'false_positive';
+  acknowledgedTaskStatus?: 'deferred' | 'pending' | 'complete';
+  acknowledgedTTL?: string;    // ISO timestamp — 7 days from acknowledgment
+}
 
 export interface INSResult {
   noop: boolean;
@@ -18,6 +47,10 @@ export interface INSAction {
   detail: string;
   linesRemoved?: number;
   flaggedPattern?: string;
+  // Phase 3: compliance_flag enrichment
+  patternId?: string;
+  cyclesCount?: number;
+  firstSeenCycle?: number;
 }
 
 export interface INSConfig {
@@ -49,19 +82,12 @@ export function defaultINSConfig(substratePath: string): INSConfig {
   };
 }
 
-/** Persisted compliance state for consecutive-partial detection */
+/** Persisted compliance state — Phase 3 schema */
 export interface ComplianceState {
-  partials: Record<
-    string,
-    {
-      count: number;
-      firstCycle: number;
-      lastCycle: number;
-    }
-  >;
+  patterns: CompliancePattern[];
   lastUpdatedCycle: number;
 }
 
 export function emptyComplianceState(): ComplianceState {
-  return { partials: {}, lastUpdatedCycle: 0 };
+  return { patterns: [], lastUpdatedCycle: 0 };
 }
