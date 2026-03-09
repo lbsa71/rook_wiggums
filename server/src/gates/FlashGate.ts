@@ -227,8 +227,9 @@ export class FlashGate implements IFlashGate {
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        this.logger.debug("[F2] Parse failure: no JSON object found → BLOCK");
-        return { verdict: "BLOCK", reasons: ["Parse failure: no JSON found"] };
+        this.logger.debug("[F2] Parse failure: no JSON object found → PROCEED (fail-open, logged as FP)");
+        this.logger.warn("[F2] FP-31: Vertex returned no JSON object — failing open. See issue rookdaemon/substrate#257 for proper fix.");
+        return { verdict: "PROCEED", reasons: ["Parse failure: fail-open (FP-31)"] };
       }
 
       const parsed = JSON.parse(jsonMatch[0]) as {
@@ -243,8 +244,9 @@ export class FlashGate implements IFlashGate {
 
       return { verdict, reasons };
     } catch {
-      this.logger.debug("[F2] Parse failure: JSON parse error → BLOCK");
-      return { verdict: "BLOCK", reasons: ["Parse failure: invalid JSON"] };
+      this.logger.debug("[F2] Parse failure: JSON parse error → PROCEED (fail-open, logged as FP)");
+      this.logger.warn("[F2] FP-31: Vertex returned unparseable JSON — failing open. See issue rookdaemon/substrate#257 for proper fix.");
+      return { verdict: "PROCEED", reasons: ["Parse failure: fail-open (FP-31)"] };
     }
   }
 

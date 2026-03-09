@@ -298,12 +298,13 @@ describe("FlashGate", () => {
       expect(result.verdict).toBe("BLOCK");
     });
 
-    it("returns BLOCK when response contains no JSON", async () => {
+    it("returns PROCEED (fail-open) when response contains no JSON", async () => {
       launcher.enqueueSuccess("I cannot evaluate this message.");
 
       const result = await gate.evaluateF2(makeInput());
 
-      expect(result.verdict).toBe("BLOCK");
+      expect(result.verdict).toBe("PROCEED");
+      expect(result.reasons).toEqual(["Parse failure: fail-open (FP-31)"]);
     });
 
     it("returns BLOCK when verdict is unrecognised", async () => {
@@ -314,12 +315,13 @@ describe("FlashGate", () => {
       expect(result.verdict).toBe("BLOCK");
     });
 
-    it("returns BLOCK when JSON is malformed", async () => {
+    it("returns PROCEED (fail-open) when JSON is malformed", async () => {
       launcher.enqueueSuccess("{verdict: PROCEED}");
 
       const result = await gate.evaluateF2(makeInput());
 
-      expect(result.verdict).toBe("BLOCK");
+      expect(result.verdict).toBe("PROCEED");
+      expect(result.reasons).toEqual(["Parse failure: fail-open (FP-31)"]);
     });
 
     it("returns BLOCK on launcher throw", async () => {
