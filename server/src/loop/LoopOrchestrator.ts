@@ -23,6 +23,7 @@ import { SessionManager, SessionConfig } from "../session/SessionManager";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { SdkSessionFactory } from "../session/ISdkSession";
 import { parseRateLimitReset } from "./rateLimitParser";
+import { RateLimitError } from "./RateLimitError";
 import { RateLimitStateManager } from "./RateLimitStateManager";
 import { SchedulerCoordinator } from "./SchedulerCoordinator";
 import { LoopWatchdog } from "./LoopWatchdog";
@@ -489,6 +490,7 @@ export class LoopOrchestrator implements IMessageInjector {
           const egoResponse = await this.ego.respondToMessage(combined, this.createLogCallback("EGO"));
           if (egoResponse) await this.checkEndorsement(egoResponse);
         } catch (err) {
+          if (err instanceof RateLimitError) throw err;
           this.logger.debug(`cycle ${this.cycleNumber}: pending message response failed — ${err instanceof Error ? err.message : String(err)}`);
         }
         // Processing messages is real work — reset idle counter to avoid premature sleep
@@ -673,6 +675,7 @@ export class LoopOrchestrator implements IMessageInjector {
     }
 
     while (this.state === LoopState.RUNNING) {
+      try {
       // Guard: if still rate limited (timer was woken early), re-sleep for remaining duration
       if (this.rateLimitUntil) {
         const remaining = new Date(this.rateLimitUntil).getTime() - this.clock.now().getTime();
@@ -693,29 +696,8 @@ export class LoopOrchestrator implements IMessageInjector {
       // so we don't misclassify a rate-limited idle cycle as genuinely idle.
       const rateLimitReset = parseRateLimitReset(cycleResult.summary, this.clock.now());
       if (rateLimitReset) {
-        const waitMs = rateLimitReset.getTime() - this.clock.now().getTime();
-        this.rateLimitUntil = rateLimitReset.toISOString();
-        this.logger.debug(`runLoop: rate limited — backing off ${waitMs}ms until ${this.rateLimitUntil}`);
-
-        // Save state before hibernation
-        if (this.rateLimitStateManager) {
-          const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
-          await this.rateLimitStateManager.saveStateBeforeSleep(rateLimitReset, currentTaskId);
-          this.logger.debug(`runLoop: state saved for rate limit hibernation`);
-        }
-
-        this.eventSink.emit({
-          type: "idle",
-          timestamp: this.clock.now().toISOString(),
-          data: { rateLimitUntil: this.rateLimitUntil, waitMs },
-        });
-        await this.timer.delay(waitMs);
-        // Only clear rate limit if the backoff period has actually elapsed.
-        // timer.wake() can resolve early (e.g. from Agora messages or watchdog),
-        // and we must NOT clear the rate limit prematurely or we'll waste API calls.
-        if (this.rateLimitUntil && new Date(this.rateLimitUntil).getTime() <= this.clock.now().getTime()) {
-          this.rateLimitUntil = null;
-        }
+        const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
+        await this.applyRateLimitBackoff(rateLimitReset, currentTaskId);
       } else {
         if (this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
           if (this.idleHandler) {
@@ -749,6 +731,13 @@ export class LoopOrchestrator implements IMessageInjector {
           this.logger.debug(`runLoop: delaying ${this.config.cycleDelayMs}ms before next cycle`);
           await this.timer.delay(this.config.cycleDelayMs);
         }
+      }
+      } catch (err) {
+        if (!(err instanceof RateLimitError)) throw err;
+        // Rate limit thrown from a non-dispatch path (idle handler, message response, etc.)
+        const rateLimitReset = parseRateLimitReset(err.message, this.clock.now())
+          ?? new Date(this.clock.now().getTime() + 60 * 60 * 1000);
+        await this.applyRateLimitBackoff(rateLimitReset, undefined);
       }
     }
     // Drain any remaining deferred work before exiting
@@ -1059,6 +1048,33 @@ export class LoopOrchestrator implements IMessageInjector {
     this.onSleepEnter?.().catch((err) => {
       this.logger.debug(`enterSleep: onSleepEnter failed — ${err instanceof Error ? err.message : String(err)}`);
     });
+  }
+
+  /**
+   * Applies a rate limit backoff: sets rateLimitUntil, saves hibernation state,
+   * emits the idle event, and waits. Used by both the summary-based detection
+   * path (dispatch cycle) and the thrown-RateLimitError path (idle handler, Ego).
+   */
+  private async applyRateLimitBackoff(rateLimitReset: Date, taskId: string | undefined): Promise<void> {
+    const waitMs = rateLimitReset.getTime() - this.clock.now().getTime();
+    this.rateLimitUntil = rateLimitReset.toISOString();
+    this.logger.debug(`runLoop: rate limited — backing off ${waitMs}ms until ${this.rateLimitUntil}`);
+
+    if (this.rateLimitStateManager) {
+      await this.rateLimitStateManager.saveStateBeforeSleep(rateLimitReset, taskId);
+      this.logger.debug("runLoop: state saved for rate limit hibernation");
+    }
+
+    this.eventSink.emit({
+      type: "idle",
+      timestamp: this.clock.now().toISOString(),
+      data: { rateLimitUntil: this.rateLimitUntil, waitMs },
+    });
+    await this.timer.delay(waitMs);
+    // Only clear after the backoff period has elapsed — timer.wake() can resolve early.
+    if (this.rateLimitUntil && new Date(this.rateLimitUntil).getTime() <= this.clock.now().getTime()) {
+      this.rateLimitUntil = null;
+    }
   }
 
   private createLogCallback(role: string, source: "cycle" | "conversation" = "cycle"): (entry: ProcessLogEntry) => void {

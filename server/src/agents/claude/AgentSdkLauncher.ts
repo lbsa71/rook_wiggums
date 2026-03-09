@@ -263,6 +263,10 @@ export class AgentSdkLauncher implements ISessionLauncher {
               if (evt.rate_limit_info.status === "rejected") {
                 rateLimitText = buildRateLimitText(evt.rate_limit_info.resetsAt);
                 accumulatedText += `\n${rateLimitText}`;
+                // Set error immediately so the rate limit text is in result.error
+                // regardless of whether the result message arrived before or after.
+                isError = true;
+                errorMessage = rateLimitText;
                 this.logger.debug(`sdk-launch: rate limited — resetsAt=${evt.rate_limit_info.resetsAt ?? "unknown"}`);
               }
             }

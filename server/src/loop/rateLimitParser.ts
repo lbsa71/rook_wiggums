@@ -1,4 +1,13 @@
 /**
+ * Returns true if the text is a rate limit message (with or without a reset time).
+ * Matches both the "resets …" format and the bare "You've hit your limit" fallback.
+ */
+export function isRateLimitText(text: string | undefined): boolean {
+  if (!text) return false;
+  return /You've hit your limit/i.test(text);
+}
+
+/**
  * Parses rate limit reset time from Claude SDK output.
  * Matches two patterns:
  *   - "resets 7pm (UTC)" — same-day or next-day reset
