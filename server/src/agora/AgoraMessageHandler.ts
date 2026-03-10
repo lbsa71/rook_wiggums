@@ -402,6 +402,13 @@ export class AgoraMessageHandler {
       return;
     }
 
+    // Skip messages sent by this agent (relay echo)
+    const selfIdentity = this.agoraService?.getSelfIdentity();
+    if (selfIdentity?.publicKey && envelopeFrom === selfIdentity.publicKey) {
+      this.logger.debug(`[AGORA] Skipping self-echo: envelopeId=${envelope.id}`);
+      return;
+    }
+
     // Check for duplicate envelope ID early - return without processing if duplicate
     if (this.isDuplicate(envelope.id)) {
       return;

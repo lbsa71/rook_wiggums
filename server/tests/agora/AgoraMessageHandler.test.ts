@@ -604,6 +604,39 @@ describe("AgoraMessageHandler", () => {
     });
   });
 
+  describe("Security: self-echo filtering", () => {
+    it("should silently drop messages where sender equals agent's own public key (relay echo)", async () => {
+      const selfPublicKey = "302a300506032b6570032100selfselfselfselfselfselfselfselfselfselfselfself00000000";
+      const selfEchoEnvelope: Envelope = {
+        id: "self-echo-envelope-123",
+        type: "dm",
+        from: selfPublicKey,
+        to: [selfPublicKey],
+        timestamp: 1708000000000,
+        payload: { message: "I said this" },
+        signature: "test-signature-self",
+      };
+
+      await handler.processEnvelope(selfEchoEnvelope, "relay");
+
+      // Should NOT write to conversation or inject
+      expect(conversationManager.appendedEntries).toHaveLength(0);
+      expect(messageInjector.injectedMessages).toHaveLength(0);
+
+      // Should log a debug entry about skipping self-echo
+      const selfEchoLog = logger.debugMessages.find(m => m.includes("Skipping self-echo") && m.includes("self-echo-envelope-123"));
+      expect(selfEchoLog).toBeDefined();
+    });
+
+    it("should process normally when sender is a different agent (not self)", async () => {
+      // testEnvelope.from is registered as a known peer in beforeEach
+      await handler.processEnvelope(testEnvelope, "relay");
+
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      expect(messageInjector.injectedMessages).toHaveLength(1);
+    });
+  });
+
   describe("Security: unknownSenderPolicy", () => {
     const unknownEnvelope: Envelope = {
       id: "unknown-envelope-123",
