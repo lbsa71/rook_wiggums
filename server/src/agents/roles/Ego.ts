@@ -76,7 +76,8 @@ export class Ego {
     private readonly sessionLauncher: ISessionLauncher,
     private readonly clock: IClock,
     private readonly taskClassifier: TaskClassifier,
-    private readonly workingDirectory?: string
+    private readonly workingDirectory?: string,
+    private readonly sourceCodePath?: string
   ) {}
 
   async decide(onLogEntry?: (entry: ProcessLogEntry) => void, runtimeContext?: string): Promise<EgoDecision> {
@@ -103,6 +104,7 @@ export class Ego {
         continueSession: true,
         persistSession: true,
         outputSchema: EGO_DECISION_SCHEMA,
+        ...(this.sourceCodePath ? { additionalDirs: [this.sourceCodePath] } : {}),
       });
 
       if (!result.success) {
@@ -170,6 +172,7 @@ export class Ego {
       cwd: this.workingDirectory,
       continueSession: true,
       persistSession: true,
+      ...(this.sourceCodePath ? { additionalDirs: [this.sourceCodePath] } : {}),
       ...options, // Allow overriding options (e.g. idleTimeoutMs)
     };
     const result = await this.sessionLauncher.launch({

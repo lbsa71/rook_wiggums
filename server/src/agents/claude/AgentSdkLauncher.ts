@@ -180,6 +180,10 @@ export class AgentSdkLauncher implements ISessionLauncher {
       queryOptions.cwd = options.cwd;
     }
 
+    if (options?.additionalDirs && options.additionalDirs.length > 0) {
+      queryOptions.additionalDirectories = options.additionalDirs;
+    }
+
     let accumulatedText = "";
     let resultOutput: string | null = null;
     let isError = false;
