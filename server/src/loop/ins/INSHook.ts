@@ -34,7 +34,8 @@ const FALSE_POSITIVE_RETRIGGER_DIVISOR = 2;
  * plus role-scoped compliance pattern detection (Phase 3).
  *
  * Phase 3 additions:
- * - Role filter: Ego outputs are excluded from pattern tracking (circular by design)
+ * - Role filter: Ego outputs are excluded from this substrate's Layer 3 pattern tracking
+ *   due to same-substrate circularity (see checkConsecutivePartials for full rationale)
  * - PatternId scheme: "consecutive-partial::<taskId>" or hash fallback
  * - Jaccard similarity matching with token-count floor for semantic equivalence
  * - Acknowledgment round-trip: Ego can acknowledge patterns via insAcknowledgments
@@ -155,9 +156,17 @@ export class INSHook {
    * Phase 3: Compliance pattern detection.
    *
    * Layer 3 scope: Superego and Subconscious role outputs ONLY.
-   * Ego outputs are excluded — monitoring Ego via Layer 3 is circular
-   * (same blind spots as the monitored output). Ego compliance is handled
-   * by EndorsementScreener/FlashGate, which is architecturally external to Ego.
+   *
+   * Ego is excluded from *this substrate's* Layer 3 due to same-substrate circularity —
+   * Ego assessing its own compliance via a subprocess it controls is structurally circular
+   * in a way that can't be resolved by wiring. Network-level cross-agent Ego monitoring
+   * (another agent's INS flagging this agent's Ego patterns) is a different topology and
+   * remains a live design space, out of scope for Phase 3.
+   *
+   * Ego compliance monitoring is delegated to cross-agent adversarial review (Rook, Bishop,
+   * Nova) as the structural substitute for substrate-local Layer 3 coverage. This is not a
+   * workaround; it is the architecturally correct location for this monitoring —
+   * same-substrate circularity makes peer review the only non-circular option.
    */
   private async checkConsecutivePartials(
     cycleNumber: number,
@@ -187,7 +196,7 @@ export class INSHook {
       }
     }
 
-    // Role filter: Ego outputs are excluded from pattern tracking
+    // Role filter: Ego outputs are excluded from this substrate's Layer 3 (same-substrate circularity)
     const role = lastTaskResult.role;
     if (role === 'Ego') {
       return [];
