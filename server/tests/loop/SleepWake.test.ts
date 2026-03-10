@@ -465,16 +465,14 @@ describe("LoopOrchestrator: watchdog sleep-awareness", () => {
   it("watchdog does not inject stall reminder when loop is sleeping", () => {
     const { orchestrator, deps, injected } = createOrchestratorWithWatchdog();
 
-    orchestrator.initializeSleeping(); // Simulate restart-in-sleep
+    orchestrator.initializeSleeping(); // Simulate restart-in-sleep; watchdog has no lastActivityTime yet
 
-    // Advance well past stall threshold — watchdog should be paused
+    // Advance well past stall threshold
     deps.clock.advance(5000);
 
-    // Manually check (simulating the interval firing)
-    // The watchdog was never started yet (no lastActivityTime), so this is a no-op anyway.
-    // We need to call recordActivity then pause explicitly:
-    orchestrator.initializeSleeping(); // already sleeping, no-op
-
+    // The watchdog is paused because the loop started in SLEEPING, and has no
+    // lastActivityTime — either guard alone would prevent injection here.
+    // Confirming that no stall reminder is injected while sleeping:
     expect(injected).toHaveLength(0);
   });
 
@@ -497,7 +495,7 @@ describe("LoopOrchestrator: watchdog sleep-awareness", () => {
       clock: deps.clock,
       logger,
       injectMessage: (msg) => injected.push(msg),
-      stallThresholdMs: 1,   // Very short threshold
+      stallThresholdMs: 1,   // 1ms — fires on any check() after activity is recorded
       forceRestartThresholdMs: 0,
     });
     orchestrator.setWatchdog(watchdog);
