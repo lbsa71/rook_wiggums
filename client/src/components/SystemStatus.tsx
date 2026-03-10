@@ -19,6 +19,7 @@ interface SessionMeta {
 interface LoopStatus {
   state: string;
   rateLimitUntil?: string;
+  nextHeartbeatWake?: string;
   version?: VersionInfo;
   meta?: SessionMeta;
   metrics: {
@@ -45,6 +46,18 @@ function formatAge(birthdate: string): string {
   if (days === 0) return `${hours}h`;
   if (days < 30) return `${days}d`;
   return `${Math.floor(days / 30)}mo`;
+}
+
+function formatCountdown(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return "now";
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24) return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ${hrs % 24}h`;
 }
 
 export function SystemStatus({ lastEvent, compact }: SystemStatusProps) {
@@ -100,6 +113,11 @@ export function SystemStatus({ lastEvent, compact }: SystemStatusProps) {
         {status.meta && (
           <span title={`Born: ${new Date(status.meta.birthdate).toString() === "Invalid Date" ? status.meta.birthdate : new Date(status.meta.birthdate).toLocaleString()}`}>
             Age: {formatAge(status.meta.birthdate)}
+          </span>
+        )}
+        {status.nextHeartbeatWake && (
+          <span title={`Next heartbeat: ${new Date(status.nextHeartbeatWake).toLocaleString()}`} data-testid="next-heartbeat">
+            ⏰ {formatCountdown(status.nextHeartbeatWake)}
           </span>
         )}
       </div>

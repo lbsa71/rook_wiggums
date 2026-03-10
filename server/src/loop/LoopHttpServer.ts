@@ -214,6 +214,8 @@ export class LoopHttpServer {
         };
         const rlu = this.orc.getRateLimitUntil();
         if (rlu) statusPayload.rateLimitUntil = rlu;
+        const nhw = this.orc.getNextHeartbeatWake();
+        if (nhw) statusPayload.nextHeartbeatWake = nhw;
         if (this.meta) statusPayload.meta = this.meta;
         this.json(res, 200, statusPayload);
         break;

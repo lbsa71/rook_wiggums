@@ -186,6 +186,12 @@ export class LoopOrchestrator implements IMessageInjector {
     return this.pendingMessages.length;
   }
 
+  getNextHeartbeatWake(): string | null {
+    if (!this.computeNextWake) return null;
+    const next = this.computeNextWake();
+    return next ? next.toISOString() : null;
+  }
+
   isEffectivelyPaused(): boolean {
     return this.state === LoopState.PAUSED || this.rateLimitUntil !== null;
   }
