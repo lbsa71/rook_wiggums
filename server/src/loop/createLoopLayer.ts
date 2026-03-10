@@ -413,11 +413,16 @@ export async function createLoopLayer(
 
   // INS (Involuntary Nervous System) — pre-cycle deterministic rule checks
   {
-    const { INSHook, ComplianceStateManager, defaultINSConfig } = await import("./ins");
+    const { INSHook, ComplianceStateManager, defaultINSConfig, insMaintenanceTrim } = await import("./ins");
     const insConfig = defaultINSConfig(config.substratePath);
     const complianceState = await ComplianceStateManager.load(insConfig.statePath, fs, logger);
     const insHook = new INSHook(reader, fs, clock, logger, insConfig, complianceState);
     orchestrator.setINSHook(insHook);
+    // Wire deterministic rate-limit trim — no LLM call, runs before each rate-limit re-sleep.
+    const conversationPath = path.join(config.substratePath, "CONVERSATION.md");
+    orchestrator.setRateLimitTrimFn(() =>
+      insMaintenanceTrim(conversationPath, insConfig.conversationLineThreshold, fs, logger),
+    );
     // ComplianceStateManager saves after each state change in INSHook — no shutdown hook needed.
   }
 
