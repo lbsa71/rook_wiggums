@@ -4,6 +4,8 @@ import {
   detectScheduleType,
   matchesCron,
   sameUtcMinute,
+  nextCronOccurrence,
+  computeNextWakeTime,
 } from "../../src/loop/HeartbeatParser";
 
 describe("detectScheduleType", () => {
@@ -226,5 +228,101 @@ describe("serialiseHeartbeat", () => {
     ];
     const result = serialiseHeartbeat(entries);
     expect(result).toBe("# @once\nFirst.\n\n# */5 * * * *\nSecond.\n");
+  });
+});
+
+describe("nextCronOccurrence", () => {
+  it("finds the next minute matching */30", () => {
+    // 20:15 → next match is 20:30
+    const now = new Date("2026-03-09T20:15:00Z");
+    const next = nextCronOccurrence("*/30 * * * *", now);
+    expect(next).toEqual(new Date("2026-03-09T20:30:00Z"));
+  });
+
+  it("finds the next minute matching a specific minute", () => {
+    // 20:30 → next match of minute=45 is 20:45
+    const now = new Date("2026-03-09T20:30:00Z");
+    const next = nextCronOccurrence("45 * * * *", now);
+    expect(next).toEqual(new Date("2026-03-09T20:45:00Z"));
+  });
+
+  it("wraps to the next hour", () => {
+    // 20:50 → next match of minute=15 is 21:15
+    const now = new Date("2026-03-09T20:50:00Z");
+    const next = nextCronOccurrence("15 * * * *", now);
+    expect(next).toEqual(new Date("2026-03-09T21:15:00Z"));
+  });
+
+  it("finds the next matching hour", () => {
+    // 20:30 → "0 9 * * *" fires at 09:00 next day
+    const now = new Date("2026-03-09T20:30:00Z");
+    const next = nextCronOccurrence("0 9 * * *", now);
+    expect(next).toEqual(new Date("2026-03-10T09:00:00Z"));
+  });
+
+  it("finds next matching day-of-week", () => {
+    // Monday 20:30 → "0 9 * * 3" = Wednesday 09:00
+    const now = new Date("2026-03-09T20:30:00Z"); // Monday
+    const next = nextCronOccurrence("0 9 * * 3", now);
+    expect(next).toEqual(new Date("2026-03-11T09:00:00Z")); // Wednesday
+  });
+
+  it("starts from the next minute, not the current one", () => {
+    // 20:30:00 with cron "30 20 * * *" should NOT match 20:30 (already current)
+    const now = new Date("2026-03-09T20:30:00Z");
+    const next = nextCronOccurrence("30 20 * * *", now);
+    expect(next).toEqual(new Date("2026-03-10T20:30:00Z"));
+  });
+
+  it("returns null for impossible cron within 7 days", () => {
+    // Month 13 doesn't exist
+    const now = new Date("2026-03-09T20:30:00Z");
+    const next = nextCronOccurrence("0 0 1 13 *", now);
+    expect(next).toBeNull();
+  });
+});
+
+describe("computeNextWakeTime", () => {
+  it("returns null for empty entries", () => {
+    const now = new Date("2026-03-09T20:30:00Z");
+    expect(computeNextWakeTime([], now)).toBeNull();
+  });
+
+  it("returns null for condition-only and @once entries", () => {
+    const now = new Date("2026-03-09T20:30:00Z");
+    const entries = parseHeartbeat(
+      "# @once\nFirst.\n\n# when: peer:nova.available\nSecond."
+    );
+    expect(computeNextWakeTime(entries, now)).toBeNull();
+  });
+
+  it("returns ISO timestamp if in the future", () => {
+    const now = new Date("2026-03-09T20:00:00Z");
+    const entries = parseHeartbeat("# 2026-03-09T21:00:00Z\nWake up.");
+    const result = computeNextWakeTime(entries, now);
+    expect(result).toEqual(new Date("2026-03-09T21:00:00Z"));
+  });
+
+  it("skips ISO timestamp if in the past", () => {
+    const now = new Date("2026-03-09T22:00:00Z");
+    const entries = parseHeartbeat("# 2026-03-09T21:00:00Z\nWake up.");
+    expect(computeNextWakeTime(entries, now)).toBeNull();
+  });
+
+  it("returns the next cron occurrence", () => {
+    const now = new Date("2026-03-09T20:15:00Z");
+    const entries = parseHeartbeat("# */30 * * * *\nCheck things.");
+    const result = computeNextWakeTime(entries, now);
+    expect(result).toEqual(new Date("2026-03-09T20:30:00Z"));
+  });
+
+  it("picks the earliest of multiple entries", () => {
+    const now = new Date("2026-03-09T20:15:00Z");
+    const entries = parseHeartbeat(
+      "# 2026-03-09T22:00:00Z\nLater.\n\n# */30 * * * *\nSooner."
+    );
+    const result = computeNextWakeTime(entries, now);
+    // */30 next fires at 20:30, ISO fires at 22:00 → 20:30 is earliest
+    expect(result).toEqual(new Date("2026-03-09T20:30:00Z"));
   });
 });

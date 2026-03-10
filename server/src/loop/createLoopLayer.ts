@@ -1,4 +1,5 @@
 import * as path from "path";
+import * as nodeFs from "node:fs";
 import { NodeTimer } from "./NodeTimer";
 import { LoopOrchestrator } from "./LoopOrchestrator";
 import { RateLimitStateManager } from "./RateLimitStateManager";
@@ -29,6 +30,8 @@ import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "imp
 import type { AgoraService } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { getIgnoredPeersPath, getSeenKeysPath } from "@rookdaemon/agora";
 import { LoopWatchdog } from "./LoopWatchdog";
+import { SleepWakeTimer } from "./SleepWakeTimer";
+import { parseHeartbeat, computeNextWakeTime } from "./HeartbeatParser";
 import { getAppPaths } from "../paths";
 import { EndorsementInterceptor, EndorsementScreener } from "../agents/endorsement";
 import { TinyBus, SessionInjectionProvider, ChatMessageProvider, type Message } from "../tinybus";
@@ -174,6 +177,20 @@ export async function createLoopLayer(
         try { await fs.writeFile(sleepStatePath, "awake"); } catch { /* ignore */ }
       }
     );
+
+    // Heartbeat-driven wake timer — wakes the loop at the next scheduled HEARTBEAT entry
+    const heartbeatPath = path.join(config.substratePath, "HEARTBEAT.md");
+    const sleepWakeTimer = new SleepWakeTimer(logger);
+    orchestrator.setSleepWakeTimer(sleepWakeTimer, () => {
+      try {
+        const content = nodeFs.readFileSync(heartbeatPath, "utf-8");
+        const entries = parseHeartbeat(content);
+        return computeNextWakeTime(entries, clock.now());
+      } catch {
+        return null; // HEARTBEAT.md absent or unreadable
+      }
+    });
+
     // Check for persisted sleep state from before restart
     try {
       const sleepContent = await fs.readFile(sleepStatePath);

@@ -39,6 +39,7 @@ import type { IAgoraService } from "../agora/IAgoraService";
 import { buildPeerReferenceDirectory, resolvePeerReference } from "../agora/utils";
 import type { INSResult } from "./ins/types";
 import type { INSHook } from "./ins/INSHook";
+import type { ISleepWakeTimer } from "./SleepWakeTimer";
 
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
@@ -126,6 +127,10 @@ export class LoopOrchestrator implements IMessageInjector {
   private resumeLoopFn: (() => Promise<void>) | null = null;
   private onSleepEnter: (() => Promise<void>) | null = null;
   private onSleepExit: (() => Promise<void>) | null = null;
+
+  // Heartbeat-driven wake timer — fires during SLEEPING to resume loop at next scheduled entry
+  private sleepWakeTimer: ISleepWakeTimer | null = null;
+  private computeNextWake: (() => Date | null) | null = null;
 
   private readonly substratePath: string;
 
@@ -246,6 +251,7 @@ export class LoopOrchestrator implements IMessageInjector {
       throw new Error(`Cannot wake: loop is in ${this.state} state`);
     }
     this.logger.debug("wake() called");
+    this.sleepWakeTimer?.clear();
     this.transition(LoopState.RUNNING);
     this.onSleepExit?.().catch((err) => {
       this.logger.debug(`wake: onSleepExit failed — ${err instanceof Error ? err.message : String(err)}`);
@@ -266,6 +272,8 @@ export class LoopOrchestrator implements IMessageInjector {
     }
     this.logger.debug("initializeSleeping() — starting in SLEEPING state");
     this.state = LoopState.SLEEPING;
+    this.watchdog?.pause();
+    this.armSleepWakeTimer();
   }
 
   setResumeLoopFn(fn: () => Promise<void>): void {
@@ -275,6 +283,15 @@ export class LoopOrchestrator implements IMessageInjector {
   setSleepCallbacks(onEnter: () => Promise<void>, onExit: () => Promise<void>): void {
     this.onSleepEnter = onEnter;
     this.onSleepExit = onExit;
+  }
+
+  /**
+   * Set the heartbeat-driven wake timer. During SLEEPING, the timer fires at the
+   * next scheduled HEARTBEAT entry to wake the loop just-in-time.
+   */
+  setSleepWakeTimer(timer: ISleepWakeTimer, computeNextWake: () => Date | null): void {
+    this.sleepWakeTimer = timer;
+    this.computeNextWake = computeNextWake;
   }
 
   setLauncher(launcher: { inject(message: string): void; isActive(): boolean }): void {
@@ -1049,6 +1066,26 @@ export class LoopOrchestrator implements IMessageInjector {
     this.onSleepEnter?.().catch((err) => {
       this.logger.debug(`enterSleep: onSleepEnter failed — ${err instanceof Error ? err.message : String(err)}`);
     });
+    this.armSleepWakeTimer();
+  }
+
+  /**
+   * Arm the heartbeat wake timer so the loop wakes at the next scheduled
+   * HEARTBEAT entry. Safe to call when no timer is configured (no-op).
+   */
+  private armSleepWakeTimer(): void {
+    if (!this.sleepWakeTimer || !this.computeNextWake) return;
+    const next = this.computeNextWake();
+    if (next) {
+      this.sleepWakeTimer.set(next, () => {
+        if (this.state === LoopState.SLEEPING) {
+          this.logger.debug("armSleepWakeTimer: heartbeat timer fired — waking loop");
+          this.wake();
+        }
+      });
+    } else {
+      this.sleepWakeTimer.clear();
+    }
   }
 
   /**

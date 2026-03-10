@@ -195,6 +195,14 @@ Built-in conditions:
   agora_peer_message             — An inbound Agora message was received this cycle.
   peer:<peerId>.available        — A peer recovered from offline (requires peerAvailabilityMonitor config).
 
+## Sleep-Aware Wake Timer
+
+When the loop enters SLEEPING state, the scheduler sets a timer for the next
+time-based entry (cron or ISO). The loop wakes just-in-time — no polling needed.
+If this file is empty or only has condition-based entries, no timer is set and
+the loop sleeps until woken by an external event (Agora message, user chat, or
+HTTP wake endpoint).
+
 ## Examples
 
 # @once

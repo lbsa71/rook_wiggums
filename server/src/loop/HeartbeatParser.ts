@@ -181,6 +181,58 @@ function parseHeader(header: string): { schedule: string; condition?: string } {
 }
 
 /**
+ * Compute the next time any heartbeat entry would fire, starting from `now`.
+ * Returns null if no time-based entries exist or none would fire within 7 days.
+ *
+ * Only considers time-based entries (cron, ISO). Condition-only and @once entries
+ * are excluded because they are event-driven, not time-driven.
+ */
+export function computeNextWakeTime(entries: HeartbeatEntry[], now: Date): Date | null {
+  let earliest: Date | null = null;
+
+  for (const entry of entries) {
+    const type = detectScheduleType(entry.schedule);
+    let next: Date | null = null;
+
+    if (type === "iso") {
+      const target = new Date(entry.schedule);
+      if (!isNaN(target.getTime()) && target > now) {
+        next = target;
+      }
+    } else if (type === "cron") {
+      next = nextCronOccurrence(entry.schedule, now);
+    }
+    // "once" and "condition-only" are not time-scheduled
+
+    if (next && (!earliest || next < earliest)) {
+      earliest = next;
+    }
+  }
+
+  return earliest;
+}
+
+/**
+ * Find the next minute (after `after`) that matches the given 5-field cron expression.
+ * Scans up to 7 days ahead. Returns null if no match is found.
+ */
+export function nextCronOccurrence(expression: string, after: Date): Date | null {
+  // Start from the next whole minute after `after`
+  const candidate = new Date(after);
+  candidate.setUTCSeconds(0, 0);
+  candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
+
+  const maxMinutes = 7 * 24 * 60; // 7-day scan window
+  for (let i = 0; i < maxMinutes; i++) {
+    if (matchesCron(expression, candidate)) {
+      return candidate;
+    }
+    candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
+  }
+  return null;
+}
+
+/**
  * Reconstruct HEARTBEAT.md content from a list of entries.
  */
 export function serialiseHeartbeat(entries: HeartbeatEntry[]): string {

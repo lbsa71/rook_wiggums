@@ -363,6 +363,15 @@ Append `when: <condition>` to a header to add a condition gate. The entry fires 
 | `agora_peer_message` | An inbound Agora message was received this cycle |
 | `peer:<peerId>.available` | A monitored peer recovered from offline (requires `peerAvailabilityMonitor` config) |
 
+#### Sleep-Aware Wake Timer
+
+When the loop enters **SLEEPING** state, the scheduler computes the next time-based entry (cron or ISO timestamp) and sets a timer to wake the loop just-in-time. This means cron and ISO entries fire on schedule even while sleeping — no polling required.
+
+- **Cron** entries: timer is set for the next matching minute (scanned up to 7 days ahead).
+- **ISO timestamp** entries: timer is set for the exact time (if still in the future).
+- **`@once`** and **condition-only** entries are ignored for wake scheduling (`@once` fires on the next active cycle; conditions are event-driven).
+- If HEARTBEAT.md is empty or contains only condition-based entries, no timer is set — the loop sleeps until woken by another event (Agora message, user chat, or HTTP wake endpoint).
+
 #### Examples
 
 ```markdown
