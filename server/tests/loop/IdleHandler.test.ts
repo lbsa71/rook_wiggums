@@ -14,6 +14,7 @@ import { FileLock } from "../../src/substrate/io/FileLock";
 import { PermissionChecker } from "../../src/agents/permissions";
 import { PromptBuilder } from "../../src/agents/prompts/PromptBuilder";
 import { TaskClassifier } from "../../src/agents/TaskClassifier";
+import { CanaryLogger } from "../../src/evaluation/CanaryLogger";
 
 function createTestDeps() {
   const fs = new InMemoryFileSystem();
@@ -297,7 +298,6 @@ describe("IdleHandler", () => {
     const canaryPath = "/data/canary-log.jsonl";
 
     beforeEach(() => {
-      const { CanaryLogger } = require("../../src/evaluation/CanaryLogger");
       canaryFs = new InMemoryFileSystem();
       const canaryLogger = new CanaryLogger(canaryFs, canaryPath);
       canaryHandler = new IdleHandler(deps.id, deps.superego, deps.ego, deps.clock, logger, canaryLogger, "claude");
