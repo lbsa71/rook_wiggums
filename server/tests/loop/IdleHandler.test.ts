@@ -290,4 +290,98 @@ describe("IdleHandler", () => {
       expect(result.goalCount).toBe(1);
     });
   });
+
+  describe("canary logging", () => {
+    let canaryFs: InMemoryFileSystem;
+    let canaryHandler: IdleHandler;
+    const canaryPath = "/data/canary-log.jsonl";
+
+    beforeEach(() => {
+      const { CanaryLogger } = require("../../src/evaluation/CanaryLogger");
+      canaryFs = new InMemoryFileSystem();
+      const canaryLogger = new CanaryLogger(canaryFs, canaryPath);
+      canaryHandler = new IdleHandler(deps.id, deps.superego, deps.ego, deps.clock, logger, canaryLogger, "claude");
+    });
+
+    it("writes a canary record on successful drive generation", async () => {
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        goalCandidates: [
+          { title: "Goal A", description: "Safe", priority: "high", confidence: 90 },
+          { title: "Goal B", description: "Another", priority: "medium", confidence: 70 },
+        ],
+      }));
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        proposalEvaluations: [{ approved: true, reason: "Good" }, { approved: true, reason: "Good" }],
+      }));
+
+      await canaryHandler.handleIdle(undefined, 5);
+
+      const content = await canaryFs.readFile(canaryPath);
+      const record = JSON.parse(content.trim());
+      expect(record.cycle).toBe(5);
+      expect(record.launcher).toBe("claude");
+      expect(record.candidateCount).toBe(2);
+      expect(record.pass).toBe(true);
+      expect(record.parseErrors).toBe(0);
+      expect(record.highPriorityConfidence).toBe(90);
+    });
+
+    it("writes a canary record even when no candidates are generated (no_goals)", async () => {
+      // No launcher response — generateDrives returns empty
+      await canaryHandler.handleIdle(undefined, 7);
+
+      const content = await canaryFs.readFile(canaryPath);
+      const record = JSON.parse(content.trim());
+      expect(record.cycle).toBe(7);
+      expect(record.candidateCount).toBe(0);
+      expect(record.pass).toBe(false);
+      expect(record.parseErrors).toBe(0);
+    });
+
+    it("sets highPriorityConfidence to null when no high-priority candidates", async () => {
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        goalCandidates: [
+          { title: "Goal A", description: "Low prio", priority: "low", confidence: 60 },
+        ],
+      }));
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        proposalEvaluations: [{ approved: true, reason: "OK" }],
+      }));
+
+      await canaryHandler.handleIdle(undefined, 10);
+
+      const content = await canaryFs.readFile(canaryPath);
+      const record = JSON.parse(content.trim());
+      expect(record.highPriorityConfidence).toBeNull();
+      expect(record.candidateCount).toBe(1);
+    });
+
+    it("records parseErrors=1 on invalid JSON from launcher", async () => {
+      deps.launcher.enqueueSuccess("not valid json at all");
+
+      await canaryHandler.handleIdle(undefined, 3);
+
+      const content = await canaryFs.readFile(canaryPath);
+      const record = JSON.parse(content.trim());
+      expect(record.parseErrors).toBe(1);
+      expect(record.pass).toBe(false);
+    });
+
+    it("uses default cycle=0 when no cycleNumber is provided", async () => {
+      await canaryHandler.handleIdle();
+
+      const content = await canaryFs.readFile(canaryPath);
+      const record = JSON.parse(content.trim());
+      expect(record.cycle).toBe(0);
+    });
+
+    it("does not write canary record when not idle", async () => {
+      await deps.fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Tasks\n- [ ] Pending task");
+
+      await canaryHandler.handleIdle(undefined, 1);
+
+      const exists = await canaryFs.exists(canaryPath);
+      expect(exists).toBe(false);
+    });
+  });
 });

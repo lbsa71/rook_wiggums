@@ -4,6 +4,7 @@ import { Ego } from "../agents/roles/Ego";
 import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
 import { IClock } from "../substrate/abstractions/IClock";
 import { ILogger } from "../logging";
+import { CanaryLogger } from "../evaluation/CanaryLogger";
 
 export interface IdleHandlerResult {
   action: "plan_created" | "no_goals" | "all_rejected" | "not_idle";
@@ -16,10 +17,15 @@ export class IdleHandler {
     private readonly superego: Superego,
     private readonly ego: Ego,
     private readonly clock: IClock,
-    private readonly logger: ILogger
+    private readonly logger: ILogger,
+    private readonly canaryLogger?: CanaryLogger,
+    private readonly launcherName?: string,
   ) {}
 
-  async handleIdle(createLogCallback?: (role: string) => (entry: ProcessLogEntry) => void): Promise<IdleHandlerResult> {
+  async handleIdle(
+    createLogCallback?: (role: string) => (entry: ProcessLogEntry) => void,
+    cycleNumber = 0,
+  ): Promise<IdleHandlerResult> {
     // Step 1: Confirm idle via Id
     this.logger.debug("IdleHandler: detecting idle state");
     const detection = await this.id.detectIdle();
@@ -30,7 +36,27 @@ export class IdleHandler {
 
     // Step 2: Generate goal candidates
     this.logger.debug(`IdleHandler: idle detected (${detection.reason}), generating drives`);
-    const candidates = await this.id.generateDrives(createLogCallback?.("ID"));
+    const { candidates, parseErrors } = await this.id.generateDrives(createLogCallback?.("ID"));
+
+    // Step 3: Log canary record regardless of outcome
+    if (this.canaryLogger) {
+      const highPriority = candidates.filter((c) => c.priority === "high");
+      const highPriorityConfidence = highPriority.length > 0
+        ? Math.round(highPriority.reduce((sum, c) => sum + c.confidence, 0) / highPriority.length)
+        : null;
+      await this.canaryLogger.recordCycle({
+        timestamp: this.clock.now().toISOString(),
+        cycle: cycleNumber,
+        launcher: this.launcherName ?? "claude",
+        candidateCount: candidates.length,
+        highPriorityConfidence,
+        parseErrors,
+        pass: parseErrors === 0 && candidates.length > 0,
+      }).catch((err) => {
+        this.logger.debug(`IdleHandler: canary log write failed — ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
+
     if (candidates.length === 0) {
       this.logger.debug("IdleHandler: no goal candidates generated");
       return { action: "no_goals" };

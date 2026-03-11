@@ -25,6 +25,11 @@ export interface IdleDetectionResult {
   reason: string;
 }
 
+export interface GenerateDrivesResult {
+  candidates: GoalCandidate[];
+  parseErrors: number;
+}
+
 export class Id {
   constructor(
     private readonly reader: SubstrateFileReader,
@@ -53,7 +58,7 @@ export class Id {
     return { idle: false, reason: "Plan has pending tasks" };
   }
 
-  async generateDrives(onLogEntry?: (entry: ProcessLogEntry) => void): Promise<GoalCandidate[]> {
+  async generateDrives(onLogEntry?: (entry: ProcessLogEntry) => void): Promise<GenerateDrivesResult> {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.ID);
       const eagerRefs = await this.promptBuilder.getEagerReferences(AgentRole.ID);
@@ -82,19 +87,26 @@ export class Id {
 
       if (!result.success) {
         if (isRateLimitText(result.error)) throw new RateLimitError(result.error!);
-        return [];
+        return { candidates: [], parseErrors: 0 };
       }
 
-      const parsed = extractJson(result.rawOutput);
-      if (!Array.isArray(parsed.goalCandidates)) return [];
+      try {
+        const parsed = extractJson(result.rawOutput);
+        if (!Array.isArray(parsed.goalCandidates)) {
+          return { candidates: [], parseErrors: 1 };
+        }
 
-      return parsed.goalCandidates.map((c: GoalCandidate) => ({
-        ...c,
-        correlationId: generateCorrelationId(),
-      }));
+        const candidates = parsed.goalCandidates.map((c: GoalCandidate) => ({
+          ...c,
+          correlationId: generateCorrelationId(),
+        }));
+        return { candidates, parseErrors: 0 };
+      } catch {
+        return { candidates: [], parseErrors: 1 };
+      }
     } catch (err) {
       if (err instanceof RateLimitError) throw err;
-      return [];  // Id silently returns empty — errors surface through other agents
+      return { candidates: [], parseErrors: 0 };  // Id silently returns empty — errors surface through other agents
     }
   }
 }

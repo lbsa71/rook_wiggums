@@ -725,7 +725,7 @@ export class LoopOrchestrator implements IMessageInjector {
         if (this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
           if (this.idleHandler) {
             this.logger.debug(`runLoop: idle threshold reached (${this.metrics.consecutiveIdleCycles}), invoking IdleHandler`);
-            const result = await this.idleHandler.handleIdle((role) => this.createLogCallback(role));
+            const result = await this.idleHandler.handleIdle((role) => this.createLogCallback(role), this.cycleNumber);
             this.logger.debug(`runLoop: IdleHandler result: ${result.action} (goalCount: ${result.goalCount ?? 0})`);
             this.eventSink.emit({
               type: "idle_handler",

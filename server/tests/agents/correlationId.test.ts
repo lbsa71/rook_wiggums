@@ -77,7 +77,7 @@ describe("Correlation IDs", () => {
         ],
       }));
 
-      const drives = await id.generateDrives();
+      const { candidates: drives } = await id.generateDrives();
       expect(drives).toHaveLength(2);
       expect(drives[0].correlationId).toMatch(/^drive-\d+-[a-z0-9]{6}$/);
       expect(drives[1].correlationId).toMatch(/^drive-\d+-[a-z0-9]{6}$/);
@@ -91,13 +91,13 @@ describe("Correlation IDs", () => {
         ],
       }));
 
-      const drives = await id.generateDrives();
+      const { candidates: drives } = await id.generateDrives();
       expect(drives[0].correlationId).not.toBe(drives[1].correlationId);
     });
 
     it("returns empty array (not throwing) on failure — backward compatible", async () => {
       launcher.enqueueFailure("error");
-      const drives = await id.generateDrives();
+      const { candidates: drives } = await id.generateDrives();
       expect(drives).toEqual([]);
     });
   });
