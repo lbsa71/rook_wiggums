@@ -179,6 +179,35 @@ describe("AgentSdkLauncher", () => {
     expect(calls[0].options?.model).toBe("claude-opus-4-20250514");
   });
 
+  it("passes additionalDirectories to query function when additionalDirs provided", async () => {
+    const messages: SdkMessage[] = [
+      { type: "result", subtype: "success", result: "ok", total_cost_usd: 0.0, duration_ms: 0 },
+    ];
+    const queryFn = createMockQueryFn(messages);
+    const launcher = new AgentSdkLauncher(queryFn, clock);
+
+    await launcher.launch(
+      { systemPrompt: "Go", message: "Hi" },
+      { cwd: "/workspace", additionalDirs: ["/source/root"] },
+    );
+
+    const calls = queryFn.getCalls();
+    expect(calls[0].options?.additionalDirectories).toEqual(["/source/root"]);
+  });
+
+  it("does not set additionalDirectories when additionalDirs is empty or absent", async () => {
+    const messages: SdkMessage[] = [
+      { type: "result", subtype: "success", result: "ok", total_cost_usd: 0.0, duration_ms: 0 },
+    ];
+    const queryFn = createMockQueryFn(messages);
+    const launcher = new AgentSdkLauncher(queryFn, clock);
+
+    await launcher.launch({ systemPrompt: "Go", message: "Hi" });
+
+    const calls = queryFn.getCalls();
+    expect(calls[0].options?.additionalDirectories).toBeUndefined();
+  });
+
   it("sets bypassPermissions and persistSession=false", async () => {
     const messages: SdkMessage[] = [
       { type: "result", subtype: "success", result: "ok", total_cost_usd: 0.0, duration_ms: 0 },

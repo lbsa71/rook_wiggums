@@ -36,6 +36,13 @@ export interface LaunchOptions {
    * schema exactly — no markdown wrappers, no prose preamble, no extra fields.
    */
   outputSchema?: Record<string, unknown>;
+  /**
+   * Additional directories to expose to the Claude session beyond `cwd`.
+   * AgentSdkLauncher passes these as `additionalDirectories` to the SDK.
+   * CopilotSessionLauncher passes each as a separate `--add-dir` argument.
+   * Other launchers (Gemini, Ollama, Vertex) ignore this field.
+   */
+  additionalDirs?: string[];
 }
 
 export interface ISessionLauncher {

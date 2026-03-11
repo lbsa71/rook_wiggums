@@ -15,6 +15,29 @@ import { AgentRole } from "../../../src/agents/types";
 import { ProcessLogEntry } from "../../../src/agents/claude/ISessionLauncher";
 import { TaskClassifier } from "../../../src/agents/TaskClassifier";
 
+async function makeEgo(workingDirectory?: string, sourceCodePath?: string): Promise<{ ego: Ego; launcher: InMemorySessionLauncher }> {
+  const testFs = new InMemoryFileSystem();
+  const testClock = new FixedClock(new Date("2025-06-15T10:00:00.000Z"));
+  const testLauncher = new InMemorySessionLauncher();
+  const config = new SubstrateConfig("/substrate");
+  const reader = new SubstrateFileReader(testFs, config);
+  const lock = new FileLock();
+  const writer = new SubstrateFileWriter(testFs, config, lock);
+  const appendWriter = new AppendOnlyWriter(testFs, config, lock, testClock);
+  const checker = new PermissionChecker();
+  const promptBuilder = new PromptBuilder(reader, checker);
+  const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
+  const compactor = new ConversationCompactor(testLauncher, workingDirectory ?? "/workspace");
+  const conversationManager = new ConversationManager(reader, testFs, config, lock, appendWriter, checker, compactor, testClock);
+
+  await testFs.mkdir("/substrate", { recursive: true });
+  await testFs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Tasks\n- [ ] Task A");
+  await testFs.writeFile("/substrate/VALUES.md", "# Values\n\nBe good");
+
+  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, testLauncher, testClock, taskClassifier, workingDirectory, sourceCodePath);
+  return { ego, launcher: testLauncher };
+}
+
 describe("Ego agent", () => {
   let fs: InMemoryFileSystem;
   let clock: FixedClock;
@@ -95,6 +118,25 @@ describe("Ego agent", () => {
 
       const launches = launcher.getLaunches();
       expect(launches[0].options?.cwd).toBe("/workspace");
+    });
+
+    it("passes sourceCodePath as additionalDirs when provided", async () => {
+      const { ego: egoWithSource, launcher: launcher2 } = await makeEgo("/workspace", "/source/root");
+
+      launcher2.enqueueSuccess(JSON.stringify({ action: "idle" }));
+      await egoWithSource.decide();
+
+      const launches = launcher2.getLaunches();
+      expect(launches[0].options?.additionalDirs).toEqual(["/source/root"]);
+    });
+
+    it("does not set additionalDirs when sourceCodePath is not provided", async () => {
+      launcher.enqueueSuccess(JSON.stringify({ action: "idle" }));
+
+      await ego.decide();
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].options?.additionalDirs).toBeUndefined();
     });
 
     it("forwards onLogEntry callback to session launcher", async () => {

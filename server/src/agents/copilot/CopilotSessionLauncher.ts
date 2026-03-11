@@ -58,6 +58,10 @@ export class CopilotSessionLauncher implements ISessionLauncher {
       args.push("--add-dir", options.cwd);
     }
 
+    for (const dir of (options?.additionalDirs ?? [])) {
+      args.push("--add-dir", dir);
+    }
+
     if (options?.continueSession && options.cwd) {
       if (!this.sessionIds.has(options.cwd)) {
         this.sessionIds.set(options.cwd, this.generateUUID());

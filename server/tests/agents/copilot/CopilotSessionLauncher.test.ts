@@ -97,6 +97,28 @@ describe("CopilotSessionLauncher", () => {
     expect(args[args.indexOf("--add-dir") + 1]).toBe("/my/workspace");
   });
 
+  it("passes each additionalDir as --add-dir", async () => {
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    await launcher.launch(makeRequest(), { additionalDirs: ["/source/root", "/extra/dir"] });
+
+    const args = runner.getCalls()[0].args;
+    const addDirIndices = args.reduce<number[]>((acc, arg, i) => (arg === "--add-dir" ? [...acc, i] : acc), []);
+    const addDirValues = addDirIndices.map((i) => args[i + 1]);
+    expect(addDirValues).toContain("/source/root");
+    expect(addDirValues).toContain("/extra/dir");
+  });
+
+  it("adds --add-dir for both cwd and additionalDirs when both provided", async () => {
+    runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
+    await launcher.launch(makeRequest(), { cwd: "/workspace", additionalDirs: ["/source/root"] });
+
+    const args = runner.getCalls()[0].args;
+    const addDirIndices = args.reduce<number[]>((acc, arg, i) => (arg === "--add-dir" ? [...acc, i] : acc), []);
+    const addDirValues = addDirIndices.map((i) => args[i + 1]);
+    expect(addDirValues).toContain("/workspace");
+    expect(addDirValues).toContain("/source/root");
+  });
+
   it("passes cwd option to the process runner", async () => {
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
     await launcher.launch(makeRequest(), { cwd: "/my/workspace" });
