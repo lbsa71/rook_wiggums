@@ -357,6 +357,7 @@ export async function createLoopLayer(
   if (config.apiToken) {
     httpServer.setApiToken(config.apiToken);
   }
+  httpServer.setCanaryRoute(id, canaryLogger, idLauncherName);
 
   // Set up TinyBus MCP server
   httpServer.setTinyBus(tinyBus);
