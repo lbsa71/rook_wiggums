@@ -105,6 +105,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // INS (Involuntary Nervous System) — pre-cycle deterministic rule checks
   private insHook: INSHook | null = null;
+  private rateLimitTrimFn: (() => Promise<void>) | null = null;
   private beforeCycleHook: (() => Promise<void>) | null = null;
   private lastINSResult: INSResult | null = null;
   private lastTaskResult: {
@@ -383,6 +384,15 @@ export class LoopOrchestrator implements IMessageInjector {
   /** Set the INS pre-cycle hook for deterministic rule checks. */
   setINSHook(hook: INSHook): void {
     this.insHook = hook;
+  }
+
+  /**
+   * Set the rate-limit maintenance trim function.
+   * Called before each rate-limit re-sleep to cap CONVERSATION.md growth.
+   * Must be a no-arg async function; all dependencies are pre-bound by the caller.
+   */
+  setRateLimitTrimFn(fn: () => Promise<void>): void {
+    this.rateLimitTrimFn = fn;
   }
 
   /** Get the last INS result for observability/testing. */
@@ -703,6 +713,15 @@ export class LoopOrchestrator implements IMessageInjector {
       if (this.rateLimitUntil) {
         const remaining = new Date(this.rateLimitUntil).getTime() - this.clock.now().getTime();
         if (remaining > 0) {
+          // Trim CONVERSATION.md before re-sleeping to prevent unbounded growth
+          // during long rate-limit windows. Deterministic — no LLM call.
+          if (this.rateLimitTrimFn) {
+            try {
+              await this.rateLimitTrimFn();
+            } catch (err) {
+              this.logger.debug(`runLoop: rate-limit trim failed — ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
           this.logger.debug(`runLoop: still rate limited — re-sleeping ${remaining}ms until ${this.rateLimitUntil}`);
           await this.timer.delay(remaining);
           if (this.rateLimitUntil && new Date(this.rateLimitUntil).getTime() <= this.clock.now().getTime()) {
