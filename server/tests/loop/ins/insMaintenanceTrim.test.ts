@@ -32,7 +32,6 @@ describe("insMaintenanceTrim", () => {
     const entryLines = Array.from({ length: threshold - 3 }, (_, i) => `[2026-03-01T12:00:00.000Z] Entry ${i}`);
     // header has 3 lines ("# Conversation", "", ""), entries make up the rest
     const content = header + entryLines.join("\n");
-    const lineCount = content.split("\n").length;
     // Pad or trim so it's exactly at threshold
     const lines = content.split("\n");
     while (lines.length < threshold) lines.push("");
