@@ -9,6 +9,7 @@ export interface CanaryRecord {
   highPriorityConfidence: number | null;
   parseErrors: number;
   pass: boolean;
+  trigger?: "idle" | "api";
 }
 
 /**

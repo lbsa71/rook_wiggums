@@ -25,6 +25,8 @@ import { IAgoraService } from "../agora/IAgoraService";
 import type { ILogger } from "../logging";
 import { getVersionInfo } from "../version";
 import { SubstrateMeta } from "../substrate/MetaManager";
+import type { Id } from "../agents/roles/Id";
+import { CanaryLogger } from "../evaluation/CanaryLogger";
 
 /** Maximum allowed HTTP request body size (1 MiB). Requests exceeding this limit receive HTTP 413. */
 const MAX_BODY_BYTES = 1 * 1024 * 1024;
@@ -67,6 +69,11 @@ export class LoopHttpServer {
   private meta: SubstrateMeta | null = null;
   private apiToken: string | null = null;
   private readonly agoraWebhookToken: string | undefined;
+  private canaryId: Id | null = null;
+  private canaryLogger: CanaryLogger | null = null;
+  private canaryLauncherName: string = "claude";
+  private canaryLastRunAt: number | null = null;
+  private static readonly CANARY_RATE_LIMIT_MS = 55 * 60 * 1000; // 55 minutes
 
   constructor() {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -145,6 +152,12 @@ export class LoopHttpServer {
 
   setApiToken(token: string): void {
     this.apiToken = token;
+  }
+
+  setCanaryRoute(id: Id, canaryLogger: CanaryLogger, launcherName: string): void {
+    this.canaryId = id;
+    this.canaryLogger = canaryLogger;
+    this.canaryLauncherName = launcherName;
   }
 
   listen(port: number): Promise<number> {
@@ -321,6 +334,10 @@ export class LoopHttpServer {
 
       case "POST /hooks/agent":
         this.handleAgoraWebhook(req, res);
+        break;
+
+      case "POST /api/canary/run":
+        this.handleCanaryRun(res);
         break;
 
       default:
@@ -799,6 +816,55 @@ export class LoopHttpServer {
         this.json(res, 500, { error: message });
       }
     });
+  }
+
+  private handleCanaryRun(res: http.ServerResponse): void {
+    if (!this.canaryId || !this.canaryLogger || !this.clock) {
+      this.json(res, 503, { error: "Canary route not configured" });
+      return;
+    }
+
+    const now = this.clock.now().getTime();
+    if (this.canaryLastRunAt !== null) {
+      const elapsed = now - this.canaryLastRunAt;
+      if (elapsed < LoopHttpServer.CANARY_RATE_LIMIT_MS) {
+        const retryAfterSec = Math.ceil((LoopHttpServer.CANARY_RATE_LIMIT_MS - elapsed) / 1000);
+        res.setHeader("Retry-After", String(retryAfterSec));
+        this.json(res, 429, { error: "Rate limited", retryAfterSeconds: retryAfterSec });
+        return;
+      }
+    }
+
+    this.canaryLastRunAt = now;
+
+    const id = this.canaryId;
+    const canaryLogger = this.canaryLogger;
+    const launcherName = this.canaryLauncherName;
+    const clock = this.clock;
+
+    id.generateDrives().then(({ candidates, parseErrors }) => {
+      const highPriority = candidates.filter((c) => c.priority === "high");
+      const highPriorityConfidence = highPriority.length > 0
+        ? Math.round(highPriority.reduce((sum, c) => sum + c.confidence, 0) / highPriority.length)
+        : null;
+      const record = {
+        timestamp: clock.now().toISOString(),
+        cycle: -1, // not a loop cycle — sentinel for API-triggered runs
+        launcher: launcherName,
+        candidateCount: candidates.length,
+        highPriorityConfidence,
+        parseErrors,
+        pass: parseErrors === 0 && candidates.length > 0,
+        trigger: "api" as const,
+      };
+      return canaryLogger.recordCycle(record).then(() => record);
+    }).then(
+      (record) => this.json(res, 200, record),
+      (err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        this.json(res, 500, { error: message });
+      }
+    );
   }
 
   private tryStateTransition(res: http.ServerResponse, fn: () => void): void {
