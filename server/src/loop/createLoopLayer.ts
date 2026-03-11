@@ -10,6 +10,7 @@ import { defaultLoopConfig } from "./types";
 import { HealthCheck } from "../evaluation/HealthCheck";
 import { MetricsStore } from "../evaluation/MetricsStore";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
+import { CanaryLogger } from "../evaluation/CanaryLogger";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { createSdkSessionFactory } from "../session/SdkSessionAdapter";
 import { BackupScheduler } from "./BackupScheduler";
@@ -142,7 +143,16 @@ export async function createLoopLayer(
     logger.debug("Agora not configured: " + (err instanceof Error ? err.message : String(err)));
   }
 
-  const idleHandler = new IdleHandler(id, superego, ego, clock, logger);
+  const canaryLogPath = path.resolve(config.substratePath, "..", "data", "canary-log.jsonl");
+  const canaryLogger = new CanaryLogger(fs, canaryLogPath);
+
+  // Determine the effective launcher name for canary observability records
+  const idLauncherName =
+    config.idLauncher === "vertex" && agents.vertexSubprocessLauncher
+      ? "vertex"
+      : config.sessionLauncher ?? "claude";
+
+  const idleHandler = new IdleHandler(id, superego, ego, clock, logger, canaryLogger, idLauncherName);
 
   const orchestrator = new LoopOrchestrator(
     ego, subconscious, superego, id,

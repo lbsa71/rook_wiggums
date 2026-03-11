@@ -63,7 +63,7 @@ describe("Id agent", () => {
     });
   });
 
-  describe("generateDrives", () => {
+   describe("generateDrives", () => {
     it("sends context to Claude and parses GoalCandidate[] response", async () => {
       const claudeResponse = JSON.stringify({
         idle: true,
@@ -75,13 +75,14 @@ describe("Id agent", () => {
       });
       launcher.enqueueSuccess(claudeResponse);
 
-      const drives = await id.generateDrives();
+      const { candidates: drives, parseErrors } = await id.generateDrives();
       expect(drives).toHaveLength(2);
       expect(drives[0].title).toBe("Learn TypeScript");
       expect(drives[0].priority).toBe("high");
       expect(drives[0].confidence).toBe(85);
       expect(drives[1].title).toBe("Write docs");
       expect(drives[1].confidence).toBe(90);
+      expect(parseErrors).toBe(0);
     });
 
     it("parses confidence scores correctly from response", async () => {
@@ -93,7 +94,7 @@ describe("Id agent", () => {
       });
       launcher.enqueueSuccess(claudeResponse);
 
-      const drives = await id.generateDrives();
+      const { candidates: drives } = await id.generateDrives();
       expect(drives).toHaveLength(2);
       expect(drives[0].confidence).toBe(95);
       expect(drives[1].confidence).toBe(45);
@@ -110,18 +111,28 @@ describe("Id agent", () => {
       expect(launches[0].options?.cwd).toBe("/workspace");
     });
 
-    it("returns empty array when Claude fails", async () => {
+    it("returns empty candidates and no parseErrors when Claude fails", async () => {
       launcher.enqueueFailure("error");
 
-      const drives = await id.generateDrives();
-      expect(drives).toEqual([]);
+      const { candidates, parseErrors } = await id.generateDrives();
+      expect(candidates).toEqual([]);
+      expect(parseErrors).toBe(0);
     });
 
-    it("returns empty array when Claude returns invalid JSON", async () => {
+    it("returns empty candidates with parseErrors=1 when Claude returns invalid JSON", async () => {
       launcher.enqueueSuccess("not json at all");
 
-      const drives = await id.generateDrives();
-      expect(drives).toEqual([]);
+      const { candidates, parseErrors } = await id.generateDrives();
+      expect(candidates).toEqual([]);
+      expect(parseErrors).toBe(1);
+    });
+
+    it("returns empty candidates with parseErrors=1 when goalCandidates is not an array", async () => {
+      launcher.enqueueSuccess(JSON.stringify({ goalCandidates: "not an array" }));
+
+      const { candidates, parseErrors } = await id.generateDrives();
+      expect(candidates).toEqual([]);
+      expect(parseErrors).toBe(1);
     });
   });
 
@@ -193,7 +204,7 @@ describe("Id agent", () => {
         goalCandidates: [{ title: "Goal", description: "Do it", priority: "high", confidence: 80 }],
       }));
 
-      const drives = await id.generateDrives();
+      const { candidates: drives } = await id.generateDrives();
       expect(drives).toHaveLength(1);
     });
   });
