@@ -186,6 +186,17 @@ describe("OllamaSessionLauncher", () => {
     expect(result.rawOutput).toBe("");
   });
 
+  it("returns success=false (does not fall back) when Ollama returns HTTP 530", async () => {
+    http.enqueueError(530, "upstream connect error");
+
+    const result = await launcher.launch(makeRequest());
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("530");
+    expect(result.rawOutput).toBe("");
+  });
+
   it("returns success=false with Ollama error field when present", async () => {
     http.enqueueJson({ error: "model 'no-such-model' not found, try pulling it first" });
 
