@@ -1,5 +1,6 @@
 import * as path from "path";
 import { IFileSystem } from "../substrate/abstractions/IFileSystem";
+import { ILogger } from "../logging";
 
 export interface DriveRating {
   task: string;
@@ -9,17 +10,54 @@ export interface DriveRating {
   category: string;
 }
 
+const DAILY_RATING_WARN_THRESHOLD = 100;
+const DUPLICATE_LOW_RATING_VALUE = 3;
+
 /**
  * Persists and queries Id drive quality ratings to enable learning over time.
  * Ratings are stored as newline-delimited JSON (JSONL) for simple append-only writes.
  */
 export class DriveQualityTracker {
+  private readonly duplicateLowRatingThreshold: number;
+
   constructor(
     private readonly fs: IFileSystem,
-    private readonly filePath: string
-  ) {}
+    private readonly filePath: string,
+    private readonly logger?: ILogger,
+    duplicateLowRatingThreshold = 3
+  ) {
+    this.duplicateLowRatingThreshold = duplicateLowRatingThreshold;
+  }
 
   async recordRating(rating: DriveRating): Promise<void> {
+    const existing = await this.getHistoricalRatings();
+
+    // Single pass over existing ratings to collect both guard metrics
+    const todayDate = rating.completedAt.slice(0, 10);
+    let dailyCount = 0;
+    let duplicateLowCount = 0;
+    for (const r of existing) {
+      if (r.completedAt.startsWith(todayDate)) dailyCount++;
+      if (r.task === rating.task && r.rating === DUPLICATE_LOW_RATING_VALUE) duplicateLowCount++;
+    }
+
+    // Guard A — Loop detection: warn if more than 100 ratings have already been
+    // recorded for the same date (completedAt date prefix). Still records the entry.
+    if (dailyCount > DAILY_RATING_WARN_THRESHOLD) {
+      this.logger?.warn(
+        "DriveQualityTracker: >100 ratings recorded today — possible loop artifact"
+      );
+    }
+
+    // Guard B — Retry loop deduplication: skip recording if the same task has already
+    // been rated exactly 3/10 at or above the configured threshold.
+    if (rating.rating === DUPLICATE_LOW_RATING_VALUE && duplicateLowCount >= this.duplicateLowRatingThreshold) {
+      this.logger?.warn(
+        "DriveQualityTracker: duplicate low-rating for task — skipping retry loop artifact"
+      );
+      return;
+    }
+
     const dir = path.dirname(this.filePath);
     await this.fs.mkdir(dir, { recursive: true });
     await this.fs.appendFile(this.filePath, JSON.stringify(rating) + "\n");
