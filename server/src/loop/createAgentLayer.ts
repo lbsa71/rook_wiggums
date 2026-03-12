@@ -212,7 +212,7 @@ export async function createAgentLayer(
 
   // Drive quality tracker — persists Id drive ratings for learning loop
   const driveRatingsPath = path.resolve(config.substratePath, "..", "data", "drive-ratings.jsonl");
-  const driveQualityTracker = new DriveQualityTracker(fs, driveRatingsPath);
+  const driveQualityTracker = new DriveQualityTracker(fs, driveRatingsPath, logger);
 
   const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.EGO), config.sourceCodePath);
   const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.SUBCONSCIOUS));

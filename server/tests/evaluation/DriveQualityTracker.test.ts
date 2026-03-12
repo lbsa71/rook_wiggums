@@ -1,14 +1,17 @@
 import { DriveQualityTracker, DriveRating } from "../../src/evaluation/DriveQualityTracker";
 import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFileSystem";
+import { InMemoryLogger } from "../../src/logging";
 
 describe("DriveQualityTracker", () => {
   let fs: InMemoryFileSystem;
+  let logger: InMemoryLogger;
   let tracker: DriveQualityTracker;
   const filePath = "/data/drive-ratings.jsonl";
 
   beforeEach(() => {
     fs = new InMemoryFileSystem();
-    tracker = new DriveQualityTracker(fs, filePath);
+    logger = new InMemoryLogger();
+    tracker = new DriveQualityTracker(fs, filePath, logger);
   });
 
   const makeRating = (overrides: Partial<DriveRating> = {}): DriveRating => ({
@@ -41,6 +44,117 @@ describe("DriveQualityTracker", () => {
       expect(lines).toHaveLength(2);
       expect(JSON.parse(lines[0]).rating).toBe(6);
       expect(JSON.parse(lines[1]).rating).toBe(9);
+    });
+
+    describe("Guard A — loop detection", () => {
+      it("does not warn when daily count is at or below 100", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        // Pre-seed exactly 100 ratings for the target date
+        const seed = Array.from({ length: 100 }, () =>
+          JSON.stringify(makeRating({ completedAt: "2026-03-02T10:00:00.000Z" }))
+        ).join("\n") + "\n";
+        await fs.appendFile(filePath, seed);
+
+        await tracker.recordRating(makeRating({ completedAt: "2026-03-02T10:00:00.000Z" }));
+        expect(logger.getWarnEntries()).toHaveLength(0);
+      });
+
+      it("emits a warning when daily count exceeds 100 but still records the rating", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        // Pre-seed 101 ratings for the target date so next call sees > 100
+        const seed = Array.from({ length: 101 }, () =>
+          JSON.stringify(makeRating({ completedAt: "2026-03-02T10:00:00.000Z" }))
+        ).join("\n") + "\n";
+        await fs.appendFile(filePath, seed);
+
+        await tracker.recordRating(makeRating({ completedAt: "2026-03-02T10:00:00.000Z" }));
+        expect(logger.getWarnEntries()).toContain(
+          "DriveQualityTracker: >100 ratings recorded today — possible loop artifact"
+        );
+        const ratings = await tracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(102);
+      });
+
+      it("only counts ratings for the same date when checking the daily limit", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        // Pre-seed 101 ratings for one date (guard would fire for that date)
+        const seed = Array.from({ length: 101 }, () =>
+          JSON.stringify(makeRating({ completedAt: "2026-03-01T10:00:00.000Z" }))
+        ).join("\n") + "\n";
+        await fs.appendFile(filePath, seed);
+
+        // Recording for a different date: daily count for 2026-03-02 is 0, no guard
+        await tracker.recordRating(makeRating({ completedAt: "2026-03-02T10:00:00.000Z" }));
+        expect(logger.getWarnEntries()).toHaveLength(0);
+      });
+    });
+
+    describe("Guard B — retry loop deduplication", () => {
+      const lowRatingTask = "Do a task [ID-generated 2026-02-20]";
+
+      it("records the first low rating normally", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        const ratings = await tracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(1);
+        expect(logger.getWarnEntries()).toHaveLength(0);
+      });
+
+      it("records up to (threshold - 1) low ratings without skipping", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        // Default threshold is 3 — recording 2 should still work
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        const ratings = await tracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(2);
+        expect(logger.getWarnEntries()).toHaveLength(0);
+      });
+
+      it("skips and warns when the same task hits the low-rating threshold", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        // Record 3 ratings of 3/10 for the same task (at threshold)
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+
+        // Fourth attempt for the same task at 3/10 should be skipped
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+
+        const ratings = await tracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(3);
+        expect(logger.getWarnEntries()).toContain(
+          "DriveQualityTracker: duplicate low-rating for task — skipping retry loop artifact"
+        );
+      });
+
+      it("does not skip non-3 ratings for a task that has many 3/10 ratings", async () => {
+        await fs.mkdir("/data", { recursive: true });
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+
+        // A different rating value for the same task should still be recorded
+        await tracker.recordRating(makeRating({ task: lowRatingTask, rating: 5 }));
+
+        const ratings = await tracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(4);
+      });
+
+      it("respects a custom duplicate low-rating threshold", async () => {
+        const strictTracker = new DriveQualityTracker(fs, filePath, logger, 2);
+        await fs.mkdir("/data", { recursive: true });
+        await strictTracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+        await strictTracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+
+        // With threshold=2, the third recording should be skipped
+        await strictTracker.recordRating(makeRating({ task: lowRatingTask, rating: 3 }));
+
+        const ratings = await strictTracker.getHistoricalRatings();
+        expect(ratings).toHaveLength(2);
+        expect(logger.getWarnEntries()).toContain(
+          "DriveQualityTracker: duplicate low-rating for task — skipping retry loop artifact"
+        );
+      });
     });
   });
 
