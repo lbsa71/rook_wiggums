@@ -150,6 +150,8 @@ export async function createLoopLayer(
   const idLauncherName =
     config.idLauncher === "vertex" && agents.vertexSubprocessLauncher
       ? "vertex"
+      : config.idLauncher === "ollama"
+      ? "ollama"
       : config.sessionLauncher ?? "claude";
 
   const idleHandler = new IdleHandler(id, superego, ego, clock, logger, canaryLogger, idLauncherName);
