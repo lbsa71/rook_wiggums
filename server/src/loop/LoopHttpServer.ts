@@ -166,6 +166,11 @@ export class LoopHttpServer {
         "[AGORA] AGORA_WEBHOOK_TOKEN not configured — webhook endpoint relies on Ed25519 signature verification only"
       );
     }
+    if (!this.apiToken && this.tinyBus) {
+      this.logger?.warn(
+        "[MCP] API token not configured — /mcp endpoint is unauthenticated. Set apiToken in config to require bearer token auth."
+      );
+    }
     return new Promise((resolve) => {
       this.server.listen(port, "127.0.0.1", () => {
         const addr = this.server.address();
@@ -189,8 +194,10 @@ export class LoopHttpServer {
     const url = req.url ?? "";
     const method = req.method ?? "";
 
-    // API token authentication — enforced on all routes except /hooks/* which have their own auth
-    if (this.apiToken && !url.startsWith("/hooks/")) {
+    // API token authentication — enforced on all routes when configured.
+    // /hooks/agent (Agora webhook) is also protected by this token and additionally by
+    // Ed25519 signature verification inside the handler.
+    if (this.apiToken) {
       const authHeader = req.headers.authorization;
       const expected = `Bearer ${this.apiToken}`;
       const valid = authHeader !== undefined &&
@@ -806,10 +813,10 @@ export class LoopHttpServer {
         this.logger?.debug(`[AGORA] Envelope signature verified: envelopeId=${result.envelope!.id}`);
 
         // Process the message via AgoraMessageHandler
-        await this.agoraMessageHandler!.processEnvelope(result.envelope!, "webhook");
+        const status = await this.agoraMessageHandler!.processEnvelope(result.envelope!, "webhook");
 
-        this.logger?.debug(`[AGORA] Webhook processed successfully: envelopeId=${result.envelope!.id}`);
-        this.json(res, 200, { success: true, envelopeId: result.envelope!.id });
+        this.logger?.debug(`[AGORA] Webhook processed successfully: envelopeId=${result.envelope!.id} status=${status}`);
+        this.json(res, 200, { accepted: true, envelopeId: result.envelope!.id, status });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         this.logger?.debug(`[AGORA] Webhook error: ${message}`);

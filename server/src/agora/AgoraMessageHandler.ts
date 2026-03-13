@@ -38,6 +38,15 @@ export interface RateLimitConfig {
 export type UnknownSenderPolicy = 'allow' | 'quarantine' | 'reject';
 
 /**
+ * Status returned by processEnvelope() to describe how the message was handled.
+ * - 'injected': delivered directly into an active agent session
+ * - 'queued': accepted and written to CONVERSATION.md; will be processed in next cycle
+ * - 'unprocessed': accepted but loop is stopped/paused/rate-limited; marked [UNPROCESSED]
+ * - 'ignored': dropped (duplicate, blocked sender, rate-limited, or filtered by gate)
+ */
+export type MessageStatus = 'injected' | 'queued' | 'unprocessed' | 'ignored';
+
+/**
  * AgoraMessageHandler - Handles inbound Agora messages
  * 
  * Responsibilities:
@@ -436,32 +445,32 @@ export class AgoraMessageHandler {
     return JSON.stringify(compactedPayload);
   }
 
-  async processEnvelope(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<void> {
+  async processEnvelope(envelope: Envelope, source: "webhook" | "relay" = "webhook"): Promise<MessageStatus> {
     const envelopeRouting = envelope as Envelope & { from?: string; to?: string[]; sender?: string };
     const envelopeFrom = envelopeRouting.from ?? envelopeRouting.sender ?? "";
     const envelopeTo = Array.isArray(envelopeRouting.to) ? envelopeRouting.to : [];
 
     if (this.ignoredPeers.has(envelopeFrom)) {
       this.logger.debug(`[AGORA] Ignoring message from blocked sender ${shortKey(envelopeFrom)}: envelopeId=${envelope.id}`);
-      return;
+      return 'ignored';
     }
 
     // Skip messages sent by this agent (relay echo)
     const selfIdentity = this.agoraService?.getSelfIdentity();
     if (selfIdentity?.publicKey && envelopeFrom === selfIdentity.publicKey) {
       this.logger.debug(`[AGORA] Skipping self-echo: envelopeId=${envelope.id}`);
-      return;
+      return 'ignored';
     }
 
     // Check for duplicate envelope ID early - return without processing if duplicate
     if (this.isDuplicate(envelope.id)) {
-      return;
+      return 'ignored';
     }
 
     // Content-based dedup (#238): catch identical messages with different envelope IDs
     // (e.g., announce heartbeat loops sending same payload every ~2 minutes)
     if (this.isDuplicateContent(envelopeFrom, envelope.type, envelope.payload)) {
-      return;
+      return 'ignored';
     }
 
     // Persist all encountered public keys for identity resolution.
@@ -494,7 +503,7 @@ export class AgoraMessageHandler {
     if (!knownPeer) {
       if (this.unknownSenderPolicy === 'reject') {
         this.logger.debug(`[AGORA] Rejected message from unknown sender ${shortKey(senderPublicKey)} (policy: reject)`);
-        return;
+        return 'ignored';
       } else if (this.unknownSenderPolicy === 'quarantine') {
         this.logger.debug(`[AGORA] Quarantining message from unknown sender ${shortKey(senderPublicKey)} (policy: quarantine)`);
         const formattedPayload = this.formatPayload(envelope.payload);
@@ -509,7 +518,7 @@ export class AgoraMessageHandler {
           this.removeFromDedup(envelope.id);
           throw err;
         }
-        return;
+        return 'unprocessed';
       }
       // policy === 'allow': continue processing
       this.logger.debug(`[AGORA] Allowing message from unknown sender ${shortKey(senderPublicKey)} (policy: allow)`);
@@ -519,7 +528,7 @@ export class AgoraMessageHandler {
     if (this.isRateLimitedSender(envelopeFrom)) {
       this.logger.debug(`[AGORA] Dropping rate-limited message: envelopeId=${envelope.id} from=${senderIdentity}`);
       // Silently drop the message - don't reveal rate limit state to potential spammers
-      return;
+      return 'ignored';
     }
 
     // F2 FlashGate: lightweight pre-check (timestamp anomaly, etc.)
@@ -527,7 +536,7 @@ export class AgoraMessageHandler {
       const preCheck = await this.flashGate.evaluate(envelope);
       if (preCheck.decision === "BLOCK") {
         this.logger.debug(`[AGORA] FlashGate BLOCK: envelopeId=${envelope.id} reason=${preCheck.reason ?? "(none)"}`);
-        return;
+        return 'ignored';
       }
       if (preCheck.decision === "ESCALATE") {
         this.logger.debug(`[AGORA] FlashGate ESCALATE: envelopeId=${envelope.id} reason=${preCheck.reason ?? "(none)"}`);
@@ -574,7 +583,7 @@ export class AgoraMessageHandler {
           `[F2] BLOCK — envelopeId=${envelope.id} sender=${senderIdentity} reasons=${JSON.stringify(gateResult.reasons)}`,
         );
         // Discard: do not inject and do not write to CONVERSATION.md
-        return;
+        return 'ignored';
       }
 
       if (gateResult.verdict === "ESCALATE") {
@@ -674,6 +683,8 @@ export class AgoraMessageHandler {
         this.onMessageProcessed();
       } catch { /* best-effort notification — never interrupt envelope processing */ }
     }
+
+    return isUnprocessed ? 'unprocessed' : (injected ? 'injected' : 'queued');
   }
 
   /**

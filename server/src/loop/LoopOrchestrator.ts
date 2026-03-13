@@ -720,7 +720,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
     // Enqueue schedulers as deferred work (overlaps with next cycle's dispatch)
     if (this.schedulerCoordinator) {
-      this.deferredWork.enqueue(this.schedulerCoordinator.runDueSchedulers());
+      this.deferredWork.enqueue(this.schedulerCoordinator.runDueSchedulers(this.pendingMessages.length));
     }
 
     return result;

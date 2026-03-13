@@ -91,7 +91,7 @@ export async function createLoopLayer(
       : config.maxConsecutiveIdleCycles,
     idleSleepEnabled: config.idleSleepConfig?.enabled ?? false,
     evaluateOutcomeEnabled: config.evaluateOutcome?.enabled ?? false,
-    evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 70,
+    evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 85,
   });
 
   const httpServer = new LoopHttpServer();
@@ -630,6 +630,7 @@ export async function createLoopLayer(
       }
     );
     schedulers.push({
+      urgent: false,
       shouldRun: async () => healthCheckScheduler.shouldRunCheck(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();
@@ -670,6 +671,7 @@ export async function createLoopLayer(
       delegationTracker
     );
     schedulers.push({
+      urgent: false,
       shouldRun: () => metricsScheduler.shouldRunMetrics(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();
@@ -729,6 +731,7 @@ export async function createLoopLayer(
       }
     );
     schedulers.push({
+      urgent: false,
       shouldRun: () => validationScheduler.shouldRunValidation(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();
