@@ -195,14 +195,38 @@ export class AgoraMessageHandler {
 
   /**
    * Check if an envelope ID has already been processed.
-   * Returns true if duplicate, false if new (does NOT record — call recordProcessed after write).
+   * Returns true if duplicate, false if new.
+   * Registers the ID immediately upon first encounter to block concurrent duplicate
+   * deliveries (e.g. webhook + relay overlap, or relay reconnect mid-flight delivery).
+   * If the write to CONVERSATION.md later fails, call removeFromDedup() to restore
+   * retry eligibility for future relay reconnect replays.
    */
   private isDuplicate(envelopeId: string): boolean {
     if (this.processedEnvelopeIds.has(envelopeId)) {
       this.logger.debug(`[AGORA] Duplicate envelope ${envelopeId} — skipping`);
       return true;
     }
+
+    // Register immediately to block concurrent duplicates.
+    // Size-bounded with oldest-first eviction.
+    this.processedEnvelopeIds.add(envelopeId);
+    if (this.processedEnvelopeIds.size > this.MAX_DEDUP_SIZE) {
+      const oldest = this.processedEnvelopeIds.values().next().value;
+      if (oldest !== undefined) {
+        this.processedEnvelopeIds.delete(oldest);
+      }
+    }
+
     return false;
+  }
+
+  /**
+   * Remove an envelope ID from the processed set.
+   * Called when a write to CONVERSATION.md fails so that future relay retries
+   * (e.g. reconnect-driven replay) are not permanently blocked by a transient error.
+   */
+  private removeFromDedup(envelopeId: string): void {
+    this.processedEnvelopeIds.delete(envelopeId);
   }
 
   /**
@@ -241,25 +265,15 @@ export class AgoraMessageHandler {
   }
 
   /**
-   * Record an envelope as successfully processed.
-   * MUST be called only after a successful write to CONVERSATION.md so that a failed
-   * write does not permanently block a legitimate relay retry of the same envelope.
-   *
-   * - Adds the envelope ID to the bounded processedEnvelopeIds set.
-   * - For structural message types (announce, heartbeat), also records the content hash
-   *   in the contentDedup map so periodic repeats are suppressed within the window.
+   * Record content-based dedup for structural message types after a successful write.
+   * The envelope-ID deduplication is handled by isDuplicate() at check time so that
+   * concurrent deliveries are blocked immediately. This method only needs to maintain
+   * the contentDedup map for structural types (announce, heartbeat) to suppress
+   * periodic repeats within the 30-minute dedup window.
    */
   private recordProcessed(envelopeId: string, senderPublicKey: string, messageType: string, payload: unknown): void {
-    // Record envelope ID with size-bounded eviction
-    this.processedEnvelopeIds.add(envelopeId);
-    if (this.processedEnvelopeIds.size > this.MAX_DEDUP_SIZE) {
-      const oldest = this.processedEnvelopeIds.values().next().value;
-      if (oldest !== undefined) {
-        this.processedEnvelopeIds.delete(oldest);
-      }
-    }
-
-    // Record content hash only for structural message types
+    // Record content hash only for structural message types.
+    // (The envelope ID is already registered in processedEnvelopeIds by isDuplicate().)
     if (AgoraMessageHandler.STRUCTURAL_MESSAGE_TYPES.has(messageType)) {
       const hash = this.computeContentHash(senderPublicKey, messageType, payload);
       const now = this.clock.now().getTime();
@@ -488,10 +502,11 @@ export class AgoraMessageHandler {
         try {
           await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);
           this.logger.debug(`[AGORA] Quarantined message written to CONVERSATION.md: envelopeId=${envelope.id}`);
-          // Record dedup AFTER successful write so relay retries aren't blocked if the write failed.
           this.recordProcessed(envelope.id, envelopeFrom, envelope.type, envelope.payload);
         } catch (err) {
           this.logger.debug(`[AGORA] Failed to write quarantined message to CONVERSATION.md: ${err instanceof Error ? err.message : String(err)}`);
+          // Unregister the ID so relay retries (e.g. reconnect-driven replay) can redeliver.
+          this.removeFromDedup(envelope.id);
           throw err;
         }
         return;
@@ -614,11 +629,13 @@ export class AgoraMessageHandler {
     try {
       await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);
       this.logger.debug(`[AGORA] Written to CONVERSATION.md: envelopeId=${envelope.id}`);
-      // Record dedup AFTER successful write so a failed write does not permanently
-      // blacklist the envelope ID and prevent legitimate relay retries.
+      // Record content dedup after successful write (envelope ID was already registered
+      // by isDuplicate() at entry to this function).
       this.recordProcessed(envelope.id, envelopeFrom, envelope.type, envelope.payload);
     } catch (err) {
       this.logger.debug(`[AGORA] Failed to write to CONVERSATION.md: ${err instanceof Error ? err.message : String(err)}`);
+      // Unregister the ID so relay retries (e.g. reconnect-driven replay) can redeliver.
+      this.removeFromDedup(envelope.id);
       throw err;
     }
 

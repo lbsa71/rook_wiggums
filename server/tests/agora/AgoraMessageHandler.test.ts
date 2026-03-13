@@ -1428,9 +1428,9 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries.length).toBe(before);
     });
 
-    it("failed write does NOT mark envelope as processed — retry succeeds", async () => {
-      // Simulate the relay-retry scenario: the first delivery attempt fails mid-write.
-      // The envelope ID must NOT be recorded so the relay's retry is processed normally.
+    it("failed write unregisters the ID so relay retry (reconnect replay) can succeed", async () => {
+      // When a write fails, removeFromDedup() removes the ID from the set so that
+      // a future relay-reconnect replay (same envelope ID) is not permanently blocked.
       const failingCm = new FailingConversationManager(1); // fail once, then succeed
       const retryHandler = new AgoraMessageHandler(
         agoraService,
@@ -1445,16 +1445,16 @@ describe("AgoraMessageHandler", () => {
         defaultRateLimitConfig
       );
 
-      // First attempt — write fails
+      // First attempt — write fails; ID is registered by isDuplicate then removed by removeFromDedup
       await expect(retryHandler.processEnvelope(testEnvelope, "relay")).rejects.toThrow("Simulated write failure");
 
-      // Retry with same envelope ID — should succeed because the ID was never recorded
+      // Relay retry (simulating reconnect replay) — ID is not in set → passes → write succeeds
       await retryHandler.processEnvelope(testEnvelope, "relay");
 
       expect(failingCm.appendedEntries).toHaveLength(1);
     });
 
-    it("quarantine failed write does NOT mark envelope as processed — retry succeeds", async () => {
+    it("quarantine failed write unregisters the ID so relay retry can succeed", async () => {
       const emptyService = new MockAgoraService(); // no known peers → quarantine path
       const failingCm = new FailingConversationManager(1);
       const retryHandler = new AgoraMessageHandler(
@@ -1470,14 +1470,30 @@ describe("AgoraMessageHandler", () => {
         defaultRateLimitConfig
       );
 
-      // First attempt — quarantine write fails
+      // First attempt — quarantine write fails; ID is removed from set
       await expect(retryHandler.processEnvelope(testEnvelope, "relay")).rejects.toThrow("Simulated write failure");
 
-      // Retry — should be quarantine-written successfully
+      // Relay retry — ID not in set → passes → quarantine write succeeds
       await retryHandler.processEnvelope(testEnvelope, "relay");
 
       expect(failingCm.appendedEntries).toHaveLength(1);
       expect(failingCm.appendedEntries[0].entry).toContain("[UNPROCESSED]");
+    });
+
+    it("isDuplicate registers the ID immediately — concurrent second delivery is blocked", async () => {
+      // After isDuplicate() returns false for the first delivery, the ID is already in the
+      // set. A second concurrent delivery with the same ID sees it and is blocked.
+      // This prevents two concurrent relay deliveries (webhook + relay, or relay reconnect
+      // mid-flight) from both writing to CONVERSATION.md.
+      const envelope1 = { ...testEnvelope };
+      const envelope2 = { ...testEnvelope }; // Same ID
+
+      // The first processEnvelope registers the ID immediately in isDuplicate.
+      // We test the sequential proxy: process the same ID twice — only first goes through.
+      await handler.processEnvelope(envelope1, "relay");
+      await handler.processEnvelope(envelope2, "relay"); // same ID → duplicate → blocked
+
+      expect(conversationManager.appendedEntries).toHaveLength(1);
     });
   });
 
