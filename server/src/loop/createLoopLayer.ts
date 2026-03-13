@@ -91,7 +91,7 @@ export async function createLoopLayer(
       : config.maxConsecutiveIdleCycles,
     idleSleepEnabled: config.idleSleepConfig?.enabled ?? false,
     evaluateOutcomeEnabled: config.evaluateOutcome?.enabled ?? false,
-    evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 70,
+    evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 85,
   });
 
   const httpServer = new LoopHttpServer();
@@ -388,28 +388,30 @@ export async function createLoopLayer(
   orchestrator.setReportStore(reportStore);
   orchestrator.setDriveQualityTracker(driveQualityTracker);
 
-  // Create performance metrics collector and wire into orchestrator
-  const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
-  orchestrator.setPerformanceMetrics(performanceMetrics);
+  // Create performance metrics collector and wire into orchestrator (guarded by metrics.enabled)
+  if (config.metrics?.enabled !== false) {
+    const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
+    orchestrator.setPerformanceMetrics(performanceMetrics);
 
-  // TinyBus → PerformanceMetrics wiring (#223): record message routing latency
-  tinyBus.on("message.complete", (data) => {
-    const d = data as {
-      message: Message;
-      durationMs: number;
-      routedTo: number;
-      successCount: number;
-      errorCount: number;
-    };
-    performanceMetrics.recordTinyBusMessage(
-      d.durationMs,
-      d.message.type,
-      d.message.source ?? "unknown",
-      d.routedTo,
-      d.errorCount === 0,
-      d.message.destination,
-    ).catch(() => { /* best-effort — never interrupt the bus */ });
-  });
+    // TinyBus → PerformanceMetrics wiring (#223): record message routing latency
+    tinyBus.on("message.complete", (data) => {
+      const d = data as {
+        message: Message;
+        durationMs: number;
+        routedTo: number;
+        successCount: number;
+        errorCount: number;
+      };
+      performanceMetrics.recordTinyBusMessage(
+        d.durationMs,
+        d.message.type,
+        d.message.source ?? "unknown",
+        d.routedTo,
+        d.errorCount === 0,
+        d.message.destination,
+      ).catch(() => { /* best-effort — never interrupt the bus */ });
+    });
+  }
 
   // Wire Agora service into orchestrator for sending agoraReplies
   // from Subconscious/Ego structured JSON output
@@ -630,6 +632,7 @@ export async function createLoopLayer(
       }
     );
     schedulers.push({
+      urgent: false,
       shouldRun: async () => healthCheckScheduler.shouldRunCheck(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();
@@ -670,6 +673,7 @@ export async function createLoopLayer(
       delegationTracker
     );
     schedulers.push({
+      urgent: false,
       shouldRun: () => metricsScheduler.shouldRunMetrics(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();
@@ -729,6 +733,7 @@ export async function createLoopLayer(
       }
     );
     schedulers.push({
+      urgent: false,
       shouldRun: () => validationScheduler.shouldRunValidation(),
       run: async () => {
         const cycleNumber = orchestrator.getCycleNumber();

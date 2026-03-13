@@ -205,6 +205,59 @@ describe("SubstrateValidator", () => {
       expect(report).toHaveProperty("orphanedFiles");
       expect(report).toHaveProperty("staleFiles");
       expect(report).toHaveProperty("consolidationCandidates");
+      expect(report).toHaveProperty("eagerReferenceCounts");
+    });
+  });
+
+  describe("eager reference counts", () => {
+    it("reports zero count for index files with no references", async () => {
+      await setupFs(fs, {
+        "MEMORY.md": "# Memory\n\nNo references here.\n",
+      });
+
+      const report = await validator.validate();
+      const memoryEntry = report.eagerReferenceCounts.find((e) => e.file === "MEMORY.md");
+      expect(memoryEntry).toBeDefined();
+      expect(memoryEntry!.count).toBe(0);
+      expect(memoryEntry!.overLimit).toBe(false);
+    });
+
+    it("does not flag files at or below the limit", async () => {
+      const refs = Array.from({ length: 5 }, (_, i) => `@memory/f${i}.md`).join("\n");
+      const files: Record<string, string> = { "MEMORY.md": `# Memory\n\n${refs}\n` };
+      for (let i = 0; i < 5; i++) files[`memory/f${i}.md`] = "# Content";
+
+      await setupFs(fs, files);
+
+      const report = await validator.validate();
+      const memoryEntry = report.eagerReferenceCounts.find((e) => e.file === "MEMORY.md");
+      expect(memoryEntry!.count).toBe(5);
+      expect(memoryEntry!.overLimit).toBe(false);
+    });
+
+    it("flags files exceeding the limit", async () => {
+      const refs = Array.from({ length: 6 }, (_, i) => `@memory/f${i}.md`).join("\n");
+      const files: Record<string, string> = { "MEMORY.md": `# Memory\n\n${refs}\n` };
+      for (let i = 0; i < 6; i++) files[`memory/f${i}.md`] = "# Content";
+
+      await setupFs(fs, files);
+
+      const report = await validator.validate();
+      const memoryEntry = report.eagerReferenceCounts.find((e) => e.file === "MEMORY.md");
+      expect(memoryEntry!.count).toBe(6);
+      expect(memoryEntry!.overLimit).toBe(true);
+    });
+
+    it("only includes index files that exist", async () => {
+      await setupFs(fs, {
+        "MEMORY.md": "# Memory\n",
+      });
+
+      const report = await validator.validate();
+      const files = report.eagerReferenceCounts.map((e) => e.file);
+      expect(files).toContain("MEMORY.md");
+      // Non-existent index files are not included
+      expect(files).not.toContain("SKILLS.md");
     });
   });
 });

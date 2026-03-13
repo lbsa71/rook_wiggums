@@ -326,7 +326,7 @@ export async function resolveConfig(
     cycleDelayMs: 30000,
     evaluateOutcome: {
       enabled: false,
-      qualityThreshold: 70,
+      qualityThreshold: 85,
     },
     conversationIdleTimeoutMs: 20000,
     conversationSessionMaxDurationMs: 300_000,

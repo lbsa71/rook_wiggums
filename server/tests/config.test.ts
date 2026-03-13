@@ -336,7 +336,7 @@ describe("resolveConfig", () => {
     });
 
     expect(config.evaluateOutcome?.enabled).toBe(false);
-    expect(config.evaluateOutcome?.qualityThreshold).toBe(70);
+    expect(config.evaluateOutcome?.qualityThreshold).toBe(85);
   });
 
   it("reads evaluateOutcome from config file", async () => {

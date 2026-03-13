@@ -75,11 +75,13 @@ export class ValidationScheduler {
       await this.persistLastValidationTime(this.lastValidationTime);
       await this.appendReportToProgress(report);
 
+      const overLimitCount = report.eagerReferenceCounts.filter((e) => e.overLimit).length;
       this.logger.debug(
         `ValidationScheduler: complete — ` +
           `${report.brokenReferences.length} broken refs, ` +
           `${report.orphanedFiles.length} orphaned files, ` +
-          `${report.staleFiles.length} stale files`
+          `${report.staleFiles.length} stale files, ` +
+          `${overLimitCount} files over @-reference limit`
       );
 
       return { success: true, report, timestamp };

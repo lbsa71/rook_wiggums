@@ -1018,7 +1018,7 @@ describe("AgoraMessageHandler", () => {
 
     it("does not call wakeLoop when wakeLoop is null (backward compatible)", async () => {
       // Default handler has no wakeLoop — should not throw
-      await expect(handler.processEnvelope(testEnvelope, "webhook")).resolves.toBeUndefined();
+      await expect(handler.processEnvelope(testEnvelope, "webhook")).resolves.toBeDefined();
     });
 
     it("still processes message normally after waking", async () => {

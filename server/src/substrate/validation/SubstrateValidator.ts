@@ -19,17 +19,26 @@ export interface ConsolidationCandidate {
   reason: string;
 }
 
+export interface EagerReferenceCount {
+  file: string;
+  count: number;
+  overLimit: boolean;
+}
+
 export interface ValidationReport {
   timestamp: string;
   brokenReferences: BrokenReference[];
   orphanedFiles: string[];
   staleFiles: StaleFile[];
   consolidationCandidates: ConsolidationCandidate[];
+  eagerReferenceCounts: EagerReferenceCount[];
 }
 
 const INDEX_FILES = ["MEMORY.md", "SKILLS.md", "HABITS.md", "VALUES.md", "ID.md", "SECURITY.md"];
 const SUBDIRS = ["memory", "skills", "habits", "values", "id", "security"];
 const STALE_THRESHOLD_DAYS = 30;
+/** Maximum number of eager @-references recommended per index file (R-T2). */
+export const MAX_EAGER_REFERENCES = 5;
 
 /** Normalize to posix style so path joins match on all platforms (e.g. tests use posix paths). */
 function toPosix(p: string): string {
@@ -54,6 +63,7 @@ export class SubstrateValidator {
       orphanedFiles: [],
       staleFiles: [],
       consolidationCandidates: [],
+      eagerReferenceCounts: [],
     };
 
     const allReferences = new Set<string>();
@@ -73,6 +83,11 @@ export class SubstrateValidator {
       }
 
       const refs = this.scanner.extractReferences(content);
+      report.eagerReferenceCounts.push({
+        file: indexFile,
+        count: refs.length,
+        overLimit: refs.length > MAX_EAGER_REFERENCES,
+      });
       for (const ref of refs) {
         allReferences.add(ref);
         const refPath = path.posix.join(baseDir, ref);

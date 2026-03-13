@@ -474,43 +474,11 @@ export class LoopOrchestrator implements IMessageInjector {
     }
 
     // INS pre-cycle hook — deterministic rule checks
-    if (this.insHook) {
-      try {
-        this.lastINSResult = await this.insHook.evaluate(
-          this.cycleNumber,
-          this.lastTaskResult ?? undefined,
-        );
-        if (!this.lastINSResult.noop) {
-          // Inject INS flags into pending messages so Ego sees them
-          this.pendingMessages.push(this.formatINSMessage(this.lastINSResult));
-          this.eventSink.emit({
-            type: "ins_complete",
-            timestamp: this.clock.now().toISOString(),
-            data: {
-              cycleNumber: this.cycleNumber,
-              actionCount: this.lastINSResult.actions.length,
-              actionTypes: this.lastINSResult.actions.map((a) => a.type),
-            },
-          });
-        }
-      } catch (err) {
-        // INS must never block the cycle
-        this.logger.debug(
-          `ins: hook failed — ${err instanceof Error ? err.message : String(err)}`,
-        );
-        this.lastINSResult = { noop: true, actions: [] };
-      }
-    }
+    await this.runINSHook();
 
     // R2 pre-dispatch ceiling check (deterministic, no LLM)
-    if (this.metrics.successfulCycles >= 50) {
-      this.logger.warn(`[R2] Session dispatch ceiling reached (${this.metrics.successfulCycles} cycles) — halting`);
-      this.pendingMessages.push(`[SYSTEM] R2 ceiling reached: ${this.metrics.successfulCycles} successful cycles. Session halted to prevent runaway dispatch cost. Escalate to partner.`);
-      this.stop();
-      return { cycleNumber: this.cycleNumber, action: "idle" as const, success: true, summary: "R2 session ceiling halt" };
-    } else if (this.metrics.successfulCycles >= 30) {
-      this.logger.warn(`[R2] Session dispatch warning: ${this.metrics.successfulCycles}/50 cycles`);
-    }
+    const r2Halt = this.checkR2Ceiling();
+    if (r2Halt) return r2Halt;
 
     const { dispatch, blockedTaskIds, timeBlockedTasks } = await this.ego.dispatchNext();
 
@@ -568,14 +536,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.logger.debug(`cycle ${this.cycleNumber}: dispatching task "${dispatch.taskId}"${dispatch.correlationId ? ` [correlationId: ${dispatch.correlationId}]` : ""}`);
 
       // Endpoint state injection — provide runtime context alongside task dispatch
-      const endpointStateContext = await this.readEndpointState();
-      this.pendingMessages.unshift(`[SYSTEM: CURRENT ENDPOINT STATE]\n${endpointStateContext}`);
-
-      const pending = this.pendingMessages.length > 0 ? [...this.pendingMessages] : undefined;
-      if (pending?.length) {
-        this.pendingMessages = [];
-        this.logger.debug(`cycle ${this.cycleNumber}: including ${pending.length} pending message(s) with task`);
-      }
+      const pending = await this.buildPendingWithEndpointState();
 
       const apiCallStartMs = this.clock.now().getTime();
       const taskResult = await this.subconscious.execute(
@@ -720,7 +681,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
     // Enqueue schedulers as deferred work (overlaps with next cycle's dispatch)
     if (this.schedulerCoordinator) {
-      this.deferredWork.enqueue(this.schedulerCoordinator.runDueSchedulers());
+      this.deferredWork.enqueue(this.schedulerCoordinator.runDueSchedulers(this.pendingMessages.length));
     }
 
     return result;
@@ -1459,5 +1420,63 @@ export class LoopOrchestrator implements IMessageInjector {
       return `[ENDPOINT STATE as of ${ts}]\nStatus: DEGRADED — Connectivity ok but inference timing out (HTTP 524).\nSince: ${state.lastSeen ?? "unknown"} | Consecutive degraded cycles: ${state.consecutiveDegraded ?? 0}\nACTION: Skip inference-gated tasks this cycle.`;
     }
     return `[ENDPOINT STATE as of ${ts}]\nStatus: DOWN — Cloudflare tunnel unreachable.\nSince: ${state.lastSeen ?? "unknown"} | Consecutive down cycles: ${state.consecutiveDown ?? 0}\nACTION: Skip ALL Ollama-gated tasks this cycle.`;
+  }
+
+  /** Run the INS pre-cycle hook. Never throws — failures are logged and treated as noop. */
+  private async runINSHook(): Promise<void> {
+    if (!this.insHook) return;
+    try {
+      this.lastINSResult = await this.insHook.evaluate(
+        this.cycleNumber,
+        this.lastTaskResult ?? undefined,
+      );
+      if (!this.lastINSResult.noop) {
+        this.pendingMessages.push(this.formatINSMessage(this.lastINSResult));
+        this.eventSink.emit({
+          type: "ins_complete",
+          timestamp: this.clock.now().toISOString(),
+          data: {
+            cycleNumber: this.cycleNumber,
+            actionCount: this.lastINSResult.actions.length,
+            actionTypes: this.lastINSResult.actions.map((a) => a.type),
+          },
+        });
+      }
+    } catch (err) {
+      this.logger.debug(`ins: hook failed — ${err instanceof Error ? err.message : String(err)}`);
+      this.lastINSResult = { noop: true, actions: [] };
+    }
+  }
+
+  /**
+   * Check the R2 dispatch ceiling. Returns a terminal CycleResult if the ceiling is
+   * reached (caller should return it immediately), or null to continue normally.
+   */
+  private checkR2Ceiling(): CycleResult | null {
+    if (this.metrics.successfulCycles >= 50) {
+      this.logger.warn(`[R2] Session dispatch ceiling reached (${this.metrics.successfulCycles} cycles) — halting`);
+      this.pendingMessages.push(`[SYSTEM] R2 ceiling reached: ${this.metrics.successfulCycles} successful cycles. Session halted to prevent runaway dispatch cost. Escalate to partner.`);
+      this.stop();
+      return { cycleNumber: this.cycleNumber, action: "idle" as const, success: true, summary: "R2 session ceiling halt" };
+    }
+    if (this.metrics.successfulCycles >= 30) {
+      this.logger.warn(`[R2] Session dispatch warning: ${this.metrics.successfulCycles}/50 cycles`);
+    }
+    return null;
+  }
+
+  /**
+   * Inject the current endpoint state into pendingMessages and return a snapshot
+   * of all pending messages (clearing the queue). Returns undefined if there are none.
+   */
+  private async buildPendingWithEndpointState(): Promise<string[] | undefined> {
+    const endpointStateContext = await this.readEndpointState();
+    this.pendingMessages.unshift(`[SYSTEM: CURRENT ENDPOINT STATE]\n${endpointStateContext}`);
+    const pending = this.pendingMessages.length > 0 ? [...this.pendingMessages] : undefined;
+    if (pending?.length) {
+      this.pendingMessages = [];
+      this.logger.debug(`cycle ${this.cycleNumber}: including ${pending.length} pending message(s) with task`);
+    }
+    return pending;
   }
 }
