@@ -22,6 +22,24 @@ class MockConversationManager implements IConversationManager {
   }
 }
 
+/** Conversation manager that throws on the first N appends, then succeeds. */
+class FailingConversationManager extends MockConversationManager {
+  public failuresRemaining: number;
+
+  constructor(failCount = 1) {
+    super();
+    this.failuresRemaining = failCount;
+  }
+
+  async append(role: AgentRole, entry: string): Promise<void> {
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining--;
+      throw new Error("Simulated write failure");
+    }
+    await super.append(role, entry);
+  }
+}
+
 class MockMessageInjector implements IMessageInjector {
   public injectedMessages: string[] = [];
   public returnValue = true; // Default: simulate active session delivery
@@ -530,7 +548,10 @@ describe("AgoraMessageHandler", () => {
       expect(conversationManager.appendedEntries).toHaveLength(2);
     });
 
-    it("should deduplicate non-announce message types too", async () => {
+    it("should NOT deduplicate non-structural message types (dm, publish, request)", async () => {
+      // Content dedup is intentionally scoped to structural types (announce, heartbeat) only.
+      // A peer sending the same conversational message twice (e.g., "hello?") must not be
+      // silently dropped — both entries should reach CONVERSATION.md.
       const request1: Envelope = {
         id: "req-1",
         type: "request",
@@ -545,7 +566,27 @@ describe("AgoraMessageHandler", () => {
       await handler.processEnvelope(request1, "relay");
       await handler.processEnvelope(request2, "relay");
 
-      expect(conversationManager.appendedEntries).toHaveLength(1);
+      // Both should be processed — request is not a structural type
+      expect(conversationManager.appendedEntries).toHaveLength(2);
+    });
+
+    it("should NOT deduplicate dm messages with identical content", async () => {
+      const dm1: Envelope = {
+        id: "dm-1",
+        type: "dm",
+        from: announceEnvelope.from,
+        to: announceEnvelope.to,
+        timestamp: 1708000000000,
+        payload: { text: "are you there?" },
+        signature: "test-sig",
+      };
+      const dm2 = { ...dm1, id: "dm-2" };
+
+      await handler.processEnvelope(dm1, "relay");
+      await handler.processEnvelope(dm2, "relay");
+
+      // Both should be processed — dm is not a structural type
+      expect(conversationManager.appendedEntries).toHaveLength(2);
     });
 
     it("should log dedup event with hash prefix", async () => {
@@ -1385,6 +1426,74 @@ describe("AgoraMessageHandler", () => {
       await handler2.processEnvelope(testEnvelope, "webhook");
       await handler2.processEnvelope(env2, "webhook");
       expect(conversationManager.appendedEntries.length).toBe(before);
+    });
+
+    it("failed write unregisters the ID so relay retry (reconnect replay) can succeed", async () => {
+      // When a write fails, removeFromDedup() removes the ID from the set so that
+      // a future relay-reconnect replay (same envelope ID) is not permanently blocked.
+      const failingCm = new FailingConversationManager(1); // fail once, then succeed
+      const retryHandler = new AgoraMessageHandler(
+        agoraService,
+        failingCm,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'quarantine',
+        defaultRateLimitConfig
+      );
+
+      // First attempt — write fails; ID is registered by isDuplicate then removed by removeFromDedup
+      await expect(retryHandler.processEnvelope(testEnvelope, "relay")).rejects.toThrow("Simulated write failure");
+
+      // Relay retry (simulating reconnect replay) — ID is not in set → passes → write succeeds
+      await retryHandler.processEnvelope(testEnvelope, "relay");
+
+      expect(failingCm.appendedEntries).toHaveLength(1);
+    });
+
+    it("quarantine failed write unregisters the ID so relay retry can succeed", async () => {
+      const emptyService = new MockAgoraService(); // no known peers → quarantine path
+      const failingCm = new FailingConversationManager(1);
+      const retryHandler = new AgoraMessageHandler(
+        emptyService,
+        failingCm,
+        messageInjector,
+        eventSink,
+        clock,
+        getState,
+        isRateLimited,
+        logger,
+        'quarantine',
+        defaultRateLimitConfig
+      );
+
+      // First attempt — quarantine write fails; ID is removed from set
+      await expect(retryHandler.processEnvelope(testEnvelope, "relay")).rejects.toThrow("Simulated write failure");
+
+      // Relay retry — ID not in set → passes → quarantine write succeeds
+      await retryHandler.processEnvelope(testEnvelope, "relay");
+
+      expect(failingCm.appendedEntries).toHaveLength(1);
+      expect(failingCm.appendedEntries[0].entry).toContain("[UNPROCESSED]");
+    });
+
+    it("isDuplicate registers the ID immediately — concurrent second delivery is blocked", async () => {
+      // After isDuplicate() returns false for the first delivery, the ID is already in the
+      // set. A second concurrent delivery with the same ID sees it and is blocked.
+      // This prevents two concurrent relay deliveries (webhook + relay, or relay reconnect
+      // mid-flight) from both writing to CONVERSATION.md.
+      const envelope1 = { ...testEnvelope };
+      const envelope2 = { ...testEnvelope }; // Same ID
+
+      // The first processEnvelope registers the ID immediately in isDuplicate.
+      // We test the sequential proxy: process the same ID twice — only first goes through.
+      await handler.processEnvelope(envelope1, "relay");
+      await handler.processEnvelope(envelope2, "relay"); // same ID → duplicate → blocked
+
+      expect(conversationManager.appendedEntries).toHaveLength(1);
     });
   });
 

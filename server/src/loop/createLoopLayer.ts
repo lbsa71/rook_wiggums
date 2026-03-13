@@ -253,14 +253,9 @@ export async function createLoopLayer(
       flashGate, // F2 gate — null when VertexSessionLauncher is unavailable
     );
 
-    // Connect to relay if configured — handler is already wired via constructor closure above
-    if (agoraConfig.relay?.autoConnect && agoraConfig.relay.url) {
-      // IMPORTANT: connectRelay is called after agoraMessageHandler is set above,
-      // so any queued relay messages are guaranteed to have a live handler.
-      // Connect to relay AFTER handler is registered so queued messages aren't lost
-      await agoraService.connectRelay(agoraConfig.relay.url);
-      logger.debug(`Connected to Agora relay at ${agoraConfig.relay.url}`);
-    }
+    // NOTE: connectRelay is intentionally deferred to after all startup state has been
+    // restored (dedup state, rate-limit state, sleep state, orchestrator deps).
+    // See the connectRelay call near the end of createLoopLayer for details.
   }
 
   // Set up TinyBus providers
@@ -872,6 +867,28 @@ export async function createLoopLayer(
       agoraMessageHandler.setProcessedEnvelopeIds(ids);
       logger.debug(`createLoopLayer: restored ${ids.length} Agora dedup envelope IDs from disk`);
     } catch { /* file absent — no dedup state to restore */ }
+  }
+
+  // Connect to the Agora relay only AFTER all startup state has been fully restored.
+  //
+  // Rationale: messages from the relay can arrive immediately on connectRelay(). By
+  // connecting here (the very end of createLoopLayer, after all setup):
+  //
+  // 1. Dedup state is loaded — the full processedEnvelopeIds set is in place, so relay
+  //    replays of previously-seen envelopes are correctly blocked by isDuplicate().
+  //
+  // 2. Rate-limit state is restored — isRateLimited() returns the correct value, so
+  //    the [UNPROCESSED] badge and pendingMessages handling are correct.
+  //
+  // 3. All orchestrator dependencies (launcher, INS hook, watchdog, etc.) are wired —
+  //    if the loop was persisted in SLEEPING state, wakeLoop() fires and starts runLoop()
+  //    with a fully-initialized orchestrator.
+  //
+  // Messages buffered by the relay while the substrate was unresponsive are replayed
+  // immediately after connection, so no messages are lost by deferring.
+  if (agoraService && agoraConfig?.relay?.autoConnect && agoraConfig.relay.url) {
+    await agoraService.connectRelay(agoraConfig.relay.url);
+    logger.debug(`Connected to Agora relay at ${agoraConfig.relay.url}`);
   }
 
   return { orchestrator, httpServer, wsServer, fileWatcher, tinyBus, mode };
