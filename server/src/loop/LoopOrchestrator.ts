@@ -786,6 +786,8 @@ export class LoopOrchestrator implements IMessageInjector {
       const retryAfterDirect = cycleResult.retryAfter ? new Date(cycleResult.retryAfter) : null;
       const rateLimitReset = retryAfterDirect ?? parseRateLimitReset(cycleResult.summary, this.clock.now());
       if (rateLimitReset) {
+        const source = retryAfterDirect ? "structured retryAfter" : "summary text parse";
+        this.logger.debug(`runLoop: rate limit detected via ${source} — reset=${rateLimitReset.toISOString()} action=${cycleResult.action} summary="${cycleResult.summary?.slice(0, 200)}"`);
         const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
         await this.applyRateLimitBackoff(rateLimitReset, currentTaskId);
       } else {
@@ -827,6 +829,7 @@ export class LoopOrchestrator implements IMessageInjector {
         // Rate limit thrown from a non-dispatch path (idle handler, message response, etc.)
         const rateLimitReset = parseRateLimitReset(err.message, this.clock.now())
           ?? new Date(this.clock.now().getTime() + 60 * 60 * 1000);
+        this.logger.debug(`runLoop: rate limit via thrown RateLimitError — message="${err.message.slice(0, 200)}" reset=${rateLimitReset.toISOString()}`);
         await this.applyRateLimitBackoff(rateLimitReset, undefined);
       }
     }
