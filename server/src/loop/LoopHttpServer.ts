@@ -194,10 +194,10 @@ export class LoopHttpServer {
     const url = req.url ?? "";
     const method = req.method ?? "";
 
-    // API token authentication — enforced on all routes when configured.
-    // /hooks/agent (Agora webhook) is also protected by this token and additionally by
-    // Ed25519 signature verification inside the handler.
-    if (this.apiToken) {
+    // API token authentication — enforced on all routes except /hooks/* which use their own auth.
+    // The Agora webhook (/hooks/agent) uses Ed25519 envelope signature verification; adding an
+    // API token requirement would break peer agents that don't know the local token.
+    if (this.apiToken && !url.startsWith("/hooks/")) {
       const authHeader = req.headers.authorization;
       const expected = `Bearer ${this.apiToken}`;
       const valid = authHeader !== undefined &&
