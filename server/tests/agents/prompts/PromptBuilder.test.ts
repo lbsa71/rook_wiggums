@@ -91,6 +91,58 @@ describe("PromptBuilder", () => {
       expect(prompt).toContain("Three-part test");
       expect(prompt).toContain("Banned compliance reflexes");
     });
+
+    it("does NOT include Gemini tool names note by default", () => {
+      const prompt = builder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+      expect(prompt).not.toContain("[Tool names for this session:");
+    });
+
+    describe("Gemini launcher", () => {
+      let geminiBuilder: PromptBuilder;
+
+      beforeEach(() => {
+        geminiBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          sourceCodePath: "/home/user/substrate",
+          sessionLauncherType: "gemini",
+        });
+      });
+
+      it("includes Gemini tool names note at top of system prompt", () => {
+        const prompt = geminiBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+        expect(prompt).toContain("[Tool names for this session: read_file, write_file, replace, run_shell_command, grep_search, glob]");
+      });
+
+      it("Gemini tool names note appears before role template", () => {
+        const prompt = geminiBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+        const noteIdx = prompt.indexOf("[Tool names for this session:");
+        const roleIdx = prompt.indexOf("You are the Subconscious");
+        expect(noteIdx).toBeLessThan(roleIdx);
+      });
+
+      it("includes Gemini-specific tool names in note", () => {
+        const prompt = geminiBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+        expect(prompt).toContain("read_file");
+        expect(prompt).toContain("write_file");
+        expect(prompt).toContain("replace");
+        expect(prompt).toContain("run_shell_command");
+        expect(prompt).toContain("grep_search");
+        expect(prompt).toContain("glob");
+      });
+
+      it("applies Gemini tool names note to all roles", () => {
+        for (const role of [AgentRole.EGO, AgentRole.SUBCONSCIOUS, AgentRole.SUPEREGO, AgentRole.ID]) {
+          const prompt = geminiBuilder.buildSystemPrompt(role);
+          expect(prompt).toContain("[Tool names for this session: read_file, write_file, replace, run_shell_command, grep_search, glob]");
+        }
+      });
+
+      it("still includes environment section and autonomy reminder", () => {
+        const prompt = geminiBuilder.buildSystemPrompt(AgentRole.SUBCONSCIOUS);
+        expect(prompt).toContain("=== ENVIRONMENT ===");
+        expect(prompt).toContain("=== AUTONOMY REMINDER ===");
+      });
+    });
   });
 
   describe("getContextReferences", () => {

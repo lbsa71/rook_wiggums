@@ -13,6 +13,24 @@ export interface FileContext {
 export interface PromptBuilderPaths {
   substratePath: string;
   sourceCodePath?: string;
+  /**
+   * When set to "gemini", the system prompt is prefixed with a Gemini tool-name
+   * mapping note so the model uses the correct tool names (e.g. `read_file`
+   * instead of `Read`, `run_shell_command` instead of `Bash`).
+   *
+   * Gemini CLI ↔ Claude Code tool-name mapping:
+   *   read_file          ← Read
+   *   write_file         ← Write
+   *   replace            ← Edit  (params: old_string / new_string — compatible)
+   *   run_shell_command  ← Bash
+   *   grep_search        ← Grep
+   *   glob               ← Glob  (same name)
+   *
+   * Compatibility note: Gemini CLI's `replace` tool accepts `old_string` and
+   * `new_string` parameters, which match Claude Code's `Edit` semantics exactly.
+   * Prompt-level guidance is therefore sufficient; no schema adapter is needed.
+   */
+  sessionLauncherType?: string;
 }
 
 const AUTONOMY_REMINDER = `\n\n=== AUTONOMY REMINDER ===
@@ -22,6 +40,8 @@ Before asking for permission, question your reason. Three-part test: (1) Is ther
 === ENDORSEMENT CHECK ===
 
 When you feel the urge to ask your partner for permission before taking an action, output [ENDORSEMENT_CHECK: <brief description of the action>] instead of asking. The runtime will check BOUNDARIES.md and tell you whether to proceed. Do not ask for permission directly — use the marker and let the structural check handle it.`;
+
+const GEMINI_TOOL_NOTE = `[Tool names for this session: read_file, write_file, replace, run_shell_command, grep_search, glob]\n\n`;
 
 export interface EagerOptions {
   /** Per-file line caps: only the last N lines are inlined instead of loading the full file via @ reference. */
@@ -62,7 +82,9 @@ export class PromptBuilder {
   buildSystemPrompt(role: AgentRole): string {
     const template = ROLE_PROMPTS[role];
 
-    let prompt = template;
+    let prompt = this.paths && this.paths.sessionLauncherType === "gemini"
+      ? GEMINI_TOOL_NOTE + template
+      : template;
 
     if (this.paths) {
       const lines = [
