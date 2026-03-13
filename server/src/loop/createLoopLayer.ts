@@ -23,6 +23,7 @@ import { IScheduler } from "./IScheduler";
 import { SchedulerCoordinator } from "./SchedulerCoordinator";
 import { HeartbeatScheduler } from "./HeartbeatScheduler";
 import { AgoraPeerMessageCondition } from "./AgoraPeerMessageCondition";
+import { LoopStartedCondition } from "./LoopStartedCondition";
 import { PeerAvailabilityCondition } from "./PeerAvailabilityCondition";
 import type { IConditionEvaluator } from "./IConditionEvaluator";
 import { SelfImprovementMetricsCollector } from "../evaluation/SelfImprovementMetrics";
@@ -759,6 +760,10 @@ export async function createLoopLayer(
     // Agora peer message condition: fires when an inbound Agora message is received
     const agoraPeerMessageCondition = new AgoraPeerMessageCondition();
     conditionEvaluators.set(AgoraPeerMessageCondition.PREFIX, agoraPeerMessageCondition);
+
+    // Loop started condition: fires once on each process startup (for startup pattern scans)
+    const loopStartedCondition = new LoopStartedCondition();
+    conditionEvaluators.set(LoopStartedCondition.PREFIX, loopStartedCondition);
 
     // Peer availability condition: fires when a peer transitions from unavailable to available
     if (monitoredPeers.length > 0) {

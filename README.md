@@ -361,6 +361,7 @@ Append `when: <condition>` to a header to add a condition gate. The entry fires 
 | Condition | Fires when |
 |-----------|-----------|
 | `agora_peer_message` | An inbound Agora message was received this cycle |
+| `loop_started` | The process just started (fires once per startup). Use for return-from-absence scans. |
 | `peer:<peerId>.available` | A monitored peer recovered from offline (requires `peerAvailabilityMonitor` config) |
 
 #### Sleep-Aware Wake Timer
@@ -392,6 +393,9 @@ A peer has sent a message. Check AGORA_INBOX.md and respond if appropriate.
 
 # 0 * * * * when: peer:alice.available
 Alice just came back online. Send a greeting via Agora.
+
+# when: loop_started
+Pattern review: check shared/patterns/ for entries newer than last review. For each new pattern, evaluate whether it applies to your current substrate state. Write your own instantiation if it does.
 ```
 
 ---
