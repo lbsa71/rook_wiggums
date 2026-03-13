@@ -107,9 +107,7 @@ LoopOrchestrator.executeOneCycle()
 
 | ID | Recommendation | Priority |
 |---|---|---|
-| R-L1 | Extract R2 ceiling, endpoint-state injection, outcome evaluation, and Agora reply dispatch out of `executeOneCycle()` into small collaborator methods or classes | quick win |
 | R-L2 | Split `createLoopLayer.ts` into sub-factories: `createSchedulerSet()`, `createAgoraStack()`, `createTinyBusStack()`, `createCodeDispatch()`. The main `createLoopLayer()` should orchestrate sub-factories, not build every object inline | medium |
-| R-L3 | Guard optional-feature instantiation behind config flags. Only create `GovernanceReportStore`, `DriveQualityTracker`, `PerformanceMetrics`, and evaluation trackers when their config flags are enabled | quick win |
 | R-L4 | Introduce `PeriodicJobScheduler<T>` and collapse Backup, Health, Metrics, Validation schedulers into parameterised instances. Keep Heartbeat (cron/ISO parsing) and Email (timezone scheduling) as bespoke | medium |
 | R-L5 | Remove the INS hook or demote it to a per-task (not per-cycle) concern; move compliance reminders into the system prompt where they are already present via `PromptBuilder` | medium |
 
@@ -165,9 +163,7 @@ LoopOrchestrator.executeOneCycle()
 | ID | Recommendation | Priority |
 |---|---|---|
 | R-T1 | Add a per-prompt conversation window cap in `PromptBuilder` / `Subconscious` (e.g. last N lines or last K bytes of CONVERSATION.md). `ConversationCompactor` can still run in the background, but the prompt should never include the full file once it exceeds the cap | medium |
-| R-T2 | Document and enforce a maximum number of eager `@`-references per substrate file (suggest ≤5 per file). Surface current count in substrate validation output | quick win |
 | R-T3 | Pass a per-cycle substrate snapshot (PLAN.md + key context files) from Ego down to Subconscious rather than re-reading from disk. The mtime cache already helps, but explicit sharing removes the ambiguity | medium |
-| R-T4 | Keep `evaluateOutcome` defaulting to disabled; when enabled, raise the default quality threshold (currently 70%) to 85% to reduce how often the second call fires | quick win |
 | R-T5 | Add a fast-path skip to `HealthCheckScheduler`: if the last N cycles all returned `success` and the log contains no `error`-level entries since the last check, skip the LLM call and emit a synthetic "healthy" result | medium |
 
 ---
@@ -223,11 +219,9 @@ LoopOrchestrator.executeOneCycle()
 
 | ID | Recommendation | Priority |
 |---|---|---|
-| R-S1 | Add bearer token requirement to `/mcp` when `apiToken` is configured. If `apiToken` is not set, log a warning that MCP is unauthenticated. Consider disabling `CodeDispatchMcpServer` by default and requiring explicit opt-in | quick win |
 | R-S2 | Add bearer token requirement to `/hooks/agent` when `apiToken` is configured, consistent with `/api/*` | quick win |
 | R-S3 | Persist the last N processed envelope IDs to a substrate file (e.g. `AGORA_SEEN.md` or a small JSON file) on each write, and reload on startup. 200–500 IDs is sufficient for practical replay protection across restarts | medium |
 | R-S4 | Run `SecretDetector` on every substrate file write (in `FileWriter` or as a `DeferredWorkQueue` item) rather than only during weekly validation. Fail the write or emit a high-severity log event on detection | medium |
-| R-S5 | Write a PID file to the substrate directory on startup and refuse to start if a PID file already exists for a running process. Remove on clean shutdown | quick win |
 | R-S6 | Persist per-sender rate-limit windows (Map entries) to disk on shutdown and reload on startup, consistent with the rate-limit backoff persistence already in place | medium |
 
 ---
@@ -292,8 +286,6 @@ In **tick mode**: messages arrive into the SDK session directly or via `SessionM
 |---|---|---|
 | R-R1 | Document the in-cycle latency clearly: when a long Subconscious session is running, incoming messages wait. As a mitigation, consider a maximum Subconscious session wall-time (already exists as `conversationSessionMaxDurationMs`); ensure it applies to cycle-mode sessions too and is tuned to a value that balances work throughput vs. responsiveness | quick win |
 | R-R2 | Move `DeferredWorkQueue.drain()` to end-of-cycle (after role execution). Deferred work from cycle N runs at the end of N, freeing cycle N+1's start for immediate Ego dispatch. This is the natural place: "do cleanup after the main work, not before the next cycle's main work" | medium |
-| R-R3 | In `SchedulerCoordinator.runDueSchedulers()`, check `pendingMessages.length > 0` before running non-urgent schedulers (Metrics, Validation, Health). If messages are waiting, defer those schedulers one cycle | medium |
-| R-R4 | Return a structured JSON body from the Agora webhook response: `{ accepted: true, status: "injected" \| "queued" \| "unprocessed" }`. This lets senders know whether the agent is currently active | quick win |
 
 ---
 
@@ -335,7 +327,6 @@ In **tick mode**: messages arrive into the SDK session directly or via `SessionM
 |---|---|---|
 | R-P1 | For `ClaudeCliBackend` and `GeminiCliBackend`, evaluate whether the CLI supports a "server" or "batch" mode that can handle multiple prompts in one process invocation. If not, document the per-call spawn cost and consider rate-limiting code dispatch requests | medium |
 | R-P2 | Document that tick mode is the recommended choice for any workload with frequent external messages. Prefer tick mode as the default in documentation; cycle mode is appropriate for fully autonomous batch work | quick win |
-| R-P3 | Only instantiate schedulers that are config-enabled. Gating instantiation on config in `createLoopLayer.ts` removes unnecessary object allocation and makes the active feature set transparent | quick win |
 | R-P4 | Add a "one LLM-session-per-cycle" coalescing constraint to `SchedulerCoordinator`: if the current cycle already invoked an LLM session (detected via a flag set by the orchestrator), defer any scheduler-triggered LLM calls to the next cycle | medium |
 
 ---
@@ -346,15 +337,9 @@ In **tick mode**: messages arrive into the SDK session directly or via `SessionM
 
 | ID | Theme | Priority | Dependencies |
 |---|---|---|---|
-| R-L1 | Extract sub-methods from executeOneCycle | quick win | — |
-| R-L3, R-P3 | Guard optional-feature instantiation | quick win | — |
-| R-S1, R-S2 | Auth for `/mcp` and `/hooks/agent` | quick win | — |
-| R-S5 | PID file guard | quick win | — |
+| R-S2 | Auth for `/hooks/agent` | quick win | — |
 | R-R1 | Tune session wall-time cap in cycle mode (document in-cycle latency) | quick win | — |
-| R-T4 | Raise evaluateOutcome threshold | quick win | — |
-| R-T2 | Cap eager @-references, surface in validation | quick win | SubstrateValidator |
-| R-R4 | Structured Agora webhook response | quick win | — |
-| R-L4 | PeriodicJobScheduler consolidation | medium | R-L3, R-P3 |
+| R-L4 | PeriodicJobScheduler consolidation | medium | — |
 | R-L5 | Remove or demote INS hook | medium | — |
 | R-T1 | Conversation window cap in prompt builder | medium | ConversationCompactor |
 | R-T3 | Within-cycle substrate snapshot sharing | medium | — |
@@ -363,15 +348,14 @@ In **tick mode**: messages arrive into the SDK session directly or via `SessionM
 | R-S4 | Write-time secret detection | medium | FileWriter |
 | R-S6 | Persist per-sender rate-limit state | medium | — |
 | R-R2 | Move DeferredWork drain to end-of-cycle | medium | — |
-| R-R3 | Interruptible schedulers when messages pending | medium | — |
 | R-P4 | One-LLM-session-per-cycle coalescing | medium | SchedulerCoordinator |
-| R-L2 | Split createLoopLayer into sub-factories | refactor | R-L3, R-L4 |
+| R-L2 | Split createLoopLayer into sub-factories | refactor | R-L4 |
 | R-P1 | Evaluate CLI batch mode for code dispatch | refactor | — |
 
 ### Design invariants to preserve
 
 - **Inspection guarantee:** Total codebase stays readable in one context window. The quick wins and medium changes must not add net LOC. R-L2, R-L4, and R-L5 should reduce LOC.
-- **Fork-first:** No shared mutable state between agent instances. PID file guard (R-S5) enforces this at the file system level.
+- **Fork-first:** No shared mutable state between agent instances. The PID file guard (already implemented in `startup.ts`) enforces this at the file system level.
 - **Agora as dumb pipe:** Agora relay passes envelopes through; substrate handles trust, dedup, and rate limiting. R-S3 and R-S6 add persistence without making Agora stateful.
 - **No secrets in substrate:** R-S4 makes this constraint enforced at write time rather than only on a weekly scan.
 - **File-based substrate:** All changes remain compatible with human-readable, version-controllable plain-markdown state.
@@ -383,9 +367,7 @@ Changes that should be configurable (and where config lives — `server/src/conf
 | Behaviour | Config key (new or existing) |
 |---|---|
 | Conversation prompt window cap | `conversationPromptWindowLines` (new) |
-| Max eager @-references per file | Validated in SubstrateValidator; not a runtime config |
 | HealthCheck fast-path skip threshold | `healthCheck.noErrorWindowCycles` (new) |
-| MCP auth required | Derived from existing `apiToken` |
 | Envelope dedup persistence path | Derived from `substratePath` |
 | Scheduler LLM coalescing | `schedulerCoalesceEnabled` (new, default true) |
 
