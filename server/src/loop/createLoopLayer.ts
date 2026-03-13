@@ -388,28 +388,30 @@ export async function createLoopLayer(
   orchestrator.setReportStore(reportStore);
   orchestrator.setDriveQualityTracker(driveQualityTracker);
 
-  // Create performance metrics collector and wire into orchestrator
-  const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
-  orchestrator.setPerformanceMetrics(performanceMetrics);
+  // Create performance metrics collector and wire into orchestrator (guarded by metrics.enabled)
+  if (config.metrics?.enabled !== false) {
+    const performanceMetrics = new PerformanceMetrics(fs, clock, config.substratePath);
+    orchestrator.setPerformanceMetrics(performanceMetrics);
 
-  // TinyBus → PerformanceMetrics wiring (#223): record message routing latency
-  tinyBus.on("message.complete", (data) => {
-    const d = data as {
-      message: Message;
-      durationMs: number;
-      routedTo: number;
-      successCount: number;
-      errorCount: number;
-    };
-    performanceMetrics.recordTinyBusMessage(
-      d.durationMs,
-      d.message.type,
-      d.message.source ?? "unknown",
-      d.routedTo,
-      d.errorCount === 0,
-      d.message.destination,
-    ).catch(() => { /* best-effort — never interrupt the bus */ });
-  });
+    // TinyBus → PerformanceMetrics wiring (#223): record message routing latency
+    tinyBus.on("message.complete", (data) => {
+      const d = data as {
+        message: Message;
+        durationMs: number;
+        routedTo: number;
+        successCount: number;
+        errorCount: number;
+      };
+      performanceMetrics.recordTinyBusMessage(
+        d.durationMs,
+        d.message.type,
+        d.message.source ?? "unknown",
+        d.routedTo,
+        d.errorCount === 0,
+        d.message.destination,
+      ).catch(() => { /* best-effort — never interrupt the bus */ });
+    });
+  }
 
   // Wire Agora service into orchestrator for sending agoraReplies
   // from Subconscious/Ego structured JSON output
