@@ -569,3 +569,85 @@ describe("LoopOrchestrator: watchdog sleep-awareness", () => {
     watchdog.stop();
   });
 });
+
+describe("LoopOrchestrator: INS messages do not reset idle counter", () => {
+  it("idle counter still increments when only INS messages are pending", async () => {
+    const deps = createDeps();
+    await setupIdleSubstrate(deps.fs);
+
+    const logger = new InMemoryLogger();
+    const eventSink = new InMemoryEventSink();
+    const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 5 });
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
+      config, logger
+    );
+
+    // Wire a mock INS hook that always generates a compaction action
+    const mockINSHook = {
+      async evaluate(): Promise<{ noop: boolean; actions: Array<{ type: string; target: string; detail: string }> }> {
+        return {
+          noop: false,
+          actions: [{ type: "compaction", target: "CONVERSATION.md", detail: "line count exceeds threshold" }],
+        };
+      },
+    };
+    orchestrator.setINSHook(mockINSHook as never);
+
+    orchestrator.start();
+
+    // Run two idle cycles — both should increment the counter despite INS messages
+    await orchestrator.runOneCycle();
+    const after1 = orchestrator.getMetrics().consecutiveIdleCycles;
+
+    await orchestrator.runOneCycle();
+    const after2 = orchestrator.getMetrics().consecutiveIdleCycles;
+
+    // Idle counter should be 1 and 2, not reset to 0 by INS messages
+    expect(after1).toBe(1);
+    expect(after2).toBe(2);
+
+    orchestrator.stop();
+  });
+
+  it("idle counter resets when external messages exist alongside INS messages", async () => {
+    const deps = createDeps();
+    await setupIdleSubstrate(deps.fs);
+
+    const logger = new InMemoryLogger();
+    const eventSink = new InMemoryEventSink();
+    const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 5 });
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
+      config, logger
+    );
+
+    // Wire a mock INS hook
+    const mockINSHook = {
+      async evaluate(): Promise<{ noop: boolean; actions: Array<{ type: string; target: string; detail: string }> }> {
+        return {
+          noop: false,
+          actions: [{ type: "compaction", target: "CONVERSATION.md", detail: "line count exceeds threshold" }],
+        };
+      },
+    };
+    orchestrator.setINSHook(mockINSHook as never);
+
+    orchestrator.start();
+
+    // First cycle: idle, counter goes to 1
+    await orchestrator.runOneCycle();
+    expect(orchestrator.getMetrics().consecutiveIdleCycles).toBe(1);
+
+    // Queue an external message before second cycle
+    orchestrator.queueStartupMessage("[STARTUP SCAN] External message");
+
+    await orchestrator.runOneCycle();
+    // Counter should reset to 0 because there was an external (non-INS) message
+    expect(orchestrator.getMetrics().consecutiveIdleCycles).toBe(0);
+
+    orchestrator.stop();
+  });
+});

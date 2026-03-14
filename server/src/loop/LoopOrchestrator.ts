@@ -474,6 +474,7 @@ export class LoopOrchestrator implements IMessageInjector {
     }
 
     // INS pre-cycle hook — deterministic rule checks
+    const pendingBeforeINS = this.pendingMessages.length;
     await this.runINSHook();
 
     // R2 pre-dispatch ceiling check (deterministic, no LLM)
@@ -510,8 +511,11 @@ export class LoopOrchestrator implements IMessageInjector {
           if (err instanceof RateLimitError) throw err;
           this.logger.debug(`cycle ${this.cycleNumber}: pending message response failed — ${err instanceof Error ? err.message : String(err)}`);
         }
-        // Processing messages is real work — reset idle counter to avoid premature sleep
-        this.metrics.consecutiveIdleCycles = 0;
+        // Only reset idle counter if there were external messages (not just INS maintenance).
+        // INS-only messages are system noise that shouldn't prevent the idle handler from firing.
+        if (pendingBeforeINS > 0) {
+          this.metrics.consecutiveIdleCycles = 0;
+        }
       }
 
       this.logger.debug(`cycle ${this.cycleNumber}: idle (consecutive: ${this.metrics.consecutiveIdleCycles})`);
