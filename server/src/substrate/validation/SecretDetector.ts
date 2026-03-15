@@ -146,12 +146,12 @@ const SECRET_PATTERNS: Array<{ type: string; pattern: RegExp; description: strin
 ];
 
 /**
- * Detects potential secrets in the given content
+ * Scans content for potential secrets and returns all matches.
  *
  * @param content - The content to scan for secrets
- * @returns SecretDetectionResult with hasSecrets flag and array of matches
+ * @returns Array of SecretMatch objects for each detected secret
  */
-export function detectSecrets(content: string): SecretDetectionResult {
+export function scan(content: string): SecretMatch[] {
   const matches: SecretMatch[] = [];
 
   // Split content into lines for line number tracking
@@ -189,6 +189,17 @@ export function detectSecrets(content: string): SecretDetectionResult {
     }
   }
 
+  return matches;
+}
+
+/**
+ * Detects potential secrets in the given content
+ *
+ * @param content - The content to scan for secrets
+ * @returns SecretDetectionResult with hasSecrets flag and array of matches
+ */
+export function detectSecrets(content: string): SecretDetectionResult {
+  const matches = scan(content);
   return {
     hasSecrets: matches.length > 0,
     matches
