@@ -72,10 +72,21 @@ export function parseRateLimitReset(
     return reset;
   }
 
-  // Pattern 3: "You've hit your limit" fallback — resetsAt unknown, default 1-hour backoff
-  if (/You've hit your limit/i.test(output)) {
-    return new Date(now.getTime() + 60 * 60 * 1000);
-  }
-
+  // Pattern 3: "You've hit your limit" without a parseable reset time.
+  // Return null — the caller should use computeProgressiveBackoff() for the delay.
   return null;
+}
+
+const PROGRESSIVE_BASE_MS = 5 * 60 * 1000; // 5 minutes
+const PROGRESSIVE_CAP_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/**
+ * Computes a progressive backoff duration for rate limits with unknown reset times.
+ * Starts at 5 minutes, doubles each consecutive hit, caps at 2 hours.
+ *
+ * @param consecutiveCount - zero-indexed count of consecutive unknown rate limits
+ * @returns backoff duration in milliseconds
+ */
+export function computeProgressiveBackoff(consecutiveCount: number): number {
+  return Math.min(PROGRESSIVE_BASE_MS * Math.pow(2, consecutiveCount), PROGRESSIVE_CAP_MS);
 }
