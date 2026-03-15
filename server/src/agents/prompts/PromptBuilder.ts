@@ -78,6 +78,10 @@ export interface PromptBuilderPaths {
   /** Session launcher type — determines built-in tool names in the TOOL REFERENCE section.
    *  Defaults to "claude". Valid values: "claude" | "gemini" | "copilot" | "ollama". */
   launcherType?: string;
+  /** Maximum number of lines from CONVERSATION.md inlined in each prompt (default: no cap).
+   *  When the file exceeds this cap, only the last N lines are included.
+   *  Explicit maxLines options passed to getEagerReferences() take precedence over this value. */
+  conversationPromptWindowLines?: number;
 }
 
 const AUTONOMY_REMINDER = `\n\n=== AUTONOMY REMINDER ===
@@ -164,7 +168,12 @@ export class PromptBuilder {
 
     const parts: string[] = [];
     for (const ft of eagerFiles) {
-      const cap = maxLines[ft];
+      // Explicit caller-supplied cap takes precedence; fall back to the conversation window cap for CONVERSATION.
+      const cap = ft in maxLines
+        ? maxLines[ft]
+        : ft === SubstrateFileType.CONVERSATION
+          ? this.paths?.conversationPromptWindowLines
+          : undefined;
       const fileName = SUBSTRATE_FILE_SPECS[ft].fileName;
       if (cap !== undefined) {
         try {
