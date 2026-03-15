@@ -290,6 +290,99 @@ describe("PromptBuilder", () => {
       expect(refs).toContain("@/empty/VALUES.md");
       expect(refs).toContain("@/empty/PLAN.md");
     });
+
+    describe("context budget (provider-aware filtering)", () => {
+      it("groq launcher applies 2000-line default budget — files over budget get truncation note", async () => {
+        // Write a large ID.md (first eager file for ID role) that exhausts the groq budget
+        const bigContent = Array.from({ length: 2100 }, (_, i) => `line ${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/ID.md", bigContent);
+
+        const groqBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "groq",
+        });
+        const refs = await groqBuilder.getEagerReferences(AgentRole.ID);
+        // ID.md is truncated to fit within the 2000-line budget
+        expect(refs).toContain("truncated — context budget for groq launcher");
+        // Subsequent eager files (VALUES, PLAN) exceed remaining budget — dropped with note
+        expect(refs).toContain("[TRUNCATED:");
+        expect(refs).toContain("exceeds context budget for groq launcher");
+      });
+
+      it("ollama launcher applies 2000-line default budget — files over budget dropped with note", async () => {
+        const bigContent = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/ID.md", bigContent);
+
+        const ollamaBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "ollama",
+        });
+        const refs = await ollamaBuilder.getEagerReferences(AgentRole.ID);
+        expect(refs).toContain("context budget for ollama launcher");
+      });
+
+      it("claude launcher has no default budget — all files inlined regardless of size", async () => {
+        const bigContent = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/PLAN.md", bigContent);
+
+        const claudeBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "claude",
+        });
+        const refs = await claudeBuilder.getEagerReferences(AgentRole.ID);
+        expect(refs).not.toContain("[TRUNCATED:");
+        expect(refs).not.toContain("context budget");
+        expect(refs).toContain("line 5000");
+      });
+
+      it("contextBudgetLines override disables budget when set to 0", async () => {
+        const bigContent = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/PLAN.md", bigContent);
+
+        const groqBuilderUnlimited = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "groq",
+          contextBudgetLines: 0,
+        });
+        const refs = await groqBuilderUnlimited.getEagerReferences(AgentRole.ID);
+        expect(refs).not.toContain("[TRUNCATED:");
+        expect(refs).not.toContain("context budget");
+        expect(refs).toContain("line 5000");
+      });
+
+      it("contextBudgetLines override applies custom budget for any launcher", async () => {
+        const bigContent = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/ID.md", bigContent);
+
+        const tightBudgetBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "claude",
+          contextBudgetLines: 10,
+        });
+        const refs = await tightBudgetBuilder.getEagerReferences(AgentRole.ID);
+        expect(refs).toContain("truncated — context budget for claude launcher");
+      });
+
+      it("files that fit within budget are inlined fully; only overflow files get truncation note", async () => {
+        // ID role has 3 eager files: ID, VALUES, PLAN
+        // Write a large ID.md (2100 lines) — it alone exceeds 2000-line groq budget
+        const bigId = Array.from({ length: 2100 }, (_, i) => `id-line-${i + 1}`).join("\n");
+        await fs.writeFile("/substrate/ID.md", bigId);
+        await fs.writeFile("/substrate/VALUES.md", "# Values\n\nBe good");
+        await fs.writeFile("/substrate/PLAN.md", "# Plan\n\nDo stuff");
+
+        const groqBuilder = new PromptBuilder(reader, checker, {
+          substratePath: "/substrate",
+          launcherType: "groq",
+        });
+        const refs = await groqBuilder.getEagerReferences(AgentRole.ID);
+        // ID.md (2100 lines) is truncated to fit within 2000-line budget
+        expect(refs).toContain("truncated — context budget for groq launcher");
+        // VALUES.md and PLAN.md exceed remaining budget — dropped with note
+        expect(refs).toContain("[TRUNCATED: VALUES.md exceeds context budget for groq launcher]");
+        expect(refs).toContain("[TRUNCATED: PLAN.md exceeds context budget for groq launcher]");
+      });
+    });
   });
 
   describe("getLazyReferences", () => {
