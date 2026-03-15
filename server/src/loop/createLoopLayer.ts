@@ -632,6 +632,7 @@ export async function createLoopLayer(
       logger,
       {
         checkIntervalMs: config.healthCheckIntervalMs ?? 3600000, // Default: 1 hour
+        noErrorWindowCycles: config.healthCheckNoErrorWindowCycles ?? 3,
       }
     );
     schedulers.push({
