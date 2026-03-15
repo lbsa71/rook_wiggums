@@ -22,6 +22,8 @@ export interface ApplicationConfig {
   backupRetentionCount?: number;
   enableHealthChecks?: boolean;
   healthCheckIntervalMs?: number;
+  /** Number of consecutive healthy cycles required before the fast-path skip fires. Default: 3. */
+  healthCheckNoErrorWindowCycles?: number;
   conversationArchive?: {
     enabled: boolean;
     linesToKeep: number;
