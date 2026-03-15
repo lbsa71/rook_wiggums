@@ -3,6 +3,8 @@ import { InMemoryFileSystem } from "../../../src/substrate/abstractions/InMemory
 import { SubstrateConfig } from "../../../src/substrate/config";
 import { FileLock } from "../../../src/substrate/io/FileLock";
 import { SubstrateFileType } from "../../../src/substrate/types";
+import { InMemoryLogger } from "../../../src/logging";
+import * as SecretDetector from "../../../src/substrate/validation/SecretDetector";
 
 describe("SubstrateFileWriter", () => {
   let fs: InMemoryFileSystem;
@@ -63,5 +65,59 @@ describe("SubstrateFileWriter", () => {
     // Second write wins (last writer)
     const content = await fs.readFile("/substrate/MEMORY.md");
     expect(content).toBe("# Memory\n\nSecond");
+  });
+
+  describe("post-write secret detection", () => {
+    const SECRET_CONTENT = '# Memory\n\napi_key: "abcdef1234567890abcdef1234567890abcdef12"';
+    const CLEAN_CONTENT = "# Memory\n\nSome safe notes";
+
+    it("emits a high-severity error log when secrets are detected in written content", async () => {
+      const logger = new InMemoryLogger();
+      const writerWithLogger = new SubstrateFileWriter(fs, config, lock, undefined, logger);
+
+      await writerWithLogger.write(SubstrateFileType.MEMORY, SECRET_CONTENT);
+
+      const errors = logger.getErrorEntries();
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0]).toContain("[SECURITY]");
+      expect(errors[0]).toContain("Generic API Key");
+      expect(errors[0]).not.toMatch(/abcdef1234567890/);
+    });
+
+    it("does not emit an error log when content contains no secrets", async () => {
+      const logger = new InMemoryLogger();
+      const writerWithLogger = new SubstrateFileWriter(fs, config, lock, undefined, logger);
+
+      await writerWithLogger.write(SubstrateFileType.MEMORY, CLEAN_CONTENT);
+
+      expect(logger.getErrorEntries()).toHaveLength(0);
+    });
+
+    it("continues the write and logs a warning when SecretDetector.scan() throws", async () => {
+      const logger = new InMemoryLogger();
+      const writerWithLogger = new SubstrateFileWriter(fs, config, lock, undefined, logger);
+
+      const spy = jest.spyOn(SecretDetector, "scan").mockImplementation(() => {
+        throw new Error("scan internal error");
+      });
+
+      try {
+        await writerWithLogger.write(SubstrateFileType.MEMORY, CLEAN_CONTENT);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Write must have succeeded
+      const written = await fs.readFile("/substrate/MEMORY.md");
+      expect(written).toBe(CLEAN_CONTENT);
+
+      // Warning must have been logged
+      const warns = logger.getWarnEntries();
+      expect(warns.length).toBeGreaterThan(0);
+      expect(warns[0]).toContain("secret scan failed");
+
+      // No error emitted (scan threw before we could determine secrets)
+      expect(logger.getErrorEntries()).toHaveLength(0);
+    });
   });
 });
