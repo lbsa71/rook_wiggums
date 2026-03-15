@@ -22,7 +22,7 @@ import {
 import { SessionManager, SessionConfig } from "../session/SessionManager";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { SdkSessionFactory } from "../session/ISdkSession";
-import { parseRateLimitReset } from "./rateLimitParser";
+import { parseRateLimitReset, isRateLimitText, computeProgressiveBackoff } from "./rateLimitParser";
 import { RateLimitError } from "./RateLimitError";
 import { RateLimitStateManager } from "./RateLimitStateManager";
 import { SchedulerCoordinator } from "./SchedulerCoordinator";
@@ -53,6 +53,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
   private auditOnNextCycle = false;
   private rateLimitUntil: string | null = null;
+  private consecutiveUnknownRateLimits = 0;
 
   // Message injection — works in both cycle and tick mode
   private launcher: { inject(message: string): void; isActive(): boolean } | null = null;
@@ -474,6 +475,7 @@ export class LoopOrchestrator implements IMessageInjector {
     }
 
     // INS pre-cycle hook — deterministic rule checks
+    const pendingBeforeINS = this.pendingMessages.length;
     await this.runINSHook();
 
     // R2 pre-dispatch ceiling check (deterministic, no LLM)
@@ -510,8 +512,11 @@ export class LoopOrchestrator implements IMessageInjector {
           if (err instanceof RateLimitError) throw err;
           this.logger.debug(`cycle ${this.cycleNumber}: pending message response failed — ${err instanceof Error ? err.message : String(err)}`);
         }
-        // Processing messages is real work — reset idle counter to avoid premature sleep
-        this.metrics.consecutiveIdleCycles = 0;
+        // Only reset idle counter if there were external messages (not just INS maintenance).
+        // INS-only messages are system noise that shouldn't prevent the idle handler from firing.
+        if (pendingBeforeINS > 0) {
+          this.metrics.consecutiveIdleCycles = 0;
+        }
       }
 
       this.logger.debug(`cycle ${this.cycleNumber}: idle (consecutive: ${this.metrics.consecutiveIdleCycles})`);
@@ -575,6 +580,7 @@ export class LoopOrchestrator implements IMessageInjector {
       if (success) {
         this.metrics.successfulCycles++;
         this.metrics.consecutiveIdleCycles = 0;
+        this.consecutiveUnknownRateLimits = 0;
 
         await this.subconscious.markTaskComplete(dispatch.taskId);
 
@@ -747,10 +753,18 @@ export class LoopOrchestrator implements IMessageInjector {
       const retryAfterDirect = cycleResult.retryAfter ? new Date(cycleResult.retryAfter) : null;
       const rateLimitReset = retryAfterDirect ?? parseRateLimitReset(cycleResult.summary, this.clock.now());
       if (rateLimitReset) {
+        this.consecutiveUnknownRateLimits = 0; // Known reset time — clear progressive counter
         const source = retryAfterDirect ? "structured retryAfter" : "summary text parse";
         this.logger.debug(`runLoop: rate limit detected via ${source} — reset=${rateLimitReset.toISOString()} action=${cycleResult.action} summary="${cycleResult.summary?.slice(0, 200)}"`);
         const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
         await this.applyRateLimitBackoff(rateLimitReset, currentTaskId);
+      } else if (isRateLimitText(cycleResult.summary)) {
+        const backoffMs = computeProgressiveBackoff(this.consecutiveUnknownRateLimits);
+        this.consecutiveUnknownRateLimits++;
+        const resetDate = new Date(this.clock.now().getTime() + backoffMs);
+        this.logger.debug(`runLoop: rate limit with unknown reset (consecutive: ${this.consecutiveUnknownRateLimits}) — progressive backoff ${Math.round(backoffMs / 60000)}min until ${resetDate.toISOString()}`);
+        const currentTaskId = cycleResult.action === "dispatch" ? cycleResult.taskId : undefined;
+        await this.applyRateLimitBackoff(resetDate, currentTaskId);
       } else {
         if (this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
           if (this.idleHandler) {
@@ -788,10 +802,18 @@ export class LoopOrchestrator implements IMessageInjector {
       } catch (err) {
         if (!(err instanceof RateLimitError)) throw err;
         // Rate limit thrown from a non-dispatch path (idle handler, message response, etc.)
-        const rateLimitReset = parseRateLimitReset(err.message, this.clock.now())
-          ?? new Date(this.clock.now().getTime() + 60 * 60 * 1000);
-        this.logger.debug(`runLoop: rate limit via thrown RateLimitError — message="${err.message.slice(0, 200)}" reset=${rateLimitReset.toISOString()}`);
-        await this.applyRateLimitBackoff(rateLimitReset, undefined);
+        const rateLimitReset = parseRateLimitReset(err.message, this.clock.now());
+        if (rateLimitReset) {
+          this.consecutiveUnknownRateLimits = 0;
+          this.logger.debug(`runLoop: rate limit via thrown RateLimitError — message="${err.message.slice(0, 200)}" reset=${rateLimitReset.toISOString()}`);
+          await this.applyRateLimitBackoff(rateLimitReset, undefined);
+        } else {
+          const backoffMs = computeProgressiveBackoff(this.consecutiveUnknownRateLimits);
+          this.consecutiveUnknownRateLimits++;
+          const resetDate = new Date(this.clock.now().getTime() + backoffMs);
+          this.logger.debug(`runLoop: rate limit via thrown RateLimitError (unknown reset, consecutive: ${this.consecutiveUnknownRateLimits}) — progressive backoff ${Math.round(backoffMs / 60000)}min until ${resetDate.toISOString()}`);
+          await this.applyRateLimitBackoff(resetDate, undefined);
+        }
       }
     }
     // Drain any remaining deferred work before exiting

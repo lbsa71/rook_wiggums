@@ -1,4 +1,4 @@
-import { parseRateLimitReset } from "../../src/loop/rateLimitParser";
+import { parseRateLimitReset, computeProgressiveBackoff } from "../../src/loop/rateLimitParser";
 
 describe("parseRateLimitReset", () => {
   it("parses 'resets 7pm (UTC)' from rate limit message", () => {
@@ -78,12 +78,42 @@ describe("parseRateLimitReset", () => {
     expect(result).toEqual(new Date("2026-02-09T17:00:00Z"));
   });
 
-  it("returns 1-hour fallback when resetsAt is unknown", () => {
+  it("returns null when resetsAt is unknown (no time in message)", () => {
     const now = new Date("2026-02-09T18:30:00Z");
     const result = parseRateLimitReset(
       "You've hit your limit · rate limited",
       now,
     );
-    expect(result).toEqual(new Date("2026-02-09T19:30:00Z"));
+    expect(result).toBeNull();
+  });
+});
+
+describe("computeProgressiveBackoff", () => {
+  it("returns 5 minutes for first unknown rate limit (n=0)", () => {
+    expect(computeProgressiveBackoff(0)).toBe(5 * 60 * 1000);
+  });
+
+  it("returns 10 minutes for n=1", () => {
+    expect(computeProgressiveBackoff(1)).toBe(10 * 60 * 1000);
+  });
+
+  it("returns 20 minutes for n=2", () => {
+    expect(computeProgressiveBackoff(2)).toBe(20 * 60 * 1000);
+  });
+
+  it("returns 40 minutes for n=3", () => {
+    expect(computeProgressiveBackoff(3)).toBe(40 * 60 * 1000);
+  });
+
+  it("returns 80 minutes for n=4", () => {
+    expect(computeProgressiveBackoff(4)).toBe(80 * 60 * 1000);
+  });
+
+  it("caps at 2 hours for n=5", () => {
+    expect(computeProgressiveBackoff(5)).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it("caps at 2 hours for n=10", () => {
+    expect(computeProgressiveBackoff(10)).toBe(2 * 60 * 60 * 1000);
   });
 });
