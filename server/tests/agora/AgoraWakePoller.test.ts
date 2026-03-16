@@ -7,7 +7,7 @@ import type { ILogger } from "../../src/logging";
 import type { Envelope } from "@rookdaemon/agora" with { "resolution-mode": "import" };
 import { IConversationManager } from "../../src/conversation/IConversationManager";
 import { IMessageInjector } from "../../src/loop/IMessageInjector";
-import { ILoopEventSink } from "../../src/loop/ILoopEventSink";
+
 import { IAgoraService } from "../../src/agora/IAgoraService";
 import { LoopState } from "../../src/loop/types";
 import { AgentRole } from "../../src/agents/types";
@@ -15,14 +15,14 @@ import { AgentRole } from "../../src/agents/types";
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
 class MockClock implements IClock {
-  constructor(private time: Date) {}
+  constructor(private time: Date) { }
   now() { return this.time; }
 }
 
 class MockLogger implements ILogger {
   messages: string[] = [];
   debug(m: string) { this.messages.push(m); }
-  verbose() {}
+  verbose() { }
 }
 
 class MockConversationManager implements IConversationManager {
@@ -45,8 +45,8 @@ class MockAgoraService implements IAgoraService {
   getPeers() { return Array.from(this.peers.keys()); }
   getPeerConfig(id: string) { return this.peers.get(id) ?? Array.from(this.peers.values()).find(p => p.name === id); }
   getSelfIdentity() { return { publicKey: "selfpubkey0000000000000000000000000000000000000000000000000000000000", name: "self" }; }
-  async connectRelay() {}
-  async disconnectRelay() {}
+  async connectRelay() { }
+  async disconnectRelay() { }
   isRelayConnected() { return false; }
 }
 
@@ -191,7 +191,7 @@ describe("AgoraWakePoller", () => {
 
     it("uses min(lastSeen) as anchor when multiple peers are tracked", async () => {
       const twoHoursAgoMs = NOW_MS - 2 * 60 * 60 * 1000;
-      const oneHourAgoMs  = NOW_MS - 1 * 60 * 60 * 1000;
+      const oneHourAgoMs = NOW_MS - 1 * 60 * 60 * 1000;
       await stateStore.updateLastSeen("peerA", twoHoursAgoMs);  // older
       await stateStore.updateLastSeen("peerB", oneHourAgoMs);   // newer
 

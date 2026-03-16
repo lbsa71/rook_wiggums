@@ -66,7 +66,7 @@ async function seedSubstrateFiles(fs: InMemoryFileSystem, substratePath = "/subs
 describe("CycleLogWriter", () => {
   describe("write()", () => {
     it("appends an entry with timestamp and role tag to cycle_log.md", async () => {
-      const { fs, clock, cycleLogWriter } = makeSubstrate();
+      const { fs, cycleLogWriter } = makeSubstrate();
       await fs.mkdir("/substrate", { recursive: true });
 
       await cycleLogWriter.write("EGO", "Some narration text");
@@ -151,7 +151,7 @@ describe("D-01: EGO response routing", () => {
   it("inbound message written to CONVERSATION.md is preserved (not cycle execution output)", async () => {
     // This test verifies the invariant: CONVERSATION.md only grows from inbound
     // messages, not EGO narration (D-01 acceptance criterion).
-    const { fs, reader, writer, appendWriter, conversationManager, checker, promptBuilder, taskClassifier, cycleLogWriter, launcher } = makeSubstrate();
+    const { fs, reader, writer, conversationManager, checker, promptBuilder, taskClassifier, cycleLogWriter, launcher } = makeSubstrate();
     await seedSubstrateFiles(fs);
 
     // Simulate an inbound message being written to CONVERSATION.md by
