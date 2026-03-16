@@ -2243,6 +2243,7 @@ describe("AgoraMessageHandler — lastSeen tracking", () => {
         log, 'quarantine',
         { enabled: false, maxMessages: 100, windowMs: 60000 },
         null, null, null, null,
+        null, // dedupStore
         stateStore,
       ),
       clock: clk,
@@ -2300,6 +2301,7 @@ describe("AgoraMessageHandler — lastSeen tracking", () => {
       log, 'quarantine',
       { enabled: false, maxMessages: 100, windowMs: 60000 },
       null, null, null, null,
+      null, // dedupStore
       store,
     );
 

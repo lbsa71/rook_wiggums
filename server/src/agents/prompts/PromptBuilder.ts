@@ -245,8 +245,6 @@ export class PromptBuilder {
           }
         }
       }
-        }
-      }
 
       // Apply context budget: track cumulative lines and truncate/drop files over budget
       if (budget !== undefined && budget > 0) {
