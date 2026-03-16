@@ -4,7 +4,7 @@ import { SubstrateFileReader } from "../../substrate/io/FileReader";
 import { SubstrateFileWriter } from "../../substrate/io/FileWriter";
 import { ConversationManager } from "../../conversation/ConversationManager";
 import { PermissionChecker } from "../permissions";
-import { PromptBuilder } from "../prompts/PromptBuilder";
+import { PromptBuilder, SubstrateSnapshot } from "../prompts/PromptBuilder";
 import { ISessionLauncher, ProcessLogEntry, LaunchOptions } from "../claude/ISessionLauncher";
 import { PlanParser } from "../parsers/PlanParser";
 import { ShellTriggerEvaluator } from "../parsers/ShellTriggerEvaluator";
@@ -69,6 +69,8 @@ export interface DispatchNextResult {
   dispatch: DispatchResult | null;
   blockedTaskIds: string[];
   timeBlockedTasks: Array<{ taskId: string; blockedUntil: Date }>;
+  /** Per-cycle snapshot of substrate files read by Ego. Passed to Subconscious to avoid duplicate disk reads. */
+  snapshot: SubstrateSnapshot;
 }
 
 export class Ego {
@@ -204,6 +206,9 @@ export class Ego {
   async dispatchNext(): Promise<DispatchNextResult> {
     this.checker.assertCanRead(AgentRole.EGO, SubstrateFileType.PLAN);
     const planContent = await this.reader.read(SubstrateFileType.PLAN);
+    const snapshot: SubstrateSnapshot = {
+      files: { [SubstrateFileType.PLAN]: planContent.rawMarkdown },
+    };
     const tasks = PlanParser.parseTasks(planContent.rawMarkdown);
     const now = this.clock.now();
     const blockedTaskIds = PlanParser.findBlockedTasks(tasks).map((t) => t.id);
@@ -213,7 +218,7 @@ export class Ego {
     }));
     const next = await PlanParser.findNextActionable(tasks, this.triggerEvaluator, now);
 
-    if (!next) return { dispatch: null, blockedTaskIds, timeBlockedTasks };
+    if (!next) return { dispatch: null, blockedTaskIds, timeBlockedTasks, snapshot };
 
     return {
       dispatch: {
@@ -224,6 +229,7 @@ export class Ego {
       },
       blockedTaskIds,
       timeBlockedTasks,
+      snapshot,
     };
   }
 }

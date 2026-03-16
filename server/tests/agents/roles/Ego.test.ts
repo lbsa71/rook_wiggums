@@ -15,6 +15,7 @@ import { AgentRole } from "../../../src/agents/types";
 import { ProcessLogEntry } from "../../../src/agents/claude/ISessionLauncher";
 import { TaskClassifier } from "../../../src/agents/TaskClassifier";
 import { CycleLogWriter } from "../../../src/substrate/io/CycleLogWriter";
+import { SubstrateFileType } from "../../../src/substrate/types";
 
 async function makeEgo(workingDirectory?: string, sourceCodePath?: string): Promise<{ ego: Ego; launcher: InMemorySessionLauncher }> {
   const testFs = new InMemoryFileSystem();
@@ -359,6 +360,13 @@ describe("Ego agent", () => {
     it("returns empty blockedTaskIds when no tasks are blocked", async () => {
       const { blockedTaskIds } = await ego.dispatchNext();
       expect(blockedTaskIds).toEqual([]);
+    });
+
+    it("returns a snapshot containing the PLAN.md content", async () => {
+      const { snapshot } = await ego.dispatchNext();
+      expect(snapshot).toBeDefined();
+      expect(snapshot.files[SubstrateFileType.PLAN]).toBeDefined();
+      expect(snapshot.files[SubstrateFileType.PLAN]).toContain("Task A");
     });
   });
 });
