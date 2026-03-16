@@ -5,16 +5,17 @@ import { InMemoryLogger } from "../../src/logging";
 import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFileSystem";
 import { SubstrateConfig } from "../../src/substrate/config";
 import { SubstrateFileReader } from "../../src/substrate/io/FileReader";
+import { IErrorLogReader } from "../../src/loop/IErrorLogReader";
 
 async function setupSubstrateFiles(fs: InMemoryFileSystem) {
   await fs.mkdir("/substrate", { recursive: true });
-  await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild it\n\n## Tasks\n- [ ] Task A");
-  await fs.writeFile("/substrate/MEMORY.md", "# Memory\n\nSome memories");
+  await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild authentication system\n\n## Tasks\n- [ ] Task A\n- [ ] Task B");
+  await fs.writeFile("/substrate/MEMORY.md", "# Memory\n\nWe are building an authentication system");
   await fs.writeFile("/substrate/HABITS.md", "# Habits\n\nSome habits");
-  await fs.writeFile("/substrate/SKILLS.md", "# Skills\n\nSome skills");
+  await fs.writeFile("/substrate/SKILLS.md", "# Skills\n\nKnown: authentication, TypeScript");
   await fs.writeFile("/substrate/VALUES.md", "# Values\n\nBe good");
   await fs.writeFile("/substrate/ID.md", "# Id\n\nCore identity");
-  await fs.writeFile("/substrate/SECURITY.md", "# Security\n\nStay safe");
+  await fs.writeFile("/substrate/SECURITY.md", "# Security\n\n## Constraints\nStay safe");
   await fs.writeFile("/substrate/CHARTER.md", "# Charter\n\nOur mission");
   await fs.writeFile("/substrate/SUPEREGO.md", "# Superego\n\nRules here");
   await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\nConfig here");
@@ -237,6 +238,187 @@ describe("HealthCheckScheduler", () => {
 
       expect(result.success).toBe(true);
       expect(result.result?.reasoning).toBeDefined();
+    });
+  });
+
+  describe("fast-path skip", () => {
+    const noErrors: IErrorLogReader = { hasErrorsSince: () => false };
+    const hasErrors: IErrorLogReader = { hasErrorsSince: () => true };
+
+    function makeScheduler(noErrorWindowCycles: number, errorLogReader?: IErrorLogReader) {
+      return new HealthCheckScheduler(healthCheck, clock, logger, {
+        checkIntervalMs: 3600000,
+        noErrorWindowCycles,
+      }, errorLogReader);
+    }
+
+    it("does not skip on first check", async () => {
+      const s = makeScheduler(3, noErrors);
+      const result = await s.runCheck();
+      expect(result.success).toBe(true);
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(false);
+    });
+
+    it("does not skip before reaching the window threshold", async () => {
+      const s = makeScheduler(3, noErrors);
+
+      // Run 2 healthy cycles (threshold is 3) — no fast-path yet
+      for (let i = 0; i < 2; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      // 3rd run: reaches threshold but is still a full check
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      const result = await s.runCheck();
+
+      expect(result.success).toBe(true);
+      // 3rd check is still a full check (fast-path fires on 4th+)
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(false);
+    });
+
+    it("fires fast-path after N consecutive healthy cycles with no errors", async () => {
+      const s = makeScheduler(3, noErrors);
+
+      // Run N full healthy checks
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        const r = await s.runCheck();
+        expect(r.result?.overall).toBe("healthy");
+      }
+
+      // Next run should use fast-path
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      const fastResult = await s.runCheck();
+
+      expect(fastResult.success).toBe(true);
+      expect(fastResult.result).toBeDefined();
+      expect(fastResult.result?.overall).toBe("healthy");
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(true);
+    });
+
+    it("does not fire fast-path when error log has entries since last check", async () => {
+      const s = makeScheduler(3, hasErrors);
+
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      await s.runCheck();
+
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(false);
+    });
+
+    it("fires fast-path without an error reader once the consecutive threshold is reached", async () => {
+      const s = makeScheduler(3); // no error reader — error check is skipped (passes)
+
+      // Run N full healthy checks to reach threshold
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      // 4th run should use fast-path (no error reader means the error-check condition passes)
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      await s.runCheck();
+
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(true);
+    });
+
+    it("fast-path increments checksRun", async () => {
+      const s = makeScheduler(3, noErrors);
+
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      const before = s.getStatus().checksRun;
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      await s.runCheck();
+
+      expect(s.getStatus().checksRun).toBe(before + 1);
+    });
+
+    it("fast-path returns last known healthy result", async () => {
+      const s = makeScheduler(3, noErrors);
+
+      let lastResult;
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        const r = await s.runCheck();
+        lastResult = r.result;
+      }
+
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      const fastResult = await s.runCheck();
+
+      expect(fastResult.result).toEqual(lastResult);
+    });
+
+    it("resets consecutive count when a full check returns non-healthy, requiring N new healthy cycles for fast-path", async () => {
+      // Use a togglable error reader so we can force full checks when needed
+      let reportErrors = true;
+      const toggleReader: IErrorLogReader = { hasErrorsSince: () => reportErrors };
+      const s = new HealthCheckScheduler(healthCheck, clock, logger, {
+        checkIntervalMs: 3600000,
+        noErrorWindowCycles: 3,
+      }, toggleReader);
+
+      // Build up 3 healthy checks (reportErrors=true prevents fast-path)
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      // Degrade substrate to force a non-healthy full check
+      await fs.writeFile("/substrate/SECURITY.md", "# Security\n\nNo constraints");
+      await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n");
+
+      // Full check runs (errors prevent fast-path) → non-healthy → resets count to 0
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      const degradedResult = await s.runCheck();
+      expect(degradedResult.result?.overall).not.toBe("healthy");
+
+      // Restore good substrate files
+      await fs.writeFile("/substrate/SECURITY.md", "# Security\n\n## Constraints\nStay safe");
+      await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Current Goal\nBuild authentication system\n\n## Tasks\n- [ ] Task A\n- [ ] Task B");
+
+      // Disable error reporting so fast-path can fire when count is rebuilt
+      reportErrors = false;
+
+      // Run 3 more healthy checks — count should rebuild from 0
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      // Fast-path should now fire (count = 3 again)
+      const logsBefore = logger.getEntries().length;
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      await s.runCheck();
+
+      const newLogs = logger.getEntries().slice(logsBefore);
+      expect(newLogs.some((l) => l.includes("fast-path skip"))).toBe(true);
+    });
+
+    it("noErrorWindowCycles defaults to 3 when not specified", async () => {
+      const s = new HealthCheckScheduler(healthCheck, clock, logger, {
+        checkIntervalMs: 3600000,
+        // noErrorWindowCycles not set → defaults to 3
+      }, noErrors);
+
+      for (let i = 0; i < 3; i++) {
+        clock.setNow(new Date(clock.now().getTime() + 3600000));
+        await s.runCheck();
+      }
+
+      clock.setNow(new Date(clock.now().getTime() + 3600000));
+      await s.runCheck();
+
+      expect(logger.getEntries().some((l) => l.includes("fast-path skip"))).toBe(true);
     });
   });
 });
