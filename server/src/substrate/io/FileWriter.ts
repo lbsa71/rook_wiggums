@@ -1,7 +1,9 @@
 import { IFileSystem } from "../abstractions/IFileSystem";
+import { ILogger } from "../../logging";
 import { SubstrateConfig } from "../config";
 import { SubstrateFileType, SUBSTRATE_FILE_SPECS, WriteMode } from "../types";
 import { validateSubstrateContent } from "../validation/validators";
+import { scan } from "../validation/SecretDetector";
 import { FileLock } from "./FileLock";
 import { SubstrateFileReader } from "./FileReader";
 
@@ -10,7 +12,8 @@ export class SubstrateFileWriter {
     private readonly fs: IFileSystem,
     private readonly config: SubstrateConfig,
     private readonly lock: FileLock,
-    private readonly reader?: SubstrateFileReader
+    private readonly reader?: SubstrateFileReader,
+    private readonly logger?: ILogger
   ) {}
 
   async write(fileType: SubstrateFileType, content: string): Promise<void> {
@@ -42,6 +45,22 @@ export class SubstrateFileWriter {
       this.reader?.invalidate(filePath);
     } finally {
       release();
+    }
+
+    // Post-write secret scan: alert at high severity if secrets were present in the written content.
+    // This is intentionally post-write — the write may be needed for continuity and is not reverted;
+    // logging is the enforcement mechanism (see issue R-S4 design approach).
+    try {
+      const matches = scan(content);
+      if (matches.length > 0) {
+        const types = [...new Set(matches.map(m => m.type))].join(", ");
+        this.logger?.error(
+          `[SECURITY] Secrets detected in write to ${fileType} — pattern types: ${types}`
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger?.warn(`FileWriter: secret scan failed for ${fileType}: ${msg}`);
     }
   }
 }
