@@ -12,6 +12,7 @@ import type { ILogger } from "../logging";
 import { createHash } from "crypto";
 import type { IFlashGate, EnvelopeSummary } from "../gates/IFlashGate";
 import type { IEnvelopeDedupStore } from "./IEnvelopeDedupStore";
+import { AgoraStateStore } from "./AgoraStateStore";
 
 /**
  * Sliding window state for per-sender rate limiting
@@ -111,6 +112,7 @@ export class AgoraMessageHandler {
     private readonly seenKeysPath: string | null = null,
     private readonly flashGate: IFlashGate | null = null,
     private readonly dedupStore: IEnvelopeDedupStore | null = null,
+    private readonly stateStore: AgoraStateStore | null = null,
   ) {
     if (this.ignoredPeersPath) {
       try {
@@ -573,6 +575,10 @@ export class AgoraMessageHandler {
           await this.conversationManager.append(AgentRole.SUBCONSCIOUS, conversationEntry);
           this.logger.debug(`[AGORA] Quarantined message written to CONVERSATION.md: envelopeId=${envelope.id}`);
           this.recordProcessed(envelope.id, envelopeFrom, envelope.type, envelope.payload);
+          // Update lastSeen anchor so the wake poller skips this message on the next startup.
+          if (this.stateStore && envelopeFrom) {
+            await this.stateStore.updateLastSeen(envelopeFrom, this.clock.now().getTime());
+          }
         } catch (err) {
           this.logger.debug(`[AGORA] Failed to write quarantined message to CONVERSATION.md: ${err instanceof Error ? err.message : String(err)}`);
           // Unregister the ID so relay retries (e.g. reconnect-driven replay) can redeliver.
@@ -743,6 +749,11 @@ export class AgoraMessageHandler {
       try {
         this.onMessageProcessed();
       } catch { /* best-effort notification — never interrupt envelope processing */ }
+    }
+
+    // Update lastSeen anchor so the wake poller skips this message on the next startup.
+    if (this.stateStore && envelopeFrom) {
+      await this.stateStore.updateLastSeen(envelopeFrom, this.clock.now().getTime());
     }
 
     return isUnprocessed ? 'unprocessed' : (injected ? 'injected' : 'queued');
