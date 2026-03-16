@@ -43,7 +43,8 @@ interface GoogleAIResponse {
  * SUBPROCESS ONLY — this launcher is NOT for cognitive roles.
  * Config validation rejects `sessionLauncher: "vertex"` with an explicit error.
  *
- * Fallback chain position: Ollama (free, local) -> Vertex (GCP credits) -> Claude (paid API)
+ * Fallback chain position: middle tier, after Ollama (free local inference) and before the
+ * paid Claude API. Funded by GCP credits rather than per-token billing.
  *
  * Security:
  * - API key never appears in logs or error messages

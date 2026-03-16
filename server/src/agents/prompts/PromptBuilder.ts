@@ -53,6 +53,21 @@ function getToolNames(launcherType?: string): ToolNames {
   return TOOL_NAMES_BY_LAUNCHER[launcherType ?? DEFAULT_LAUNCHER] ?? CLAUDE_TOOL_NAMES;
 }
 
+/**
+ * Maximum total inlined lines per launcher. Groq and Ollama have constrained context windows
+ * relative to Claude/Gemini, so stricter budgets prevent context overflow on those launchers.
+ * undefined = unlimited (no budget enforcement).
+ */
+export const CONTEXT_BUDGET_LINES_BY_LAUNCHER: Partial<Record<string, number>> = {
+  groq: 2000,
+  ollama: 2000,
+};
+
+function getContextBudget(launcherType?: string, override?: number): number | undefined {
+  if (override !== undefined) return override;
+  return CONTEXT_BUDGET_LINES_BY_LAUNCHER[launcherType ?? DEFAULT_LAUNCHER];
+}
+
 function buildToolReferenceSection(tools: ToolNames): string {
   return `\n\n=== TOOL REFERENCE ===
 
@@ -85,8 +100,12 @@ export interface PromptBuilderPaths {
   substratePath: string;
   sourceCodePath?: string;
   /** Session launcher type — determines built-in tool names in the TOOL REFERENCE section.
-   *  Defaults to "claude". Valid values: "claude" | "gemini" | "copilot" | "ollama". */
+   *  Defaults to "claude". Valid values: "claude" | "gemini" | "copilot" | "ollama" | "groq". */
   launcherType?: string;
+  /** Override the default context budget (total inlined lines) for eager file references.
+   *  When unset, the per-launcher default from CONTEXT_BUDGET_LINES_BY_LAUNCHER is used.
+   *  Set to 0 to disable budget enforcement regardless of launcher. */
+  contextBudgetLines?: number;
 }
 
 const AUTONOMY_REMINDER = `\n\n=== AUTONOMY REMINDER ===
@@ -170,41 +189,79 @@ export class PromptBuilder {
     const eagerFiles = this.checker.getEagerFiles(role);
     const substratePath = this.paths?.substratePath ?? "/substrate";
     const maxLines = options?.maxLines ?? {};
+    const launcherLabel = this.paths?.launcherType ?? DEFAULT_LAUNCHER;
+    const budget = getContextBudget(this.paths?.launcherType, this.paths?.contextBudgetLines);
+    let linesUsed = 0;
 
     const parts: string[] = [];
     for (const ft of eagerFiles) {
       const cap = maxLines[ft];
       const fileName = SUBSTRATE_FILE_SPECS[ft].fileName;
-      const snapshotContent = snapshot?.files[ft];
+
+      let content: string;
+      let label: string;
+
       if (cap !== undefined) {
+        const snapshotContent = snapshot?.files[ft];
         if (snapshotContent !== undefined) {
           const lines = snapshotContent.split("\n");
-          const tail = lines.slice(-cap).join("\n");
-          parts.push(`${substratePath}/${fileName} (last ${cap} lines):\n${tail}`);
+          content = lines.slice(-cap).join("\n");
+          label = `${substratePath}/${fileName} (last ${cap} lines)`;
         } else {
           try {
             const fileContent = await this.reader.read(ft);
             const lines = fileContent.rawMarkdown.split("\n");
-            const tail = lines.slice(-cap).join("\n");
-            parts.push(`${substratePath}/${fileName} (last ${cap} lines):\n${tail}`);
+            content = lines.slice(-cap).join("\n");
+            label = `${substratePath}/${fileName} (last ${cap} lines)`;
           } catch {
             // File unreadable — fall back to @ reference so the runtime can attempt to load it
             parts.push(`@${substratePath}/${fileName}`);
+            continue;
           }
         }
       } else {
+        const snapshotContent = snapshot?.files[ft];
         if (snapshotContent !== undefined) {
-          parts.push(`${substratePath}/${fileName}:\n${snapshotContent}`);
+          content = snapshotContent;
+          label = `${substratePath}/${fileName}`;
         } else {
           try {
             const fileContent = await this.reader.read(ft);
-            parts.push(`${substratePath}/${fileName}:\n${fileContent.rawMarkdown}`);
+            content = fileContent.rawMarkdown;
+            label = `${substratePath}/${fileName}`;
           } catch {
             // File unreadable — fall back to @ reference so Claude CLI can still expand it
             parts.push(`@${substratePath}/${fileName}`);
+            continue;
           }
         }
       }
+        }
+      }
+
+      // Apply context budget: track cumulative lines and truncate/drop files over budget
+      if (budget !== undefined && budget > 0) {
+        const contentLines = content.split("\n");
+        const linesRemaining = budget - linesUsed;
+
+        if (linesRemaining <= 0) {
+          // Budget exhausted — drop file with an explanatory note
+          parts.push(`[TRUNCATED: ${fileName} exceeds context budget for ${launcherLabel} launcher]`);
+          continue;
+        }
+
+        if (contentLines.length > linesRemaining) {
+          // File would exceed remaining budget — truncate to fit
+          const truncated = contentLines.slice(0, linesRemaining).join("\n");
+          parts.push(`${label} (truncated — context budget for ${launcherLabel} launcher):\n${truncated}`);
+          linesUsed = budget; // all remaining budget consumed by this truncated file
+          continue;
+        }
+
+        linesUsed += contentLines.length;
+      }
+
+      parts.push(`${label}:\n${content}`);
     }
     return parts.join("\n");
   }

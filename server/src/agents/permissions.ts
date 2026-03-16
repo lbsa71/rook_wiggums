@@ -37,6 +37,8 @@ export const ROLE_PERMISSIONS: Record<AgentRole, FilePermission[]> = {
     read(SubstrateFileType.VALUES, SubstrateFileLoadStrategy.EAGER),
     read(SubstrateFileType.PROGRESS, SubstrateFileLoadStrategy.LAZY),
     read(SubstrateFileType.PEERS, SubstrateFileLoadStrategy.LAZY),
+    // CONVERSATION.md excluded: Subconscious does not participate in conversation cycles;
+    // injecting conversation context would duplicate what Ego already processes and risk stale reads.
     write(SubstrateFileType.PLAN),
     write(SubstrateFileType.SKILLS),
     write(SubstrateFileType.MEMORY),
@@ -61,6 +63,9 @@ export const ROLE_PERMISSIONS: Record<AgentRole, FilePermission[]> = {
     read(SubstrateFileType.PROGRESS, SubstrateFileLoadStrategy.LAZY),
     read(SubstrateFileType.SKILLS, SubstrateFileLoadStrategy.LAZY),
     read(SubstrateFileType.MEMORY, SubstrateFileLoadStrategy.LAZY),
+    // CONVERSATION.md excluded: Ego writes here directly; Id reading it would cause circular
+    // context injection (Ego summarises conversation → Id reads conversation → loop).
+    // PEERS.md excluded: contains pubkeys for Agora routing — not relevant to Id's introspective role.
   ],
 };
 
