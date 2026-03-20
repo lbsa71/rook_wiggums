@@ -10,6 +10,7 @@ import { OllamaInferenceClient } from "../agents/ollama/OllamaInferenceClient";
 import { OllamaOffloadService } from "../agents/ollama/OllamaOffloadService";
 import { FetchHttpClient } from "../agents/ollama/FetchHttpClient";
 import { GroqSessionLauncher } from "../agents/groq/GroqSessionLauncher";
+import { AnthropicSessionLauncher } from "../agents/anthropic/AnthropicSessionLauncher";
 import { VertexSessionLauncher } from "../agents/vertex/VertexSessionLauncher";
 import { ProcessTracker, ProcessTrackerConfig } from "../agents/claude/ProcessTracker";
 import { NodeProcessKiller } from "../agents/claude/NodeProcessKiller";
@@ -116,6 +117,26 @@ export async function createAgentLayer(
     }
   }
 
+  // Anthropic subscription token — read from credentials file if configured (never from env vars)
+  let anthropicAccessToken: string | undefined;
+  if (config.anthropicTokenPath) {
+    try {
+      const { readFileSync } = await import("node:fs");
+      const raw = readFileSync(config.anthropicTokenPath, "utf8");
+      const json = JSON.parse(raw);
+      const token = json?.claudeAiOauth?.accessToken as string | undefined;
+      if (token?.startsWith("sk-ant-")) {
+        anthropicAccessToken = token;
+      } else {
+        logger.debug("agent-layer: Anthropic token file missing or malformed — Anthropic launcher disabled");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const redacted = msg.replaceAll(config.anthropicTokenPath, "[REDACTED]");
+      logger.debug(`agent-layer: Cannot read Anthropic token file — Anthropic launcher disabled (${redacted})`);
+    }
+  }
+
   // Cognitive role launcher — switch based on sessionLauncher config
   let gatedLauncher: ISessionLauncher;
   if (config.sessionLauncher === "gemini") {
@@ -141,6 +162,15 @@ export async function createAgentLayer(
       gatedLauncher = new SemaphoreSessionLauncher(groqLauncher, apiSemaphore);
     } else {
       logger.debug("agent-layer: sessionLauncher is \"groq\" but groqKeyPath is not set or key file unreadable — falling back to Claude SDK launcher");
+      gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
+    }
+  } else if (config.sessionLauncher === "anthropic") {
+    if (anthropicAccessToken) {
+      logger.debug(`agent-layer: using AnthropicSessionLauncher for cognitive roles (model: ${config.anthropicModel ?? "default"})`);
+      const anthropicLauncher = new AnthropicSessionLauncher(new FetchHttpClient(), clock, anthropicAccessToken, config.anthropicModel);
+      gatedLauncher = new SemaphoreSessionLauncher(anthropicLauncher, apiSemaphore);
+    } else {
+      logger.debug("agent-layer: sessionLauncher is \"anthropic\" but token unavailable — falling back to Claude SDK launcher");
       gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
     }
   } else {
@@ -279,6 +309,15 @@ export async function createAgentLayer(
       logger.debug(`agent-layer: Id using GroqSessionLauncher (idLauncher: groq, model: ${model ?? "default"})`);
     } else {
       logger.debug("agent-layer: idLauncher is \"groq\" but groqKeyPath is not set or key file unreadable — Id falling back to default launcher");
+    }
+  } else if (config.idLauncher === "anthropic") {
+    if (anthropicAccessToken) {
+      const model = config.idAnthropicModel ?? config.anthropicModel;
+      const anthropicLauncher = new AnthropicSessionLauncher(new FetchHttpClient(), clock, anthropicAccessToken, model);
+      idGatedLauncher = new SemaphoreSessionLauncher(anthropicLauncher, apiSemaphore);
+      logger.debug(`agent-layer: Id using AnthropicSessionLauncher (idLauncher: anthropic, model: ${model ?? "default"})`);
+    } else {
+      logger.debug("agent-layer: idLauncher is \"anthropic\" but token unavailable — Id falling back to default launcher");
     }
   }
 

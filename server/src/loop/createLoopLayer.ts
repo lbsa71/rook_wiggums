@@ -161,6 +161,8 @@ export async function createLoopLayer(
       ? "ollama"
       : config.idLauncher === "groq"
       ? "groq"
+      : config.idLauncher === "anthropic"
+      ? "anthropic"
       : config.sessionLauncher ?? "claude";
 
   const idleHandler = new IdleHandler(id, superego, ego, clock, logger, canaryLogger, idLauncherName);
