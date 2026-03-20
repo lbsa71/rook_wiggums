@@ -43,17 +43,17 @@ interface AnthropicResponse {
  * pay-per-token Anthropic API account.
  *
  * API endpoint: https://api.anthropic.com/v1/messages
- * Auth: Authorization: Bearer <accessToken read from anthropicTokenPath>
+ * Auth: Authorization: Bearer <accessToken read from claudeOAuthKeyPath>
  *
  * Graceful fallback: if the token file is missing or malformed, createAgentLayer
  * skips construction and falls back to the default launcher.
  *
  * Config shape (config.json):
- *   { "sessionLauncher": "anthropic", "anthropicTokenPath": "~/.master-plan/credentials.json", "anthropicModel": "claude-sonnet-4-20250514" }
- *   { "idLauncher": "anthropic", "anthropicTokenPath": "~/.master-plan/credentials.json", "idAnthropicModel": "claude-sonnet-4-20250514" }
+ *   { "sessionLauncher": "anthropic", "claudeOAuthKeyPath": "/home/agents/credentials.json", "anthropicModel": "claude-sonnet-4-20250514" }
+ *   { "idLauncher": "anthropic", "claudeOAuthKeyPath": "/home/agents/credentials.json", "idAnthropicModel": "claude-sonnet-4-20250514" }
  *
  * Credential file format (from `claude setup-token`):
- *   { "claudeAiOauth": { "accessToken": "sk-ant-oat01-..." } }
+ *   { "anthropic": { "setupToken": "sk-ant-oat01-..." } }
  *
  * @see https://docs.anthropic.com/en/api/messages
  */
@@ -81,7 +81,7 @@ export class AnthropicSessionLauncher implements ISessionLauncher {
         exitCode: 1,
         durationMs: 0,
         success: false,
-        error: "Anthropic access token not configured — set anthropicTokenPath in config.json",
+        error: "Anthropic access token not configured — set claudeOAuthKeyPath in config.json",
       };
     }
 

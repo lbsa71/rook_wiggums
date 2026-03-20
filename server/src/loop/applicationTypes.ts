@@ -116,12 +116,13 @@ export interface ApplicationConfig {
    *  Set to "vertex" to route Id through VertexSessionLauncher. Requires vertexKeyPath to be set.
    *  Set to "ollama" to route Id through OllamaSessionLauncher. Uses ollamaBaseUrl and idOllamaModel (falls back to ollamaModel).
    *  Set to "groq" to route Id through GroqSessionLauncher. Requires groqKeyPath to be set. Uses idGroqModel (falls back to groqModel).
-   *  Set to "anthropic" to route Id through AnthropicSessionLauncher. Requires anthropicTokenPath to be set. Uses idAnthropicModel (falls back to anthropicModel). */
+   *  Set to "anthropic" to route Id through AnthropicSessionLauncher. Requires claudeOAuthKeyPath to be set. Uses idAnthropicModel (falls back to anthropicModel). */
   idLauncher?: "claude" | "vertex" | "ollama" | "groq" | "anthropic";
   /** Path to Anthropic subscription credentials JSON file (from `claude setup-token`).
-   *  Expected JSON shape: `{ "claudeAiOauth": { "accessToken": "sk-ant-oat01-..." } }`
+   *  Expected JSON shape: `{ "anthropic": { "setupToken": "sk-ant-oat01-..." } }`
+   *  Recommended path: /home/agents/credentials.json (shared across all substrate agents).
    *  Required when sessionLauncher or idLauncher is "anthropic". Never logged. */
-  anthropicTokenPath?: string;
+  claudeOAuthKeyPath?: string;
   /** Model for AnthropicSessionLauncher (default: "claude-sonnet-4-20250514"). */
   anthropicModel?: string;
   /** Model for AnthropicSessionLauncher when idLauncher is "anthropic"

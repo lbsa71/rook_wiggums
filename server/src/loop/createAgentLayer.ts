@@ -119,12 +119,12 @@ export async function createAgentLayer(
 
   // Anthropic subscription token — read from credentials file if configured (never from env vars)
   let anthropicAccessToken: string | undefined;
-  if (config.anthropicTokenPath) {
+  if (config.claudeOAuthKeyPath) {
     try {
       const { readFileSync } = await import("node:fs");
-      const raw = readFileSync(config.anthropicTokenPath, "utf8");
+      const raw = readFileSync(config.claudeOAuthKeyPath, "utf8");
       const json = JSON.parse(raw);
-      const token = json?.claudeAiOauth?.accessToken as string | undefined;
+      const token = json?.anthropic?.setupToken as string | undefined;
       if (token?.startsWith("sk-ant-")) {
         anthropicAccessToken = token;
       } else {
@@ -132,7 +132,7 @@ export async function createAgentLayer(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const redacted = msg.replaceAll(config.anthropicTokenPath, "[REDACTED]");
+      const redacted = msg.replaceAll(config.claudeOAuthKeyPath, "[REDACTED]");
       logger.debug(`agent-layer: Cannot read Anthropic token file — Anthropic launcher disabled (${redacted})`);
     }
   }
