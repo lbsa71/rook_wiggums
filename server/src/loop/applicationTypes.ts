@@ -88,7 +88,7 @@ export interface ApplicationConfig {
    *  NOTE: "groq" uses Groq's free tier (100k tokens/day, 30 req/min) — adequate for Id subprocess
    *  roles but NOT recommended for cyclical cognitive roles (Ego/Subconscious/Superego) which exhaust
    *  the daily token budget in 1-2 active days. Use idLauncher: "groq" for targeted Id use instead. */
-  sessionLauncher?: "claude" | "gemini" | "ollama" | "groq";
+  sessionLauncher?: "claude" | "gemini" | "ollama" | "groq" | "anthropic";
   /** Base URL for the Ollama server when sessionLauncher is "ollama" (default: "http://localhost:11434"). */
   ollamaBaseUrl?: string;
   /** Model name for Ollama when sessionLauncher is "ollama" (default: "qwen3:14b"). Separate from `model` which is the Claude/Gemini model name. */
@@ -115,8 +115,19 @@ export interface ApplicationConfig {
   /** Which session launcher to use for the Id cognitive role (default: "claude" — same as other roles).
    *  Set to "vertex" to route Id through VertexSessionLauncher. Requires vertexKeyPath to be set.
    *  Set to "ollama" to route Id through OllamaSessionLauncher. Uses ollamaBaseUrl and idOllamaModel (falls back to ollamaModel).
-   *  Set to "groq" to route Id through GroqSessionLauncher. Requires groqKeyPath to be set. Uses idGroqModel (falls back to groqModel). */
-  idLauncher?: "claude" | "vertex" | "ollama" | "groq";
+   *  Set to "groq" to route Id through GroqSessionLauncher. Requires groqKeyPath to be set. Uses idGroqModel (falls back to groqModel).
+   *  Set to "anthropic" to route Id through AnthropicSessionLauncher. Requires claudeOAuthKeyPath to be set. Uses idAnthropicModel (falls back to anthropicModel). */
+  idLauncher?: "claude" | "vertex" | "ollama" | "groq" | "anthropic";
+  /** Path to Anthropic subscription credentials JSON file (from `claude setup-token`).
+   *  Expected JSON shape: `{ "anthropic": { "setupToken": "sk-ant-oat01-..." } }`
+   *  Recommended path: /home/agents/credentials.json (shared across all substrate agents).
+   *  Required when sessionLauncher or idLauncher is "anthropic". Never logged. */
+  claudeOAuthKeyPath?: string;
+  /** Model for AnthropicSessionLauncher (default: "claude-sonnet-4-20250514"). */
+  anthropicModel?: string;
+  /** Model for AnthropicSessionLauncher when idLauncher is "anthropic"
+   *  (default: falls back to anthropicModel). */
+  idAnthropicModel?: string;
   /** Model name for Ollama when idLauncher is "ollama" (default: falls back to ollamaModel, then OllamaSessionLauncher built-in default).
    *  Separate from ollamaModel to allow independent model selection for Id. */
   idOllamaModel?: string;
