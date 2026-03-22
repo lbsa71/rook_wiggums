@@ -7,6 +7,8 @@ import {
   nextCronOccurrence,
   computeNextWakeTime,
   validateHeartbeatContent,
+  IMPLICIT_HEARTBEAT_ENTRIES,
+  withImplicitEntries,
 } from "../../src/loop/HeartbeatParser";
 
 describe("detectScheduleType", () => {
@@ -398,5 +400,46 @@ describe("validateHeartbeatContent", () => {
     expect(msg).toContain("HEARTBEAT_WRITE_ERROR");
     expect(msg).toContain("# <schedule>");
     expect(msg).toContain("Entry rejected. Correct and resubmit.");
+  });
+});
+
+describe("IMPLICIT_HEARTBEAT_ENTRIES", () => {
+  it("contains at least one cron entry", () => {
+    expect(IMPLICIT_HEARTBEAT_ENTRIES.length).toBeGreaterThanOrEqual(1);
+    const hasCron = IMPLICIT_HEARTBEAT_ENTRIES.some(
+      (e) => detectScheduleType(e.schedule) === "cron"
+    );
+    expect(hasCron).toBe(true);
+  });
+
+  it("all implicit entries have valid cron schedules", () => {
+    for (const entry of IMPLICIT_HEARTBEAT_ENTRIES) {
+      expect(detectScheduleType(entry.schedule)).toBe("cron");
+    }
+  });
+});
+
+describe("withImplicitEntries", () => {
+  it("prepends implicit entries to parsed entries", () => {
+    const parsed = parseHeartbeat("# @once\nUser entry.");
+    const combined = withImplicitEntries(parsed);
+    expect(combined.length).toBe(parsed.length + IMPLICIT_HEARTBEAT_ENTRIES.length);
+    // Implicit entries come first
+    expect(combined[0].schedule).toBe(IMPLICIT_HEARTBEAT_ENTRIES[0].schedule);
+    // User entry is last
+    expect(combined[combined.length - 1].payload).toBe("User entry.");
+  });
+
+  it("returns implicit entries even when parsed is empty", () => {
+    const combined = withImplicitEntries([]);
+    expect(combined.length).toBe(IMPLICIT_HEARTBEAT_ENTRIES.length);
+  });
+
+  it("implicit entries ensure computeNextWakeTime always returns a value", () => {
+    const now = new Date("2026-03-09T20:30:00Z");
+    // Empty user entries — but implicit entries guarantee a wake time
+    const combined = withImplicitEntries([]);
+    const result = computeNextWakeTime(combined, now);
+    expect(result).not.toBeNull();
   });
 });
