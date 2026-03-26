@@ -4,15 +4,21 @@ export interface RejectionEntry {
   reason: string;
 }
 
+export interface ParseRejectionsOptions {
+  /** Maximum number of entries to return. Entries are sorted by timestamp descending before limiting. */
+  limit?: number;
+}
+
 const REJECTION_LINE_RE =
   /^\[([^\]]+)\]\s+\[SUPEREGO\]\s+Proposal for ([A-Z_]+) rejected:\s+(.+)$/;
 
 /**
- * Parse PROGRESS.md content and return all prior proposal rejection entries.
+ * Parse PROGRESS.md content and return prior proposal rejection entries.
  * Each entry includes the timestamp, the proposal target (e.g. "HABITS"), and the rejection reason.
+ * When `limit` is provided, returns only the N most recent entries (sorted by timestamp descending).
  */
-export function parseRejections(progressMarkdown: string): RejectionEntry[] {
-  return progressMarkdown
+export function parseRejections(progressMarkdown: string, options?: ParseRejectionsOptions): RejectionEntry[] {
+  const all = progressMarkdown
     .split("\n")
     .map((line) => REJECTION_LINE_RE.exec(line))
     .filter((m): m is RegExpExecArray => m !== null)
@@ -21,6 +27,9 @@ export function parseRejections(progressMarkdown: string): RejectionEntry[] {
       target: m[2],
       reason: m[3],
     }));
+
+  const sorted = all.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return options?.limit !== undefined ? sorted.slice(0, options.limit) : sorted;
 }
 
 /**

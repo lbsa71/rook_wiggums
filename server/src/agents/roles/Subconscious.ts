@@ -161,7 +161,7 @@ export class Subconscious {
       // Read prior rejection constraints from PROGRESS.md (use snapshot if available)
       const progressContent = snapshot?.files[SubstrateFileType.PROGRESS]
         ?? await this.reader.read(SubstrateFileType.PROGRESS).then((r) => r.rawMarkdown).catch(() => "");
-      const rejectionConstraints = buildRejectionConstraints(parseRejections(progressContent));
+      const rejectionConstraints = buildRejectionConstraints(parseRejections(progressContent, { limit: 5 }));
 
       let message = this.promptBuilder.buildAgentMessage(eagerRefs, lazyRefs, "", rejectionConstraints);
       if (pendingMessages && pendingMessages.length > 0) {

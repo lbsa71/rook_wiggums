@@ -6,7 +6,6 @@ import { FileLock } from "../substrate/io/FileLock";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { SubstrateFileWriter } from "../substrate/io/FileWriter";
 import { SubstrateFileReader } from "../substrate/io/FileReader";
-import { PlanParser } from "../agents/parsers/PlanParser";
 
 /**
  * Manages state preservation when entering rate-limited hibernation.

@@ -22,9 +22,9 @@ describe("parseRejections", () => {
     const entries = parseRejections(raw);
 
     expect(entries).toHaveLength(2);
-    expect(entries[0].target).toBe("HABITS");
-    expect(entries[1].target).toBe("SECURITY");
-    expect(entries[1].reason).toBe("Bypasses permission check");
+    expect(entries[0].target).toBe("SECURITY");
+    expect(entries[1].target).toBe("HABITS");
+    expect(entries[0].reason).toBe("Bypasses permission check");
   });
 
   it("ignores non-rejection SUPEREGO entries", () => {
@@ -64,6 +64,63 @@ describe("parseRejections", () => {
 
   it("returns empty array for empty input", () => {
     expect(parseRejections("")).toHaveLength(0);
+  });
+
+  it("returns only the N most recent entries when limit is set", () => {
+    const raw = [
+      "[2026-03-26T07:00:00.000Z] [SUPEREGO] Proposal for HABITS rejected: Old reason",
+      "[2026-03-26T08:00:00.000Z] [SUPEREGO] Proposal for SECURITY rejected: Mid reason",
+      "[2026-03-26T09:00:00.000Z] [SUPEREGO] Proposal for PRIVACY rejected: New reason",
+    ].join("\n");
+
+    const entries = parseRejections(raw, { limit: 2 });
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].target).toBe("PRIVACY");
+    expect(entries[1].target).toBe("SECURITY");
+  });
+
+  it("excludes older entries beyond the limit", () => {
+    const raw = [
+      "[2026-03-26T07:00:00.000Z] [SUPEREGO] Proposal for HABITS rejected: Old reason",
+      "[2026-03-26T08:00:00.000Z] [SUPEREGO] Proposal for SECURITY rejected: Mid reason",
+      "[2026-03-26T09:00:00.000Z] [SUPEREGO] Proposal for PRIVACY rejected: New reason",
+    ].join("\n");
+
+    const entries = parseRejections(raw, { limit: 2 });
+
+    expect(entries.map((e) => e.target)).not.toContain("HABITS");
+  });
+
+  it("respects a configurable limit value", () => {
+    const targets = ["HABITS", "SECURITY", "PRIVACY", "MEMORY", "SKILLS", "FINANCE", "HEALTH", "SOCIAL", "FOCUS", "GOALS"];
+    const lines = targets.map((t, i) =>
+      `[2026-03-26T0${i}:00:00.000Z] [SUPEREGO] Proposal for ${t} rejected: Reason ${i}`
+    );
+    const entries = parseRejections(lines.join("\n"), { limit: 3 });
+
+    expect(entries).toHaveLength(3);
+  });
+
+  it("returns all entries when fewer exist than the limit", () => {
+    const raw = "[2026-03-26T08:00:00.000Z] [SUPEREGO] Proposal for HABITS rejected: Some reason";
+    const entries = parseRejections(raw, { limit: 5 });
+
+    expect(entries).toHaveLength(1);
+  });
+
+  it("returns entries sorted by timestamp descending when no limit is set", () => {
+    const raw = [
+      "[2026-03-26T07:00:00.000Z] [SUPEREGO] Proposal for HABITS rejected: Old",
+      "[2026-03-26T09:00:00.000Z] [SUPEREGO] Proposal for PRIVACY rejected: New",
+      "[2026-03-26T08:00:00.000Z] [SUPEREGO] Proposal for SECURITY rejected: Mid",
+    ].join("\n");
+
+    const entries = parseRejections(raw);
+
+    expect(entries[0].target).toBe("PRIVACY");
+    expect(entries[1].target).toBe("SECURITY");
+    expect(entries[2].target).toBe("HABITS");
   });
 });
 
