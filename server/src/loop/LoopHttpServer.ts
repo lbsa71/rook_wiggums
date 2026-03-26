@@ -871,7 +871,7 @@ export class LoopHttpServer {
       };
       return canaryLogger.recordCycle(record);
     }).then(
-      (record) => this.json(res, 200, record),
+      (enriched) => this.json(res, 200, enriched),
       (err) => {
         const message = err instanceof Error ? err.message : "Unknown error";
         this.json(res, 500, { error: message });

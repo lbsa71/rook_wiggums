@@ -53,6 +53,11 @@ export class CanaryLogger {
     private readonly filePath: string,
   ) {}
 
+  /**
+   * Appends the record to the log file, enriching it with computed normalization fields
+   * (`cPerLine`, `cPerKb`, `postCompaction`) when `convMdLines`/`convMdKb` are present.
+   * Returns the enriched record as written to disk.
+   */
   async recordCycle(record: CanaryRecord): Promise<CanaryRecord> {
     const dir = path.dirname(this.filePath);
     await this.fs.mkdir(dir, { recursive: true });
