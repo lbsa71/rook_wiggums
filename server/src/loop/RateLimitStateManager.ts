@@ -6,6 +6,7 @@ import { FileLock } from "../substrate/io/FileLock";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { SubstrateFileWriter } from "../substrate/io/FileWriter";
 import { SubstrateFileReader } from "../substrate/io/FileReader";
+import { PlanParser } from "../agents/parsers/PlanParser";
 
 /**
  * Manages state preservation when entering rate-limited hibernation.
@@ -65,41 +66,26 @@ export class RateLimitStateManager {
     // Find the "## Current Goal" section and add hibernation context
     const goalMatch = planContent.match(/^## Current Goal\s*\n([\s\S]*?)(?=\n##|$)/m);
 
+    let planBase: string;
     if (!goalMatch) {
-      // If no Current Goal section found, just prepend a note and a restart task
-      return `# Plan
-
-## Current Goal
-
-[RATE LIMITED - resuming at ${resetTimestamp}]
-
-## Tasks
-
-${restartTask}
-
-${planContent.replace(/^# Plan\s*\n/, '')}`;
-    }
-
-    const currentGoal = goalMatch[1].trim();
-    const hibernationNote = `[RATE LIMITED - resuming at ${resetTimestamp}]${taskContext}\n\n`;
-    const updatedGoal = hibernationNote + currentGoal;
-
-    // Insert the restart task into the Tasks section, or append one if absent
-    let updated = planContent.replace(
-      /^## Current Goal\s*\n[\s\S]*?(?=\n##|$)/m,
-      `## Current Goal\n\n${updatedGoal}\n`
-    );
-
-    const tasksMatch = updated.match(/^## Tasks\s*\n/m);
-    if (tasksMatch) {
-      updated = updated.replace(
-        /^## Tasks\s*\n/m,
-        `## Tasks\n\n${restartTask}\n`
+      // No Current Goal section — add a minimal one with the rate-limited note
+      const rateNote = `[RATE LIMITED - resuming at ${resetTimestamp}]${taskContext}`;
+      planBase = planContent.replace(
+        /^(# Plan[^\n]*\n)/m,
+        `$1\n## Current Goal\n\n${rateNote}\n\n`
       );
     } else {
-      updated = updated.trimEnd() + `\n\n## Tasks\n\n${restartTask}\n`;
+      const currentGoal = goalMatch[1].trim();
+      const hibernationNote = `[RATE LIMITED - resuming at ${resetTimestamp}]${taskContext}\n\n`;
+      const updatedGoal = hibernationNote + currentGoal;
+
+      planBase = planContent.replace(
+        /^## Current Goal\s*\n[\s\S]*?(?=\n##|$)/m,
+        `## Current Goal\n\n${updatedGoal}\n`
+      );
     }
 
-    return updated;
+    // Use PlanParser for consistent task injection into the ## Tasks section
+    return PlanParser.appendTasksToExistingPlan(planBase, [restartTask]);
   }
 }
