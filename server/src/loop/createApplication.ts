@@ -13,7 +13,7 @@ export async function createApplication(config: ApplicationConfig): Promise<Appl
   const sdkQuery = config.sdkQueryFn
     ?? (await import("@anthropic-ai/claude-agent-sdk")).query as unknown as SdkQueryFn;
 
-  const substrate = await createSubstrateLayer(config.substratePath, config.logLevel, config.enableFileReadCache, config.progressMaxBytes);
+  const substrate = await createSubstrateLayer(config.substratePath, config.logLevel, config.enableFileReadCache, config.progressMaxBytes, config.env);
   const agents = await createAgentLayer(config, sdkQuery, substrate);
   const loop = await createLoopLayer(config, sdkQuery, substrate, agents);
 

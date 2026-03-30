@@ -97,7 +97,7 @@ export async function createLoopLayer(
     evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 85,
   });
 
-  const httpServer = new LoopHttpServer();
+  const httpServer = new LoopHttpServer(process.env.AGORA_WEBHOOK_TOKEN);
   const wsServer = new LoopWebSocketServer(httpServer.getServer());
   const timer = new NodeTimer();
 
@@ -207,7 +207,7 @@ export async function createLoopLayer(
 
     // Heartbeat-driven wake timer — wakes the loop at the next scheduled HEARTBEAT entry
     const heartbeatPath = path.join(config.substratePath, "HEARTBEAT.md");
-    const sleepWakeTimer = new SleepWakeTimer(logger);
+    const sleepWakeTimer = new SleepWakeTimer(logger, clock);
     orchestrator.setSleepWakeTimer(sleepWakeTimer, () => {
       try {
         const content = nodeFs.readFileSync(heartbeatPath, "utf-8");

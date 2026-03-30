@@ -1,12 +1,13 @@
 import { SleepWakeTimer, InMemorySleepWakeTimer } from "../../src/loop/SleepWakeTimer";
 import { InMemoryLogger } from "../../src/logging";
+import { SystemClock } from "../../src/substrate/abstractions/SystemClock";
 
 describe("SleepWakeTimer", () => {
   let timer: SleepWakeTimer;
 
   beforeEach(() => {
     jest.useFakeTimers();
-    timer = new SleepWakeTimer(new InMemoryLogger());
+    timer = new SleepWakeTimer(new InMemoryLogger(), new SystemClock());
   });
 
   afterEach(() => {

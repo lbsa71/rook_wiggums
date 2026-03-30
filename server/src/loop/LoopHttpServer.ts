@@ -76,9 +76,9 @@ export class LoopHttpServer {
   private convMdReader: (() => Promise<ConvMdStats | null>) | null = null;
   private static readonly CANARY_RATE_LIMIT_MS = 55 * 60 * 1000; // 55 minutes
 
-  constructor() {
+  constructor(webhookToken?: string) {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
-    this.agoraWebhookToken = process.env.AGORA_WEBHOOK_TOKEN;
+    this.agoraWebhookToken = webhookToken;
   }
 
   setOrchestrator(orchestrator: LoopOrchestrator): void {
@@ -177,6 +177,9 @@ export class LoopHttpServer {
       this.server.listen(port, "127.0.0.1", () => {
         const addr = this.server.address();
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
+        // unref() allows the process to exit even if the server is still listening.
+        // Process lifecycle in production is managed by systemd/supervisor, not this server.
+        this.server.unref();
         resolve(boundPort);
       });
     });

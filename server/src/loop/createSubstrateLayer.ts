@@ -1,6 +1,9 @@
 import * as path from "path";
 import { NodeFileSystem } from "../substrate/abstractions/NodeFileSystem";
 import { SystemClock } from "../substrate/abstractions/SystemClock";
+import type { IFileSystem } from "../substrate/abstractions/IFileSystem";
+import type { IClock } from "../substrate/abstractions/IClock";
+import type { ILogger } from "../logging";
 import { SubstrateConfig } from "../substrate/config";
 import { SubstrateFileReader } from "../substrate/io/FileReader";
 import { SubstrateFileWriter } from "../substrate/io/FileWriter";
@@ -11,40 +14,49 @@ import { SuperegoFindingTracker } from "../agents/roles/SuperegoFindingTracker";
 import { MetaManager } from "../substrate/MetaManager";
 
 export interface SubstrateLayerResult {
-  fs: NodeFileSystem;
-  clock: SystemClock;
+  fs: IFileSystem;
+  clock: IClock;
   substrateConfig: SubstrateConfig;
   reader: SubstrateFileReader;
   writer: SubstrateFileWriter;
   appendWriter: AppendOnlyWriter;
   lock: FileLock;
-  logger: FileLogger;
+  logger: ILogger;
   logPath: string;
   metaManager: MetaManager;
   findingTracker: SuperegoFindingTracker;
   findingTrackerSave: () => Promise<void>;
 }
 
+export interface SubstrateLayerOverrides {
+  fs?: IFileSystem;
+  clock?: IClock;
+  logger?: ILogger;
+}
+
 /**
  * Creates and initialises all substrate-level I/O primitives:
  * filesystem, clock, config, readers/writers, logger, MetaManager
  * and the SuperegoFindingTracker.
+ *
+ * Pass `overrides` to inject test doubles for fs, clock, and logger.
  */
 export async function createSubstrateLayer(
   substratePath: string,
   logLevel?: LogLevel,
   enableFileReadCache = true,
-  progressMaxBytes?: number
+  progressMaxBytes?: number,
+  overrides?: SubstrateLayerOverrides,
 ): Promise<SubstrateLayerResult> {
-  const fs = new NodeFileSystem();
-  const clock = new SystemClock();
+  const fs = overrides?.fs ?? new NodeFileSystem();
+  const clock = overrides?.clock ?? new SystemClock();
   const substrateConfig = new SubstrateConfig(substratePath);
   const reader = new SubstrateFileReader(fs, substrateConfig, enableFileReadCache);
   const lock = new FileLock();
 
   // Logger — created early so all layers can use it
   const logPath = path.resolve(substratePath, "..", "debug.log");
-  const logger = new FileLogger(logPath, undefined, logLevel ?? "info");
+  const logger = overrides?.logger ?? new FileLogger(logPath, undefined, logLevel ?? "info");
 
   const writer = new SubstrateFileWriter(fs, substrateConfig, lock, reader, logger);
   const appendWriter = new AppendOnlyWriter(fs, substrateConfig, lock, clock, reader, progressMaxBytes);

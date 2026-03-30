@@ -3,6 +3,7 @@ import type { LoopOrchestrator } from "./LoopOrchestrator";
 import type { LoopHttpServer } from "./LoopHttpServer";
 import type { LoopWebSocketServer } from "./LoopWebSocketServer";
 import type { FileWatcher } from "../substrate/watcher/FileWatcher";
+import type { SubstrateLayerOverrides } from "./createSubstrateLayer";
 
 export interface ApplicationConfig {
   substratePath: string;
@@ -140,6 +141,8 @@ export interface ApplicationConfig {
   /** Model name for Groq when idLauncher is "groq" (default: falls back to groqModel, then GroqSessionLauncher built-in default).
    *  Separate from groqModel to allow independent model selection for Id. */
   idGroqModel?: string;
+  /** Injectable environment overrides for testing (fs, clock, logger). Not used in production. */
+  env?: SubstrateLayerOverrides;
   /** Configuration for the loop watchdog that detects stalls and injects reminders */
   watchdog?: {
     /** Disable the watchdog entirely (default: false) */

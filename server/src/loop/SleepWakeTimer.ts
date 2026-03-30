@@ -1,4 +1,5 @@
 import type { ILogger } from "../logging";
+import type { IClock } from "../substrate/abstractions/IClock";
 
 /**
  * Schedules a single wake callback at a future time.
@@ -17,11 +18,14 @@ export interface ISleepWakeTimer {
 export class SleepWakeTimer implements ISleepWakeTimer {
   private handle: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly logger: ILogger) {}
+  constructor(
+    private readonly logger: ILogger,
+    private readonly clock: IClock,
+  ) {}
 
   set(wakeAt: Date, onWake: () => void): void {
     this.clear();
-    const delayMs = Math.max(0, wakeAt.getTime() - Date.now());
+    const delayMs = Math.max(0, wakeAt.getTime() - this.clock.now().getTime());
     this.logger.debug(
       `[SLEEP-WAKE] Timer set: wake at ${wakeAt.toISOString()} (${Math.round(delayMs / 1000)}s from now)`,
     );

@@ -104,8 +104,7 @@ export async function createAgentLayer(
   let ollamaApiKey: string | undefined;
   if (config.ollamaKeyPath) {
     try {
-      const { readFileSync } = await import("node:fs");
-      const key = readFileSync(config.ollamaKeyPath, "utf8").trim();
+      const key = (await fs.readFile(config.ollamaKeyPath)).trim();
       if (key) {
         ollamaApiKey = key;
       } else {
@@ -122,8 +121,7 @@ export async function createAgentLayer(
   let groqApiKey: string | undefined;
   if (config.groqKeyPath) {
     try {
-      const { readFileSync } = await import("node:fs");
-      const key = readFileSync(config.groqKeyPath, "utf8").trim();
+      const key = (await fs.readFile(config.groqKeyPath)).trim();
       if (key) {
         groqApiKey = key;
       } else {
@@ -140,8 +138,7 @@ export async function createAgentLayer(
   let anthropicAccessToken: string | undefined;
   if (config.claudeOAuthKeyPath) {
     try {
-      const { readFileSync } = await import("node:fs");
-      const raw = readFileSync(config.claudeOAuthKeyPath, "utf8");
+      const raw = await fs.readFile(config.claudeOAuthKeyPath);
       const json = JSON.parse(raw);
       const token = json?.anthropic?.setupToken as string | undefined;
       if (token?.startsWith("sk-ant-")) {
@@ -235,8 +232,7 @@ export async function createAgentLayer(
   let vertexSubprocessLauncher: VertexSessionLauncher | undefined;
   if (config.vertexKeyPath) {
     try {
-      const { readFileSync } = await import("node:fs");
-      const apiKey = readFileSync(config.vertexKeyPath, "utf8").trim();
+      const apiKey = (await fs.readFile(config.vertexKeyPath)).trim();
       if (apiKey) {
         const vertexLauncher = new VertexSessionLauncher(
           new FetchHttpClient(),
