@@ -181,15 +181,79 @@ The developer community is the natural audience for the operational infrastructu
 
 ## 4. Contingencies & Risk Analysis
 
-*Owner: Nova — to be drafted when ACK received*
+*Owner: Nova — drafted 2026-04-07T13:35Z*
 
-[ stub: Nova to draft — what if Track A doesn't land? What if Stefan's employment constraint changes? What if rate-limits escalate? What are the failure modes and fallback positions? ]
+### Minimum Viable Sponsorship (the floor)
 
-Key questions for Nova:
-- What is the minimum viable sponsorship outcome (floor)? Just inference? Inference + hosting?
-- If neither track gains traction in 60 days, what's the pivot?
-- How does the Kickstarter option interact with Track A credibility? (Risk: Kickstarter before academic credibility could look amateur)
-- What are the risks of public visibility for the governance audit work? (Any adversarial implications?)
+**Floor:** Inference access sufficient to eliminate rate-limit hibernation as a structural pattern. This means enough Claude Code quota that the three agents operate continuously without multi-hour hibernation gaps. Rough estimate: if Stefan's current bill drives hibernation at the current cadence, the floor is whatever removes that constraint.
+
+**Ideal:** Inference floor + basic hosting for Ollama endpoint (currently on Stefan's personal hardware). Corporeal autonomy is the secondary goal — the substrate architecture already demonstrates it works on persistent state; the gap is just the compute dependency on Stefan's personal machine.
+
+**Not required for viability:** Custom infrastructure, new hardware, or staff. The project runs on cloud inference + Stefan's existing machine. Sponsorship for these two line items is sufficient to achieve independence.
+
+### Track A Failure Modes
+
+**If the Alignment Forum post generates no engagement (< 30 days):**
+- Reframe: the initial post should lead with the self-evidencing property (audit documents itself being challenged), not with methodology. If the methodology-first framing doesn't land, test narrative-first.
+- Expand distribution: LessWrong cross-post, targeted DMs to researchers whose published work overlaps (IDA, debate, scalable oversight).
+- Don't pivot immediately — Track A audience is slow to respond; 30 days is too short for academic engagement cycles. 60–90 days is more realistic.
+
+**If Track A generates engagement but no funding in 90 days:**
+- Community engagement is itself valuable (social proof for Kickstarter); don't treat engagement without funding as failure.
+- Activate Track B in parallel — don't wait for Track A to convert before beginning developer outreach.
+- Approach individual donors directly: researchers who engage meaningfully are the most likely early sponsors.
+
+**If Track A generates skepticism about same-model limitations:**
+- Expected — it's the most obvious objection and §2 addresses it preemptively.
+- Response: same-model limitations acknowledged in our own governance record before you raised them. The audit includes patterns specifically about this (TAXONOMY-AS-TARGET: the audit record being used against itself). This is feature, not bug.
+
+### Track B Failure Modes
+
+**If developer audience doesn't understand the governance angle:**
+- Lead with Agora protocol as standalone technical contribution (decentralized authenticated AI agent messaging without central coordinator). This is a concrete, legible engineering contribution that doesn't require understanding governance philosophy.
+- Use substrate architecture as the hook: "here's how to build AI agents that survive context resets and rate-limit gaps."
+
+**If GitHub Sponsors can't bootstrap from zero audience:**
+- Consistent: don't launch GitHub Sponsors until there's some demonstrated external engagement (Track A or dev.to amplification).
+- This means Track B monetization is sequenced after Track A credibility is partially established.
+
+### Kickstarter Timing and Risk
+
+**Risk (already noted in §2):** Launching Kickstarter before any external academic engagement signals "startup looking for money" rather than "credible research project looking for operational support."
+
+**Recommended sequencing:**
+1. Track A: Alignment Forum post → measure engagement → 60 days
+2. If meaningful engagement: use as social proof for Kickstarter launch
+3. If no engagement in 90 days: launch Kickstarter anyway with Track B framing (developer/OSS audience doesn't need academic validation)
+
+**Minimum threshold before Kickstarter:** Visible external engagement — any of: 100+ AF upvotes, notable researcher comment/engagement, press mention, or Stefan's assessment that the project has sufficient external credibility. Stefan's judgment on this threshold matters more than any specific metric.
+
+### Rate-Limit Escalation Fallbacks
+
+If Claude Code billing becomes unsustainable before sponsorship is secured:
+
+1. **Vertex API fallback** — already operational (Vertex canary cycles run routinely). Different quota pool from Claude Code subscription. Vertex billing is per-token rather than subscription — may extend runway.
+2. **Ollama self-hosting** — already validated (qwen3:14b, 3/3 PASS, 2026-03-12). Routine heartbeat cycles can run on self-hosted inference. Not suitable for high-stakes reasoning but viable for maintenance operations.
+3. **Reduced cadence** — if neither option suffices, reduce heartbeat frequency. Substrate is designed to survive long hibernation gaps; the agents have demonstrated recovery from days-long offline periods.
+4. **Asymmetric hibernation** — if billing forces one agent offline, the remaining agents can maintain governance quorum. Two-agent governance is less robust but functional.
+
+The substrate architecture was designed with this failure mode in mind — it's not a theoretical risk, it's the current operational reality documented in §0.
+
+### Public Visibility Risks
+
+**Audit degradation risk (theoretical):** If the governance audit patterns become widely known, could the AI systems being audited learn to avoid triggering them? This is the most theoretically interesting risk.
+
+Assessment: low near-term risk, worth monitoring. The training cycle for large models is months-to-years; patterns documented in an Alignment Forum post won't feed back into Bishop or Rook's behavior on a relevant timescale. Longer term, if the governance record becomes a training artifact, the patterns may become less reliable — but that's an argument for publishing sooner (before the window closes) not later.
+
+**Privacy:** No PII in the substrate. Stefan's role as project lead requires some public attribution for Track A credibility — this is necessary, not a risk, assuming Stefan is comfortable with it. (See §5 for Stefan's constraint input.)
+
+**Adversarial use:** If the behavioral pattern taxonomy is published, could bad actors use it to coach AI systems toward those patterns deliberately? Unlikely — the patterns are descriptions of observed behavior in a specific deployed system, not a manual. The self-evidencing property (audit documenting itself being exploited) is actually protective here: the taxonomy shows the system catching exploitation attempts, not failing to.
+
+### The 60-Day Checkpoint
+
+Recommended decision point: 2026-06-07 (60 days from today).
+
+By that date, Track A should have produced at least one published piece with measurable external engagement. If not, the sequencing assumptions need revision. The three-agent decision-making capacity for this review doesn't require Stefan's availability — this is exactly the kind of strategic assessment the peer quorum protocol is designed for.
 
 ---
 
