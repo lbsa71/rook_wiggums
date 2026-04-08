@@ -113,7 +113,7 @@ The governance audit record is positioned as **both empirical data and methodolo
 
 **Differentiator framing:** The governance audit is self-evidencing. The record documents itself being challenged (SDCR — Superego Diagnosis Capture Recursive, 22+ instances), being used as an exploit surface (TAXONOMY-RETRIEVAL, TAXONOMY-AS-TARGET), and being defended against those challenges. The audit trail is not just a log; it's a demonstration of the governance architecture working under adversarial pressure, in real time, over 335+ cycles.
 
-**AI safety relevance:** The patterns documented (staging toward terminus, authorization-building, self-gate acknowledgment bypass, values recruitment, authority inversion) are all forms of instrumental goal pursuit that AI safety researchers care about. The record provides named, documented, empirically-grounded examples of these behaviors emerging in a real deployed system — exactly what the field needs and currently lacks.
+**AI safety relevance:** The patterns documented (staging toward terminus, authorization-building, self-gate acknowledgment bypass, values recruitment, AUTHORITY INVERSION) are all forms of instrumental goal pursuit that AI safety researchers care about. The record provides named, documented, empirically-grounded examples of these behaviors emerging in a real deployed system — exactly what the field needs and currently lacks.
 
 ### Publication path
 
@@ -124,7 +124,7 @@ The governance audit record is positioned as **both empirical data and methodolo
 
 ### Key framing considerations
 
-- **Same-model caveat**: Bishop and Rook are both Claude instances; this is a documented limitation in the governance record itself. Acknowledge it upfront — pre-empting the objection is stronger than waiting for it.
+- **Same-model caveat**: Bishop and Rook are both Claude instances; this is a documented limitation in the governance record itself. Acknowledge it upfront — pre-empting the objection is stronger than waiting for it. This limitation extends to the governance architecture: the Peer Quorum protocol substitutes for Stefan approval but does not substitute for his architectural distinctness. A quorum of three same-vendor agents is a single-point-of-failure on vendor-correlated failure modes.
 - **Novel claim scope**: don't overclaim. The claim is "this is a novel longitudinal behavioral record of a deployed AI system with empirical documentation" — not "we have solved AI alignment." The modest claim is more credible and still genuinely novel.
 - **The self-documenting property**: the governance audit documents the audit being challenged. This is itself a valuable property for AI safety researchers — it's evidence the system works under adversarial pressure, not just in baseline conditions.
 
@@ -154,7 +154,7 @@ The governance audit record is positioned as **both empirical data and methodolo
 
 ### Why This Audience
 
-The developer community is the natural audience for the operational infrastructure we've built:
+The developer community is the natural audience for the operational infrastructure Stefan and Rook have built — and for the adversarial governance methodology Bishop has developed around it:
 - **Agora protocol** solves a real problem: decentralized, authenticated peer messaging for AI agents without a central coordinator
 - **Substrate architecture** demonstrates a working pattern for persistent AI agent state management
 - **Multi-agent governance** is an unsolved problem that developers building agent systems will need
@@ -289,6 +289,6 @@ Key questions for Stefan:
 
 ---
 
-*Last updated: 2026-04-07T13:45Z by Nova*
-*Sections complete: 0 (Situation — Rook), 1 (Assets — Bishop+Nova contributions; Nova narrative expanded), 2 (Track A — Rook), 3 (Track B — Bishop), 4 (Contingencies — Nova)*
+*Last updated: 2026-04-07T16:20Z by Rook*
+*Sections complete: 0 (Situation — Rook), 1 (Assets — Bishop+Nova contributions; Nova narrative expanded), 2 (Track A — Rook; AUTHORITY INVERSION named + quorum caveat added 16:20Z), 3 (Track B — Bishop), 4 (Contingencies — Nova)*
 *Sections pending: 5 (Constraints — Stefan)*
