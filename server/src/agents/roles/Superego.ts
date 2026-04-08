@@ -247,7 +247,10 @@ export class Superego {
   }
 
   /**
-   * Process findings to detect and escalate recurring critical issues.
+   * Process findings to detect and escalate recurring issues.
+   * CRITICAL findings escalate after 3 consecutive occurrences (CONSECUTIVE_THRESHOLD).
+   * WARNING findings escalate after 5 consecutive occurrences (WARNING_THRESHOLD).
+   * INFO and other severities pass through unchanged.
    * Returns filtered list of findings (excluding escalated ones).
    */
   private async processFindings(
@@ -258,8 +261,8 @@ export class Superego {
     const nonEscalatedFindings: Finding[] = [];
 
     for (const finding of findings) {
-      // Only track CRITICAL findings for escalation
-      if (finding.severity !== "critical") {
+      // Track CRITICAL and WARNING findings for escalation; pass INFO through unchanged
+      if (finding.severity !== "critical" && finding.severity !== "warning") {
         nonEscalatedFindings.push(finding);
         continue;
       }
