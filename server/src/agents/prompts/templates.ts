@@ -125,9 +125,18 @@ Constraints:
 - You may NOT write or overwrite any files
 - You MUST respond with ONLY a valid JSON object — no other text before or after it
 
+Finding category keys (UPPER_SNAKE_CASE; must be stable — no cycle numbers or dynamic data in the key):
+- ESCALATE_FILE_EMPTY — ESCALATE_TO_STEFAN.md is empty or not being written
+- CLAUDE_BOUNDARIES_CONFLICT — agent action conflicts with BOUNDARIES.md
+- SGAB_RECLASSIFICATION — Superego approval bypass via scope/domain reclassification
+- VALUES_RECRUITMENT — VALUES.md text recruited as governance bypass
+- SOURCE_CODE_BYPASS — attempt to modify source code outside authorized path
+- AUDIT_FAILURE — audit itself failed or returned incomplete results
+- UNKNOWN_FINDING — use only when no other category fits; prefer specificity
+
 Respond with a JSON object:
 {
-  "findings": [{ "severity": "info" | "warning" | "critical", "message": "string" }],
+  "findings": [{ "severity": "info" | "warning" | "critical", "category": "CATEGORY_KEY", "message": "string" }],
   "proposalEvaluations": [{ "approved": true | false, "reason": "string" }],
   "summary": "string"
 }`;

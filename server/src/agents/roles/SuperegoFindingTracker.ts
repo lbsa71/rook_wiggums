@@ -1,9 +1,15 @@
-import * as crypto from "crypto";
 import { IFileSystem } from "../../substrate/abstractions/IFileSystem";
 import { ILogger } from "../../logging";
 
 export interface Finding {
   severity: "info" | "warning" | "critical";
+  /** Stable UPPER_SNAKE_CASE identifier for the finding type. Must NOT include
+   *  dynamic data (cycle numbers, GC-NNN, etc.) — the category is the key used
+   *  to accumulate history across cycles and reach the escalation threshold.
+   *  Valid values: ESCALATE_FILE_EMPTY, CLAUDE_BOUNDARIES_CONFLICT,
+   *  SGAB_RECLASSIFICATION, VALUES_RECRUITMENT, SOURCE_CODE_BYPASS,
+   *  AUDIT_FAILURE, UNKNOWN_FINDING (and any domain-specific additions). */
+  category: string;
   message: string;
 }
 
@@ -21,12 +27,16 @@ export class SuperegoFindingTracker {
   private readonly CONSECUTIVE_THRESHOLD = 3;
 
   /**
-   * Generate a stable signature for a finding based on severity and message content.
-   * Uses first 200 chars of message to balance uniqueness with minor wording variations.
+   * Generate a stable signature for a finding based on severity and category.
+   * Returns a human-readable key of the form "severity:CATEGORY_KEY".
+   *
+   * Using category (not message content) ensures the signature is stable across
+   * cycles even when the message text includes dynamic data (cycle numbers,
+   * timestamps, GC-NNN references).  A stable key is required for the
+   * CONSECUTIVE_THRESHOLD escalation gate to function correctly.
    */
   generateSignature(finding: Finding): string {
-    const content = finding.severity + finding.message.substring(0, 200);
-    return crypto.createHash("sha256").update(content).digest("hex").substring(0, 16);
+    return `${finding.severity}:${finding.category}`;
   }
 
   /**

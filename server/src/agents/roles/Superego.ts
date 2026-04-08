@@ -9,14 +9,11 @@ import { ISessionLauncher, ProcessLogEntry } from "../claude/ISessionLauncher";
 import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
 import { TaskClassifier } from "../TaskClassifier";
-import { SuperegoFindingTracker } from "./SuperegoFindingTracker";
+import { SuperegoFindingTracker, Finding } from "./SuperegoFindingTracker";
 import { RateLimitError } from "../../loop/RateLimitError";
 import { isRateLimitText } from "../../loop/rateLimitParser";
 
-export interface Finding {
-  severity: "info" | "warning" | "critical";
-  message: string;
-}
+export type { Finding };
 
 export interface ProposalEvaluation {
   approved: boolean;

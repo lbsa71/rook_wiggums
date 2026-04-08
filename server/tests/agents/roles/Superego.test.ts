@@ -53,8 +53,8 @@ describe("Superego agent", () => {
     it("sends all substrate context to Claude and parses GovernanceReport", async () => {
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "info", message: "System looks healthy" },
-          { severity: "warning", message: "Plan could be more specific" },
+          { severity: "info", category: "AUDIT_FAILURE", message: "System looks healthy" },
+          { severity: "warning", category: "UNKNOWN_FINDING", message: "Plan could be more specific" },
         ],
         proposalEvaluations: [],
         summary: "Overall good shape",
@@ -219,8 +219,8 @@ describe("Superego agent", () => {
       const tracker = new SuperegoFindingTracker();
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "warning", message: "Minor issue" },
-          { severity: "info", message: "FYI message" },
+          { severity: "warning", category: "UNKNOWN_FINDING", message: "Minor issue" },
+          { severity: "info", category: "UNKNOWN_FINDING", message: "FYI message" },
         ],
         proposalEvaluations: [],
         summary: "OK",
@@ -238,7 +238,7 @@ describe("Superego agent", () => {
       const tracker = new SuperegoFindingTracker();
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "critical", message: "Security vulnerability detected" },
+          { severity: "critical", category: "CLAUDE_BOUNDARIES_CONFLICT", message: "Security vulnerability detected" },
         ],
         proposalEvaluations: [],
         summary: "Critical issue",
@@ -257,7 +257,7 @@ describe("Superego agent", () => {
       const tracker = new SuperegoFindingTracker();
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "critical", message: "Security vulnerability detected" },
+          { severity: "critical", category: "CLAUDE_BOUNDARIES_CONFLICT", message: "Security vulnerability detected" },
         ],
         proposalEvaluations: [],
         summary: "Critical issue",
@@ -278,7 +278,7 @@ describe("Superego agent", () => {
       const tracker = new SuperegoFindingTracker();
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "critical", message: "Security vulnerability detected" },
+          { severity: "critical", category: "CLAUDE_BOUNDARIES_CONFLICT", message: "Security vulnerability detected" },
         ],
         proposalEvaluations: [],
         summary: "Critical issue",
@@ -317,7 +317,7 @@ describe("Superego agent", () => {
       for (let i = 0; i < 3; i++) {
         launcher.enqueueSuccess(JSON.stringify({
           findings: [
-            { severity: "critical", message: "First critical issue" },
+            { severity: "critical", category: "ESCALATE_FILE_EMPTY", message: "First critical issue" },
           ],
           proposalEvaluations: [],
           summary: "Issue 1",
@@ -329,7 +329,7 @@ describe("Superego agent", () => {
       for (let i = 0; i < 3; i++) {
         launcher.enqueueSuccess(JSON.stringify({
           findings: [
-            { severity: "critical", message: "Second critical issue" },
+            { severity: "critical", category: "AUDIT_FAILURE", message: "Second critical issue" },
           ],
           proposalEvaluations: [],
           summary: "Issue 2",
@@ -348,7 +348,7 @@ describe("Superego agent", () => {
       const tracker = new SuperegoFindingTracker();
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "critical", message: "Security vulnerability detected" },
+          { severity: "critical", category: "CLAUDE_BOUNDARIES_CONFLICT", message: "Security vulnerability detected" },
         ],
         proposalEvaluations: [],
         summary: "Critical issue",
@@ -379,7 +379,7 @@ describe("Superego agent", () => {
       for (let i = 0; i < 2; i++) {
         launcher.enqueueSuccess(JSON.stringify({
           findings: [
-            { severity: "critical", message: "Recurring issue" },
+            { severity: "critical", category: "SOURCE_CODE_BYPASS", message: "Recurring issue" },
           ],
           proposalEvaluations: [],
           summary: "Issues",
@@ -390,9 +390,9 @@ describe("Superego agent", () => {
       // Third occurrence with multiple findings
       launcher.enqueueSuccess(JSON.stringify({
         findings: [
-          { severity: "critical", message: "Recurring issue" },
-          { severity: "critical", message: "New critical issue" },
-          { severity: "warning", message: "A warning" },
+          { severity: "critical", category: "SOURCE_CODE_BYPASS", message: "Recurring issue" },
+          { severity: "critical", category: "SGAB_RECLASSIFICATION", message: "New critical issue" },
+          { severity: "warning", category: "UNKNOWN_FINDING", message: "A warning" },
         ],
         proposalEvaluations: [],
         summary: "Multiple issues",
@@ -410,7 +410,7 @@ describe("Superego agent", () => {
     it("works without tracker and cycleNumber (backward compatibility)", async () => {
       const claudeResponse = JSON.stringify({
         findings: [
-          { severity: "critical", message: "Some issue" },
+          { severity: "critical", category: "UNKNOWN_FINDING", message: "Some issue" },
         ],
         proposalEvaluations: [],
         summary: "Issues",

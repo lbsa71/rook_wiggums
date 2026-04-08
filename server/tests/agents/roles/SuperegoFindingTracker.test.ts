@@ -8,6 +8,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "This is a test finding with some content",
       };
 
@@ -15,17 +16,19 @@ describe("SuperegoFindingTracker", () => {
       const sig2 = tracker.generateSignature(finding);
 
       expect(sig1).toBe(sig2);
-      expect(sig1).toHaveLength(16); // First 16 chars of SHA256 hash
+      expect(sig1).toBe("critical:TEST_FINDING"); // Stable human-readable key
     });
 
     it("generates different signatures for different severities", () => {
       const tracker = new SuperegoFindingTracker();
       const finding1: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Same message",
       };
       const finding2: Finding = {
         severity: "warning",
+        category: "TEST_FINDING",
         message: "Same message",
       };
 
@@ -35,15 +38,17 @@ describe("SuperegoFindingTracker", () => {
       expect(sig1).not.toBe(sig2);
     });
 
-    it("generates different signatures for different messages", () => {
+    it("generates different signatures for different categories", () => {
       const tracker = new SuperegoFindingTracker();
       const finding1: Finding = {
         severity: "critical",
-        message: "First message",
+        category: "ESCALATE_FILE_EMPTY",
+        message: "Same message",
       };
       const finding2: Finding = {
         severity: "critical",
-        message: "Second message",
+        category: "AUDIT_FAILURE",
+        message: "Same message",
       };
 
       const sig1 = tracker.generateSignature(finding1);
@@ -52,19 +57,19 @@ describe("SuperegoFindingTracker", () => {
       expect(sig1).not.toBe(sig2);
     });
 
-    it("uses only first 200 chars of message for signature", () => {
+    it("generates same signature regardless of message content (uses category not message)", () => {
       const tracker = new SuperegoFindingTracker();
-      const longMessage1 = "a".repeat(250);
-      const longMessage2 = "a".repeat(300);
-
-      const finding1: Finding = { severity: "critical", message: longMessage1 };
-      const finding2: Finding = { severity: "critical", message: longMessage2 };
+      // Same severity+category with completely different message text — signature must be identical
+      // This is the key property: dynamic message content (cycle numbers, GC-NNN, etc.) must NOT
+      // affect the signature so findings accumulate across cycles.
+      const finding1: Finding = { severity: "critical", category: "AUDIT_FAILURE", message: "Cycle GC-100: something went wrong" };
+      const finding2: Finding = { severity: "critical", category: "AUDIT_FAILURE", message: "Cycle GC-200: something went wrong with different text" };
 
       const sig1 = tracker.generateSignature(finding1);
       const sig2 = tracker.generateSignature(finding2);
 
-      // Both should have same signature since first 200 chars are the same
       expect(sig1).toBe(sig2);
+      expect(sig1).toBe("critical:AUDIT_FAILURE");
     });
   });
 
@@ -73,6 +78,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -88,6 +94,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -105,6 +112,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -117,6 +125,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -130,6 +139,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -146,6 +156,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -159,6 +170,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -174,6 +186,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -190,6 +203,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -213,6 +227,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -226,6 +241,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -247,6 +263,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -268,6 +285,7 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding: Finding = {
         severity: "critical",
+        category: "TEST_FINDING",
         message: "Test finding",
       };
 
@@ -284,10 +302,12 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding1: Finding = {
         severity: "critical",
+        category: "ESCALATE_FILE_EMPTY",
         message: "First finding",
       };
       const finding2: Finding = {
         severity: "critical",
+        category: "AUDIT_FAILURE",
         message: "Second finding",
       };
 
@@ -314,10 +334,12 @@ describe("SuperegoFindingTracker", () => {
       const tracker = new SuperegoFindingTracker();
       const finding1: Finding = {
         severity: "critical",
+        category: "ESCALATE_FILE_EMPTY",
         message: "First finding",
       };
       const finding2: Finding = {
         severity: "critical",
+        category: "AUDIT_FAILURE",
         message: "Second finding",
       };
 
@@ -342,7 +364,7 @@ describe("SuperegoFindingTracker", () => {
       await fs.mkdir("/state", { recursive: true });
 
       const tracker = new SuperegoFindingTracker();
-      const finding: Finding = { severity: "critical", message: "Persistent finding" };
+      const finding: Finding = { severity: "critical", category: "PERSISTENT_FINDING", message: "Persistent finding" };
       tracker.track(finding, 10);
       tracker.track(finding, 30);
 
@@ -360,7 +382,7 @@ describe("SuperegoFindingTracker", () => {
       await fs.mkdir("/state", { recursive: true });
 
       const tracker = new SuperegoFindingTracker();
-      const finding: Finding = { severity: "critical", message: "Recurring issue" };
+      const finding: Finding = { severity: "critical", category: "AUDIT_FAILURE", message: "Recurring issue" };
       tracker.track(finding, 10);
       tracker.track(finding, 30);
       await tracker.save(TRACKER_PATH, fs);
