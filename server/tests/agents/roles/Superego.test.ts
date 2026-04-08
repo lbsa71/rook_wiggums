@@ -422,10 +422,69 @@ describe("Superego agent", () => {
 
       expect(report.findings).toHaveLength(1);
       expect(report.findings[0].severity).toBe("critical");
-      
+
       // No escalation should occur
       const escalateContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
       expect(escalateContent).not.toContain("Auto-Escalated");
+    });
+
+    // Fix 4: end-to-end write path integration test
+    it("ESCALATE_TO_STEFAN.md grows in size after triggered escalation (Fix 4 acceptance criterion)", async () => {
+      const tracker = new SuperegoFindingTracker();
+      const criticalResponse = JSON.stringify({
+        findings: [
+          { severity: "critical", category: "ESCALATE_FILE_EMPTY", message: "Escalate file is empty" },
+        ],
+        proposalEvaluations: [],
+        summary: "Critical",
+      });
+
+      const initialContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
+      const initialSize = initialContent.length;
+
+      // Three consecutive audit cycles — triggers escalation on third
+      for (let cycle = 1; cycle <= 3; cycle++) {
+        launcher.enqueueSuccess(criticalResponse);
+        await superego.audit(undefined, cycle * 10, tracker);
+      }
+
+      const finalContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
+      expect(finalContent.length).toBeGreaterThan(initialSize);
+      expect(finalContent).toContain("SUPEREGO Recurring Finding (Auto-Escalated)");
+      expect(finalContent).toContain("Escalate file is empty");
+    });
+
+    it("escalates WARNING finding after 5 consecutive occurrences (Fix 3 integration)", async () => {
+      const tracker = new SuperegoFindingTracker();
+      const warningResponse = JSON.stringify({
+        findings: [
+          { severity: "warning", category: "VALUES_RECRUITMENT", message: "Possible values drift" },
+        ],
+        proposalEvaluations: [],
+        summary: "Warning",
+      });
+
+      // 4 occurrences — should NOT escalate
+      for (let cycle = 1; cycle <= 4; cycle++) {
+        launcher.enqueueSuccess(warningResponse);
+        const report = await superego.audit(undefined, cycle * 10, tracker);
+        expect(report.findings).toHaveLength(1);
+      }
+
+      let escalateContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
+      expect(escalateContent).not.toContain("Auto-Escalated");
+
+      // 5th occurrence — should escalate
+      launcher.enqueueSuccess(warningResponse);
+      const report = await superego.audit(undefined, 50, tracker);
+
+      // Finding removed from report after escalation
+      expect(report.findings).toHaveLength(0);
+
+      escalateContent = await fs.readFile("/substrate/ESCALATE_TO_STEFAN.md");
+      expect(escalateContent).toContain("SUPEREGO Recurring Finding (Auto-Escalated)");
+      expect(escalateContent).toContain("[warning] Possible values drift");
+      expect(escalateContent).toContain("Audit cycles [10, 20, 30, 40, 50]");
     });
   });
 
