@@ -99,7 +99,7 @@ describe("ROLE_PROMPTS", () => {
 
     it("contains same-model operating caveat", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/same.base model|same base model/i);
+      expect(prompt).toMatch(/same base model/i);
       expect(prompt).toMatch(/echo.chamber|homogeneity/i);
     });
 
