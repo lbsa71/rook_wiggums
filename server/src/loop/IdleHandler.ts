@@ -92,7 +92,7 @@ export class IdleHandler {
     const dateTag = `[ID-generated ${this.clock.now().toISOString().split("T")[0]}]`;
     const newTaskLines = approved.flatMap((g) => {
       const line = `- [ ] ${g.title}: ${g.description} ${dateTag}`;
-      const metaComment = `<!-- confidence: ${g.confidence} priority: ${g.priority} -->`;
+      const metaComment = `<!-- confidence: ${g.confidence ?? 0} priority: ${g.priority} -->`;
       return g.correlationId
         ? [line, metaComment, `  <!-- correlationId: ${g.correlationId} -->`]
         : [line, metaComment];

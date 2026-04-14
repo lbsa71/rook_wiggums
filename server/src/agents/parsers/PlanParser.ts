@@ -154,10 +154,10 @@ export class PlanParser {
         let correlationId: string | undefined;
         let confidence: number | undefined;
         let commentIdx = i + 1;
-        while (commentIdx < lines.length && /^\s*<!--.*-->\s*$/.test(lines[commentIdx])) {
+        while (commentIdx < lines.length && /^\s*<!--.*?-->\s*$/.test(lines[commentIdx])) {
           const corrMatch = lines[commentIdx].match(/<!--\s*correlationId:\s*(\S+)\s*-->/);
           if (corrMatch) correlationId = corrMatch[1];
-          const confMatch = lines[commentIdx].match(/<!--\s*confidence:\s*([\d.]+)/);
+          const confMatch = lines[commentIdx].match(/<!--\s*confidence:\s*(\d+(?:\.\d+)?)/);
           if (confMatch) confidence = parseFloat(confMatch[1]);
           commentIdx++;
         }
