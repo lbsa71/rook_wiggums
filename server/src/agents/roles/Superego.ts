@@ -203,7 +203,7 @@ export class Superego {
         }));
       } else {
         const parsed = extractJson(result.rawOutput);
-        const evaluations = (parsed.proposalEvaluations as ProposalEvaluation[] | undefined) ?? [];
+        const evaluations: ProposalEvaluation[] = (parsed.proposalEvaluations as ProposalEvaluation[] | undefined) ?? [];
 
         if (evaluations.length < pendingProposals.length) {
           this.logger.warn(
@@ -211,14 +211,12 @@ export class Superego {
             `received ${evaluations.length}. ` +
             `${pendingProposals.length - evaluations.length} proposals defaulting to rejection.`
           );
+          while (evaluations.length < pendingProposals.length) {
+            evaluations.push({ approved: false, reason: "No evaluation returned" });
+          }
         }
 
-        claudeEvaluations = evaluations.length > 0
-          ? evaluations
-          : pendingProposals.map(() => ({
-              approved: false,
-              reason: "No evaluation returned",
-            }));
+        claudeEvaluations = evaluations;
       }
 
       return proposals.map((_, i) => {
