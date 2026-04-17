@@ -25,6 +25,10 @@ import { IEndorsementScreener } from "../../src/agents/endorsement/IEndorsementS
 import { ScreenerInput, ScreenerResult } from "../../src/agents/endorsement/types";
 import { ProcessLogEntry } from "../../src/agents/claude/ISessionLauncher";
 
+function toolEntry(content: string): ProcessLogEntry {
+  return { type: "tool_use", content };
+}
+
 class StubScreener implements IEndorsementScreener {
   public calls: ScreenerInput[] = [];
   public responses: ScreenerResult[] = [];
@@ -193,5 +197,14 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
     // Since createLogCallback is private, we rely on the contract: only EGO feeds interceptor.
     // We test this via the spy's initial state (no entries from non-EGO roles).
     expect(spyInterceptor.logEntries).toHaveLength(0);
+  });
+
+  it("blocks Layer 3 external actions instead of logging only", async () => {
+    spyInterceptor.onLogEntry(toolEntry("mcp__tinybus__send_message"));
+
+    await expect((orchestrator as any).checkEndorsement("Sending now")).rejects.toThrow(
+      "endorsement: Layer 3 external action blocked"
+    );
+    expect(spyInterceptor.resetCount).toBe(1);
   });
 });

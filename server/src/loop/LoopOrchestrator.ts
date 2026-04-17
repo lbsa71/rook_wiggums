@@ -45,6 +45,8 @@ import type { ISleepWakeTimer } from "./SleepWakeTimer";
  *  is capped to prevent multi-day sleeps from poisoning the restart loop. */
 export const MAX_RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000;
 
+class EndorsementExternalActionBlockedError extends Error {}
+
 export class LoopOrchestrator implements IMessageInjector {
   private state: LoopState = LoopState.STOPPED;
   private metrics: LoopMetrics = createInitialMetrics();
@@ -1225,18 +1227,26 @@ export class LoopOrchestrator implements IMessageInjector {
 
   private async checkEndorsement(rawOutput: string): Promise<void> {
     if (!this.endorsementInterceptor) return;
+    let result: Awaited<ReturnType<EndorsementInterceptor["evaluateOutput"]>>;
     try {
-      const result = await this.endorsementInterceptor.evaluateOutput(rawOutput);
-      if (result.triggered && result.injectionMessage) {
-        this.logger.debug(`endorsement: Layer ${result.layer} triggered — ${result.verdict} (action: "${result.action}")`);
-        this.injectMessage(result.injectionMessage);
-      } else if (result.triggered && result.layer === 3) {
-        this.logger.debug(`endorsement: Layer 3 detected external action — ${result.action} (log only)`);
+      result = await this.endorsementInterceptor.evaluateOutput(rawOutput);
+      if (result.triggered && result.layer === 3) {
+        throw new EndorsementExternalActionBlockedError(
+          `endorsement: Layer 3 external action blocked — ${result.action}`
+        );
       }
     } catch (err) {
+      if (err instanceof EndorsementExternalActionBlockedError) {
+        throw err;
+      }
       this.logger.debug(`endorsement: check failed — ${err instanceof Error ? err.message : String(err)}`);
+      return;
     } finally {
       this.endorsementInterceptor.reset();
+    }
+    if (result.triggered && result.injectionMessage) {
+      this.logger.debug(`endorsement: Layer ${result.layer} triggered — ${result.verdict} (action: "${result.action}")`);
+      this.injectMessage(result.injectionMessage);
     }
   }
 
