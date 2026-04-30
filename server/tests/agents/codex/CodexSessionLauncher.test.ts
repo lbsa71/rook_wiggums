@@ -22,7 +22,7 @@ describe("CodexSessionLauncher", () => {
     launcher = new CodexSessionLauncher(runner, clock);
   });
 
-  it("invokes codex exec with headless automatic flags", async () => {
+  it("invokes codex exec with noninteractive MCP-capable flags", async () => {
     runner.enqueue({ stdout: "response", stderr: "", exitCode: 0 });
 
     await launcher.launch(makeRequest({ message: "Do something" }));
@@ -30,7 +30,7 @@ describe("CodexSessionLauncher", () => {
     const calls = runner.getCalls();
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("codex");
-    expect(calls[0].args.slice(0, 2)).toEqual(["exec", "--full-auto"]);
+    expect(calls[0].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
     expect(calls[0].args).toContain("--color");
     expect(calls[0].args).toContain("never");
     expect(calls[0].args).toContain("--skip-git-repo-check");
@@ -108,17 +108,18 @@ describe("CodexSessionLauncher", () => {
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
     await launcher.launch(makeRequest(), { cwd: "/workspace/ego", continueSession: true });
 
-    expect(runner.getCalls()[0].args.slice(0, 2)).toEqual(["exec", "--full-auto"]);
+    expect(runner.getCalls()[0].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
   });
 
-  it("uses codex exec resume --last after a cwd session has started", async () => {
+  it("keeps continueSession stateless because prompts already include substrate context", async () => {
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
 
     await launcher.launch(makeRequest({ message: "first" }), { cwd: "/workspace/ego", continueSession: true });
     await launcher.launch(makeRequest({ message: "second" }), { cwd: "/workspace/ego", continueSession: true });
 
-    expect(runner.getCalls()[1].args.slice(0, 4)).toEqual(["exec", "resume", "--last", "--full-auto"]);
+    expect(runner.getCalls()[1].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
+    expect(runner.getCalls()[1].args).not.toContain("resume");
     expect(runner.getCalls()[1].args.at(-1)).toBe("-");
     expect(runner.getCalls()[1].options?.stdin).toBe("second");
   });
@@ -130,7 +131,7 @@ describe("CodexSessionLauncher", () => {
     await launcher.launch(makeRequest(), { cwd: "/workspace/ego", continueSession: true });
     await launcher.launch(makeRequest(), { cwd: "/workspace/id", continueSession: true });
 
-    expect(runner.getCalls()[1].args.slice(0, 2)).toEqual(["exec", "--full-auto"]);
+    expect(runner.getCalls()[1].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
   });
 
   it("returns success=true and rawOutput on exit code 0", async () => {

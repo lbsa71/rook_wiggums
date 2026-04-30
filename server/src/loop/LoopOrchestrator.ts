@@ -4,6 +4,7 @@ import { Ego } from "../agents/roles/Ego";
 import { Subconscious, TaskResult, OutcomeEvaluation, AgoraReply } from "../agents/roles/Subconscious";
 import { Superego } from "../agents/roles/Superego";
 import { Id } from "../agents/roles/Id";
+import { extractJson } from "../agents/parsers/extractJson";
 import { ProcessLogEntry } from "../agents/claude/ISessionLauncher";
 import { AppendOnlyWriter } from "../substrate/io/AppendOnlyWriter";
 import { IClock } from "../substrate/abstractions/IClock";
@@ -526,7 +527,13 @@ export class LoopOrchestrator implements IMessageInjector {
         try {
           const egoResponse = await this.ego.respondToMessage(combined, this.createLogCallback("EGO"));
           llmSessionInvokedThisCycle = true;
-          if (egoResponse) await this.checkEndorsement(egoResponse);
+          if (egoResponse) {
+            await this.checkEndorsement(egoResponse);
+            const agoraReplies = this.extractAgoraReplies(egoResponse);
+            if (agoraReplies.length > 0 && this.agoraService) {
+              this.deferredWork.enqueue(this.sendAgoraReplies(agoraReplies));
+            }
+          }
         } catch (err) {
           if (err instanceof RateLimitError) throw err;
           this.logger.debug(`cycle ${this.cycleNumber}: pending message response failed — ${err instanceof Error ? err.message : String(err)}`);
@@ -1248,6 +1255,21 @@ export class LoopOrchestrator implements IMessageInjector {
     if (result.triggered && result.injectionMessage) {
       this.logger.debug(`endorsement: Layer ${result.layer} triggered — ${result.verdict} (action: "${result.action}")`);
       this.injectMessage(result.injectionMessage);
+    }
+  }
+
+  private extractAgoraReplies(rawOutput: string): AgoraReply[] {
+    try {
+      const parsed = extractJson(rawOutput);
+      const replies = parsed.agoraReplies;
+      if (!Array.isArray(replies)) return [];
+      return replies.filter((reply): reply is AgoraReply => {
+        if (!reply || typeof reply !== "object") return false;
+        const candidate = reply as Record<string, unknown>;
+        return typeof candidate.to === "string" && typeof candidate.text === "string";
+      });
+    } catch {
+      return [];
     }
   }
 

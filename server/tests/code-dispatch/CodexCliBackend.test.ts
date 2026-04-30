@@ -17,7 +17,7 @@ describe("CodexCliBackend", () => {
     expect(backend.name).toBe("codex");
   });
 
-  it("invokes codex exec with headless automatic flags", async () => {
+  it("invokes codex exec with noninteractive MCP-capable flags", async () => {
     runner.enqueue({ stdout: "ok", stderr: "", exitCode: 0 });
 
     await backend.invoke("Fix bug", { codingContext: "", fileContents: new Map(), cwd: "/repo" });
@@ -25,7 +25,7 @@ describe("CodexCliBackend", () => {
     const calls = runner.getCalls();
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("codex");
-    expect(calls[0].args.slice(0, 2)).toEqual(["exec", "--full-auto"]);
+    expect(calls[0].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
     expect(calls[0].args).toContain("--skip-git-repo-check");
     expect(calls[0].args).toContain("-C");
     expect(calls[0].args[calls[0].args.indexOf("-C") + 1]).toBe("/repo");

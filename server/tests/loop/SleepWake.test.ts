@@ -23,6 +23,7 @@ import { TaskClassifier } from "../../src/agents/TaskClassifier";
 import { ConversationManager } from "../../src/conversation/ConversationManager";
 import { IConversationCompactor } from "../../src/conversation/IConversationCompactor";
 import { LoopWatchdog } from "../../src/loop/LoopWatchdog";
+import type { IAgoraService } from "../../src/agora/IAgoraService";
 
 /** Timer that advances the injected clock by the requested delay amount, so rate-limit
  *  expiration checks behave correctly in tests without spinning in a real timer loop. */
@@ -571,6 +572,55 @@ describe("LoopOrchestrator: watchdog sleep-awareness", () => {
 });
 
 describe("LoopOrchestrator: INS messages do not reset idle counter", () => {
+  it("sends agoraReplies returned by Ego while processing pending messages with no task", async () => {
+    const deps = createDeps();
+    await setupIdleSubstrate(deps.fs);
+
+    const logger = new InMemoryLogger();
+    const eventSink = new InMemoryEventSink();
+    const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 5 });
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
+      config, logger
+    );
+
+    const sent: Array<{ peerName: string; type: string; payload: unknown; inReplyTo?: string }> = [];
+    const agoraService: IAgoraService = {
+      async sendMessage(options) {
+        sent.push(options);
+        return { ok: true, status: 200 };
+      },
+      async sendToAll() { return { ok: true, errors: [] }; },
+      async replyToEnvelope() { return { ok: true, status: 200 }; },
+      async decodeInbound() { return { ok: false, reason: "not implemented" }; },
+      getPeers() { return ["stefan"]; },
+      getPeerConfig(name) { return name === "stefan" ? { publicKey: "abc123", name: "stefan" } : undefined; },
+      getSelfIdentity() { return { publicKey: "self", name: "rook" }; },
+      async connectRelay() {},
+      async disconnectRelay() {},
+      isRelayConnected() { return true; },
+    };
+    orchestrator.setAgoraService(agoraService);
+
+    deps.launcher.enqueueSuccess(JSON.stringify({
+      action: "idle",
+      agoraReplies: [{ to: "stefan", text: "Codex online.", inReplyTo: "env-1" }],
+    }));
+
+    orchestrator.start();
+    orchestrator.queueStartupMessage("[AGORA MESSAGE] env-1");
+
+    await orchestrator.runOneCycle();
+
+    expect(sent).toEqual([{
+      peerName: "abc123",
+      type: "publish",
+      payload: { text: "Codex online." },
+      inReplyTo: "env-1",
+    }]);
+  });
+
   it("idle counter still increments when only INS messages are pending", async () => {
     const deps = createDeps();
     await setupIdleSubstrate(deps.fs);

@@ -16,7 +16,14 @@ export class CodexCliBackend implements ICodeBackend {
   async invoke(spec: string, context: SubstrateSlice): Promise<BackendResult> {
     const prompt = buildPrompt(spec, context);
     const startMs = this.clock.now().getTime();
-    const args = ["exec", "--full-auto", "--color", "never", "--skip-git-repo-check"];
+    const args = [
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--color",
+      "never",
+      "--skip-git-repo-check",
+      "--ephemeral",
+    ];
     if (this.model && !this.model.startsWith("claude-")) {
       args.push("-m", this.model);
     }

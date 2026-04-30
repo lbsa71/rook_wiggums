@@ -18,12 +18,10 @@ import type {
  *   model           -> -m <model> when a non-Claude model is supplied
  *   cwd             -> -C <cwd> and process cwd
  *   additionalDirs  -> --add-dir <dir>
- *   continueSession -> codex exec resume --last after this launcher has created a cwd session
- *   --full-auto     -> automatic tool execution in non-interactive mode
+ *   continueSession -> intentionally ignored; Substrate injects complete file context each turn
+ *   bypass approvals -> required for non-interactive MCP tool execution
  */
 export class CodexSessionLauncher implements ISessionLauncher {
-  private readonly sessionStartedByCwd = new Set<string>();
-
   constructor(
     private readonly processRunner: IProcessRunner,
     private readonly clock: IClock,
@@ -42,12 +40,9 @@ export class CodexSessionLauncher implements ISessionLauncher {
       : request.message;
 
     const cwd = options?.cwd;
-    const useResume = Boolean(options?.continueSession && cwd && this.sessionStartedByCwd.has(cwd));
-    const args = useResume
-      ? this.buildResumeArgs(fullMessage, modelToUse)
-      : this.buildExecArgs(fullMessage, modelToUse, cwd, options?.additionalDirs);
+    const args = this.buildExecArgs(fullMessage, modelToUse, cwd, options?.additionalDirs);
 
-    this.logger?.debug(`codex-launch: ${useResume ? "resume" : "exec"} model=${modelToUse ?? "default"} cwd=${cwd ?? process.cwd()}`);
+    this.logger?.debug(`codex-launch: exec model=${modelToUse ?? "default"} cwd=${cwd ?? process.cwd()}`);
 
     try {
       const result = await this.processRunner.run("codex", args, {
@@ -59,10 +54,6 @@ export class CodexSessionLauncher implements ISessionLauncher {
           ? (chunk) => options.onLogEntry!({ type: "text", content: chunk })
           : undefined,
       });
-
-      if (cwd && options?.continueSession && result.exitCode === 0) {
-        this.sessionStartedByCwd.add(cwd);
-      }
 
       const durationMs = this.clock.now().getTime() - startMs;
       const success = result.exitCode === 0;
@@ -97,7 +88,14 @@ export class CodexSessionLauncher implements ISessionLauncher {
     cwd: string | undefined,
     additionalDirs: string[] | undefined,
   ): string[] {
-    const args = ["exec", "--full-auto", "--color", "never", "--skip-git-repo-check"];
+    const args = [
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--color",
+      "never",
+      "--skip-git-repo-check",
+      "--ephemeral",
+    ];
     if (model) {
       args.push("-m", model);
     }
@@ -106,15 +104,6 @@ export class CodexSessionLauncher implements ISessionLauncher {
     }
     for (const dir of additionalDirs ?? []) {
       args.push("--add-dir", dir);
-    }
-    args.push("-");
-    return args;
-  }
-
-  private buildResumeArgs(message: string, model: string | undefined): string[] {
-    const args = ["exec", "resume", "--last", "--full-auto", "--skip-git-repo-check"];
-    if (model) {
-      args.push("-m", model);
     }
     args.push("-");
     return args;
