@@ -27,7 +27,7 @@ export class NodeProcessRunner implements IProcessRunner {
       const inheritedEnv = { ...process.env };
       delete inheritedEnv.CLAUDECODE;
       const child = spawn(command, args, {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         cwd: options?.cwd,
         env: { ...inheritedEnv, PATH: augmentedPath },
       });
@@ -59,6 +59,12 @@ export class NodeProcessRunner implements IProcessRunner {
         stderr += data.toString();
         resetIdleTimer();
       });
+
+      if (options?.stdin !== undefined) {
+        child.stdin.end(options.stdin);
+      } else {
+        child.stdin.end();
+      }
 
       const hardTimer = setTimeout(() => {
         clearTimers();

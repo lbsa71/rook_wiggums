@@ -20,10 +20,10 @@ export class CodexCliBackend implements ICodeBackend {
     if (this.model && !this.model.startsWith("claude-")) {
       args.push("-m", this.model);
     }
-    args.push("-C", context.cwd, prompt);
+    args.push("-C", context.cwd, "-");
 
     try {
-      const result = await this.processRunner.run("codex", args, { cwd: context.cwd });
+      const result = await this.processRunner.run("codex", args, { cwd: context.cwd, stdin: prompt });
       return {
         success: result.exitCode === 0,
         output: result.stdout,

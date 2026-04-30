@@ -200,7 +200,7 @@ export class Ego {
       return response;
     }
     if (isRateLimitText(result.error)) throw new RateLimitError(result.error!);
-    return null;
+    throw new Error(`Message response session failed: ${result.error || "unknown error"}`);
   }
 
   async dispatchNext(): Promise<DispatchNextResult> {

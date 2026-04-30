@@ -306,7 +306,7 @@ describe("Ego agent", () => {
     it("does not write to cycle_log on session failure", async () => {
       launcher.enqueueFailure("session crashed");
 
-      await ego.respondToMessage("Hello");
+      await expect(ego.respondToMessage("Hello")).rejects.toThrow("Message response session failed: session crashed");
 
       // Neither CONVERSATION.md nor cycle_log.md should get the error text
       const conversation = await fs.readFile("/substrate/CONVERSATION.md");

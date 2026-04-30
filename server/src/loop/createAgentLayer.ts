@@ -192,7 +192,7 @@ export async function createAgentLayer(
     gatedLauncher = new SemaphoreSessionLauncher(copilotLauncher, apiSemaphore);
   } else if (config.sessionLauncher === "codex") {
     logger.debug("agent-layer: using CodexSessionLauncher for cognitive roles");
-    const codexLauncher = new CodexSessionLauncher(new NodeProcessRunner(), clock, activeModel);
+    const codexLauncher = new CodexSessionLauncher(new NodeProcessRunner(), clock, activeModel, logger);
     const codexMcpSetup = new CodexMcpSetup(new NodeProcessRunner(), logger);
     await codexMcpSetup.register("tinybus", mcpUrl);
     await codexMcpSetup.register("code_dispatch", mcpUrl);

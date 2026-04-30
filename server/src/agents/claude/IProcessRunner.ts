@@ -9,6 +9,7 @@ export interface ProcessRunOptions {
   idleTimeoutMs?: number;
   onStdout?: (chunk: string) => void;
   cwd?: string;
+  stdin?: string;
 }
 
 export interface IProcessRunner {

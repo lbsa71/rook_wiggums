@@ -67,7 +67,9 @@ describe("CodexSessionLauncher", () => {
       message: "What is 2+2?",
     }));
 
-    const prompt = runner.getCalls()[0].args.at(-1);
+    const call = runner.getCalls()[0];
+    const prompt = call.options?.stdin;
+    expect(call.args.at(-1)).toBe("-");
     expect(prompt).toContain("SYSTEM INSTRUCTIONS:");
     expect(prompt).toContain("You are a helpful assistant.");
     expect(prompt).toContain("What is 2+2?");
@@ -77,7 +79,9 @@ describe("CodexSessionLauncher", () => {
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
     await launcher.launch(makeRequest({ systemPrompt: "", message: "Hello" }));
 
-    expect(runner.getCalls()[0].args.at(-1)).toBe("Hello");
+    const call = runner.getCalls()[0];
+    expect(call.args.at(-1)).toBe("-");
+    expect(call.options?.stdin).toBe("Hello");
   });
 
   it("passes cwd as -C and as process cwd", async () => {
@@ -115,7 +119,8 @@ describe("CodexSessionLauncher", () => {
     await launcher.launch(makeRequest({ message: "second" }), { cwd: "/workspace/ego", continueSession: true });
 
     expect(runner.getCalls()[1].args.slice(0, 4)).toEqual(["exec", "resume", "--last", "--full-auto"]);
-    expect(runner.getCalls()[1].args.at(-1)).toBe("second");
+    expect(runner.getCalls()[1].args.at(-1)).toBe("-");
+    expect(runner.getCalls()[1].options?.stdin).toBe("second");
   });
 
   it("keeps resume state isolated by cwd", async () => {

@@ -1,5 +1,6 @@
 import type { IProcessRunner } from "../claude/IProcessRunner";
 import type { IClock } from "../../substrate/abstractions/IClock";
+import type { ILogger } from "../../logging";
 import type {
   ISessionLauncher,
   ClaudeSessionRequest,
@@ -27,6 +28,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
     private readonly processRunner: IProcessRunner,
     private readonly clock: IClock,
     private readonly model?: string,
+    private readonly logger?: ILogger,
   ) {}
 
   async launch(
@@ -45,11 +47,14 @@ export class CodexSessionLauncher implements ISessionLauncher {
       ? this.buildResumeArgs(fullMessage, modelToUse)
       : this.buildExecArgs(fullMessage, modelToUse, cwd, options?.additionalDirs);
 
+    this.logger?.debug(`codex-launch: ${useResume ? "resume" : "exec"} model=${modelToUse ?? "default"} cwd=${cwd ?? process.cwd()}`);
+
     try {
       const result = await this.processRunner.run("codex", args, {
         cwd,
         timeoutMs: options?.timeoutMs,
         idleTimeoutMs: options?.idleTimeoutMs,
+        stdin: fullMessage,
         onStdout: options?.onLogEntry
           ? (chunk) => options.onLogEntry!({ type: "text", content: chunk })
           : undefined,
@@ -61,6 +66,11 @@ export class CodexSessionLauncher implements ISessionLauncher {
 
       const durationMs = this.clock.now().getTime() - startMs;
       const success = result.exitCode === 0;
+      if (!success) {
+        this.logger?.debug(`codex-launch: failed exit=${result.exitCode} stderr=${result.stderr || "none"}`);
+      } else {
+        this.logger?.debug(`codex-launch: completed in ${durationMs}ms`);
+      }
 
       return {
         rawOutput: result.stdout,
@@ -70,6 +80,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
         error: success ? undefined : result.stderr || `codex exited with code ${result.exitCode}`,
       };
     } catch (err) {
+      this.logger?.debug(`codex-launch: error — ${err instanceof Error ? err.message : String(err)}`);
       return {
         rawOutput: "",
         exitCode: 1,
@@ -96,7 +107,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
     for (const dir of additionalDirs ?? []) {
       args.push("--add-dir", dir);
     }
-    args.push(message);
+    args.push("-");
     return args;
   }
 
@@ -105,7 +116,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
     if (model) {
       args.push("-m", model);
     }
-    args.push(message);
+    args.push("-");
     return args;
   }
 
