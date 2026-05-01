@@ -409,16 +409,16 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 
 | File | EGO Read | EGO Write | SUB Read | SUB Write | SUPEREGO Read | SUPEREGO Write | ID Read |
 |------|----------|-----------|----------|-----------|---------------|----------------|---------|
-| PLAN | ✅ | ✅ overwrite | ✅ | ✅ overwrite | ✅ | — | ✅ |
+| PLAN | ✅ | ✅ overwrite | ✅ | ✅ overwrite | ✅ | ✅ overwrite | ✅ |
 | PROGRESS | ✅ | — | ✅ | append | ✅ | append | ✅ |
 | CONVERSATION | ✅ | append | — | append | ✅ | — | — |
 | OPERATING_CONTEXT | ✅ | append | ✅ | append | ✅ | — | ✅ |
 | MEMORY | ✅ | — | ✅ | ✅ overwrite | ✅ | — | ✅ |
-| HABITS | ✅ | — | ✅ | — | ✅ | — | — |
+| HABITS | ✅ | — | ✅ | — | ✅ | ✅ overwrite | — |
 | SKILLS | ✅ | — | ✅ | ✅ overwrite | ✅ | — | ✅ |
 | VALUES | ✅ | — | ✅ | — | ✅ | — | ✅ |
 | ID | ✅ | — | — | — | ✅ | — | ✅ |
-| SECURITY | — | — | — | — | ✅ | — | — |
+| SECURITY | — | — | — | — | ✅ | ✅ overwrite | — |
 | CHARTER | ✅ | — | — | — | ✅ | — | — |
 | SUPEREGO | — | — | — | — | ✅ | — | — |
 | CLAUDE | — | — | — | — | ✅ | — | — |
@@ -427,10 +427,12 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 | RESTART_CONTEXT | — | — | — | — | ✅ | — | — |
 
 **Key constraints:**
-- **Superego** has read access to all substrate file types; it can write `HABITS` and `SECURITY`, and append to `PROGRESS` and `ESCALATE_TO_STEFAN`
+- **Superego** has read access to all substrate file types; it can write `HABITS`, `SECURITY`, and `PLAN`, and append to `PROGRESS` and `ESCALATE_TO_STEFAN`
 - **Id** has read-only access to 7 files (ID, VALUES, PLAN, OPERATING_CONTEXT, PROGRESS, SKILLS, MEMORY) — no writes
 - **Ego** can overwrite PLAN and append to CONVERSATION and OPERATING_CONTEXT, read PEERS
 - **Subconscious** can overwrite PLAN, SKILLS, MEMORY, and PEERS; append to PROGRESS, CONVERSATION, and OPERATING_CONTEXT
+
+**Governance note:** `HABITS` and `SECURITY` are write-governed — only Superego can write them, enforcing that behavioral policies and security rules require Superego evaluation. `SKILLS` and `MEMORY` are not subject to this constraint: Subconscious writes them directly without Superego evaluation. This is a known governance gap; any architecture documentation claiming a universal "Subconscious cannot write behavioral policies without Superego approval" constraint is incorrect for `SKILLS` and `MEMORY`.
 
 ---
 
