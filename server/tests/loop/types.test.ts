@@ -128,6 +128,20 @@ describe("CycleResult type", () => {
     expect(result.success).toBe(false);
     expect(result.retryAfter).toBe(retryAfter);
   });
+
+  it("can represent a task-local block without whole-loop backoff", () => {
+    const result: CycleResult = {
+      cycleNumber: 4,
+      action: "dispatch",
+      taskId: "task-time-gated",
+      success: false,
+      blocked: true,
+      summary: "Task is blocked until its scheduled window",
+    };
+
+    expect(result.blocked).toBe(true);
+    expect(result.retryAfter).toBeUndefined();
+  });
 });
 
 describe("LoopEvent type", () => {

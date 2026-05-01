@@ -688,6 +688,7 @@ export class LoopOrchestrator implements IMessageInjector {
         taskId: dispatch.taskId,
         success,
         summary: taskResult.summary,
+        ...(blocked ? { blocked: true } : {}),
         ...(taskResult.retryAfter ? { retryAfter: taskResult.retryAfter } : {}),
       };
     }
@@ -714,7 +715,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.lastCycleResult = "idle";
     } else if (result.success) {
       this.lastCycleResult = "success";
-    } else if (result.retryAfter) {
+    } else if (result.blocked || result.retryAfter) {
       this.lastCycleResult = "blocked";
     } else {
       this.lastCycleResult = "failure";

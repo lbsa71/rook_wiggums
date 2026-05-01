@@ -259,9 +259,38 @@ describe("LoopOrchestrator: HOLD_UNTIL enforcement", () => {
     expect(subconsciousExecuteCalls).toHaveLength(1);
     expect(orchestrator.getMetrics().blockedCycles).toBe(1);
     expect(orchestrator.getMetrics().failedCycles).toBe(0);
+    expect(orchestrator.getLastCycleDiagnostics().lastCycleResult).toBe("idle");
 
     const logEntries = logger.getEntries();
     expect(logEntries.some(e => e.includes("[BLOCKED]") && e.includes("2026-05-02T05:00:00.000Z"))).toBe(true);
     expect(logEntries.some(e => e.includes("reconsideration: evaluating outcome"))).toBe(false);
+  });
+
+  it("reports a single inferred time-gated cycle as blocked in diagnostics", async () => {
+    const deps = createDeps();
+    await setupSubstrateWithTask(
+      deps.fs,
+      "Re-verify and send scheduled Stefan survival scrum at window"
+    );
+
+    const logger = new InMemoryLogger();
+    const eventSink = new InMemoryEventSink();
+    const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 10, idleSleepEnabled: false });
+    const timer = new MockTimer();
+
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, timer, eventSink,
+      config, logger
+    );
+
+    deps.launcher.enqueueSuccess(timeGatedPartialResult());
+
+    orchestrator.start();
+    const result = await orchestrator.runOneCycle();
+
+    expect(result.blocked).toBe(true);
+    expect(result.retryAfter).toBeUndefined();
+    expect(orchestrator.getLastCycleDiagnostics().lastCycleResult).toBe("blocked");
   });
 });

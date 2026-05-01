@@ -40,6 +40,8 @@ export interface CycleResult {
   taskId?: string;
   success: boolean;
   summary: string;
+  /** True when a dispatch was blocked without implying a whole-loop rate-limit backoff. */
+  blocked?: boolean;
   /** ISO 8601 UTC timestamp when a blocking constraint lifts — present when task result was "blocked". */
   retryAfter?: string;
 }
