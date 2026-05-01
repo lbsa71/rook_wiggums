@@ -13,6 +13,7 @@ export default defineConfig({
   dts: false,
   sourcemap: true,
   clean: true,
+  external: ["node:sqlite"],
   // Preserve directory structure so dist/agora-relay/server.js exists
   outExtension() {
     return { js: ".js" };

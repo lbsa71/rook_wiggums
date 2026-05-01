@@ -116,6 +116,7 @@ export class Ego {
         continueSession: true,
         persistSession: true,
         outputSchema: EGO_DECISION_SCHEMA,
+        usageContext: { role: AgentRole.EGO, operation: "decide" },
         ...(this.sourceCodePath ? { additionalDirs: [this.sourceCodePath] } : {}),
       });
 
@@ -191,6 +192,7 @@ export class Ego {
       cwd: this.workingDirectory,
       continueSession: true,
       persistSession: true,
+      usageContext: { role: AgentRole.EGO, operation: "respondToMessage" },
       ...(this.sourceCodePath ? { additionalDirs: [this.sourceCodePath] } : {}),
       ...options, // Allow overriding options (e.g. idleTimeoutMs)
     };

@@ -96,7 +96,14 @@ export class Id {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
+      }, {
+        model,
+        onLogEntry,
+        cwd: this.workingDirectory,
+        continueSession: true,
+        persistSession: true,
+        usageContext: { role: AgentRole.ID, operation: "generateDrives" },
+      });
 
       if (!result.success) {
         if (isRateLimitText(result.error)) throw new RateLimitError(result.error!);

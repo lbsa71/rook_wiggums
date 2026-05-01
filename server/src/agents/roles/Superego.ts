@@ -101,7 +101,14 @@ export class Superego {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
+      }, {
+        model,
+        onLogEntry,
+        cwd: this.workingDirectory,
+        continueSession: true,
+        persistSession: true,
+        usageContext: { role: AgentRole.SUPEREGO, operation: "audit" },
+      });
 
       if (!result.success) {
         return {
@@ -192,7 +199,14 @@ export class Superego {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
+      }, {
+        model,
+        onLogEntry,
+        cwd: this.workingDirectory,
+        continueSession: true,
+        persistSession: true,
+        usageContext: { role: AgentRole.SUPEREGO, operation: "evaluateProposals" },
+      });
 
       let claudeEvaluations: ProposalEvaluation[];
       if (!result.success) {

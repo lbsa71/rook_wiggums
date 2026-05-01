@@ -24,6 +24,11 @@ export interface SessionUsage {
   telemetrySource: string;
 }
 
+export interface SessionUsageContext {
+  role: string;
+  operation: string;
+}
+
 export interface ClaudeSessionResult {
   rawOutput: string;
   exitCode: number;
@@ -60,6 +65,7 @@ export interface LaunchOptions {
    * Other launchers (Gemini, Ollama, Vertex) ignore this field.
    */
   additionalDirs?: string[];
+  usageContext?: SessionUsageContext;
 }
 
 export interface ISessionLauncher {

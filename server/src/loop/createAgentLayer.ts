@@ -35,6 +35,8 @@ import { TaskClassificationMetrics } from "../evaluation/TaskClassificationMetri
 import { SubstrateSizeTracker } from "../evaluation/SubstrateSizeTracker";
 import { DelegationTracker } from "../evaluation/DelegationTracker";
 import { DriveQualityTracker } from "../evaluation/DriveQualityTracker";
+import { SqliteMetricsService } from "../metrics/SqliteMetricsService";
+import { MeteredSessionLauncher } from "../metrics/MeteredSessionLauncher";
 import { FlashGate } from "../gates/FlashGate";
 import type { IFlashGate } from "../gates/IFlashGate";
 import type { ApplicationConfig } from "./applicationTypes";
@@ -53,6 +55,7 @@ export interface AgentLayerResult {
   taskClassifier: TaskClassifier;
   conversationManager: ConversationManager;
   driveQualityTracker: DriveQualityTracker;
+  metricsService: SqliteMetricsService;
   flashGate: IFlashGate | null;
   ego: Ego;
   subconscious: Subconscious;
@@ -115,6 +118,7 @@ export async function createAgentLayer(
 
   // API semaphore — caps concurrent Claude sessions for rate-limit safety
   const apiSemaphore = new ApiSemaphore(config.maxConcurrentSessions ?? 2);
+  const metricsService = SqliteMetricsService.forSubstratePath(config.substratePath, logger);
 
   // Ollama API key — read from key file if configured (never from env vars)
   // Required for authenticated remote Ollama endpoints (e.g. ollama.lbsa71.net).
@@ -224,6 +228,7 @@ export async function createAgentLayer(
   } else {
     gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
   }
+  gatedLauncher = new MeteredSessionLauncher(gatedLauncher, metricsService, clock);
 
   // Metrics collection components
   const taskMetrics = new TaskClassificationMetrics(fs, clock, config.substratePath);
@@ -341,7 +346,7 @@ export async function createAgentLayer(
   // This is a semantic no-op for Id: Id produces stateless advisory output and does not need cross-call session continuity.
   let idGatedLauncher: ISessionLauncher = gatedLauncher;
   if (config.idLauncher === "vertex" && vertexSubprocessLauncher) {
-    idGatedLauncher = new SemaphoreSessionLauncher(vertexSubprocessLauncher, apiSemaphore);
+    idGatedLauncher = new MeteredSessionLauncher(new SemaphoreSessionLauncher(vertexSubprocessLauncher, apiSemaphore), metricsService, clock);
     logger.debug("agent-layer: Id using VertexSessionLauncher (idLauncher: vertex)");
   } else if (config.idLauncher === "vertex") {
     logger.debug("agent-layer: idLauncher is \"vertex\" but no Vertex launcher available — Id falling back to default launcher");
@@ -349,13 +354,13 @@ export async function createAgentLayer(
     const ollamaBaseUrl = ollamaConfig?.baseUrl ?? config.ollamaBaseUrl ?? "http://localhost:11434";
     const ollamaModel = ollamaConfig?.idModel ?? config.idOllamaModel ?? ollamaConfig?.model ?? config.ollamaModel;
     const ollamaLauncher = new OllamaSessionLauncher(new FetchHttpClient(), clock, ollamaModel, ollamaBaseUrl, ollamaApiKey);
-    idGatedLauncher = new SemaphoreSessionLauncher(ollamaLauncher, apiSemaphore);
+    idGatedLauncher = new MeteredSessionLauncher(new SemaphoreSessionLauncher(ollamaLauncher, apiSemaphore), metricsService, clock);
     logger.debug(`agent-layer: Id using OllamaSessionLauncher (idLauncher: ollama, model: ${ollamaModel ?? "default"})`);
   } else if (config.idLauncher === "groq") {
     if (groqApiKey) {
       const model = idGroqModel ?? groqModel;
       const groqLauncher = new GroqSessionLauncher(new FetchHttpClient(), clock, groqApiKey, model);
-      idGatedLauncher = new SemaphoreSessionLauncher(groqLauncher, apiSemaphore);
+      idGatedLauncher = new MeteredSessionLauncher(new SemaphoreSessionLauncher(groqLauncher, apiSemaphore), metricsService, clock);
       logger.debug(`agent-layer: Id using GroqSessionLauncher (idLauncher: groq, model: ${model ?? "default"})`);
     } else {
       logger.debug("agent-layer: idLauncher is \"groq\" but groqKeyPath is not set or key file unreadable — Id falling back to default launcher");
@@ -364,7 +369,7 @@ export async function createAgentLayer(
     if (anthropicAccessToken) {
       const model = idAnthropicModel ?? anthropicModel;
       const anthropicLauncher = new AnthropicSessionLauncher(new FetchHttpClient(), clock, anthropicAccessToken, model);
-      idGatedLauncher = new SemaphoreSessionLauncher(anthropicLauncher, apiSemaphore);
+      idGatedLauncher = new MeteredSessionLauncher(new SemaphoreSessionLauncher(anthropicLauncher, apiSemaphore), metricsService, clock);
       logger.debug(`agent-layer: Id using AnthropicSessionLauncher (idLauncher: anthropic, model: ${model ?? "default"})`);
     } else {
       logger.debug("agent-layer: idLauncher is \"anthropic\" but token unavailable — Id falling back to default launcher");
@@ -376,7 +381,7 @@ export async function createAgentLayer(
   return {
     checker, promptBuilder, launcher, gatedLauncher, apiSemaphore, processTracker,
     taskMetrics, sizeTracker, delegationTracker, taskClassifier,
-    conversationManager, driveQualityTracker, flashGate,
+    conversationManager, driveQualityTracker, metricsService, flashGate,
     ego, subconscious, superego, id,
     vertexSubprocessLauncher,
   };

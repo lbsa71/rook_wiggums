@@ -18,8 +18,10 @@ import { TinyBus } from "../tinybus/core/TinyBus";
 import { createMessage } from "../tinybus/core/Message";
 import { createTinyBusMcpServer } from "../mcp/TinyBusMcpServer";
 import { addCodeDispatchTools } from "../mcp/CodeDispatchMcpServer";
+import { registerMetricsTools } from "../mcp/MetricsMcpTools";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { CodeDispatcher } from "../code-dispatch/CodeDispatcher";
+import type { IMetricsService } from "../metrics/IMetricsService";
 import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { IAgoraService } from "../agora/IAgoraService";
 import type { ILogger } from "../logging";
@@ -65,6 +67,7 @@ export class LoopHttpServer {
   private sizeTracker: SubstrateSizeTracker | null = null;
   private delegationTracker: DelegationTracker | null = null;
   private tinyBus: TinyBus | null = null;
+  private usageMetrics: IMetricsService | null = null;
   private codeDispatcher: CodeDispatcher | null = null;
   private meta: SubstrateMeta | null = null;
   private apiToken: string | null = null;
@@ -141,6 +144,10 @@ export class LoopHttpServer {
 
   setTinyBus(tinyBus: TinyBus): void {
     this.tinyBus = tinyBus;
+  }
+
+  setUsageMetrics(metrics: IMetricsService): void {
+    this.usageMetrics = metrics;
   }
 
   setCodeDispatcher(dispatcher: CodeDispatcher): void {
@@ -364,6 +371,9 @@ export class LoopHttpServer {
       });
       if (this.codeDispatcher) {
         addCodeDispatchTools(mcpServer, this.codeDispatcher);
+      }
+      if (this.usageMetrics) {
+        registerMetricsTools(mcpServer, this.usageMetrics);
       }
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // Stateless mode

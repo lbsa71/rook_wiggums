@@ -205,7 +205,14 @@ export class Subconscious {
       const result = await this.sessionLauncher.launch({
         systemPrompt,
         message,
-      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
+      }, {
+        model,
+        onLogEntry,
+        cwd: this.workingDirectory,
+        continueSession: true,
+        persistSession: true,
+        usageContext: { role: AgentRole.SUBCONSCIOUS, operation: "execute" },
+      });
 
       if (!result.success) {
         const errorDetail = result.error || "Session error (exit code " + result.exitCode + ")";
@@ -371,7 +378,14 @@ Respond with ONLY a JSON object:
       const evalResult = await this.sessionLauncher.launch({
         systemPrompt,
         message: evaluationPrompt,
-      }, { model, onLogEntry, cwd: this.workingDirectory, continueSession: true, persistSession: true });
+      }, {
+        model,
+        onLogEntry,
+        cwd: this.workingDirectory,
+        continueSession: true,
+        persistSession: true,
+        usageContext: { role: AgentRole.SUBCONSCIOUS, operation: "evaluateOutcome" },
+      });
 
       if (!evalResult.success) {
         // Default to conservative evaluation on failure

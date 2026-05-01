@@ -148,7 +148,10 @@ export class ConversationCompactor implements IConversationCompactor {
       const message = `Summarize this conversation history:\n\n${oldContent}`;
 
       const request: ClaudeSessionRequest = { systemPrompt, message };
-      const result = await this.subprocessLauncher!.launch(request, { cwd: this.cwd });
+      const result = await this.subprocessLauncher!.launch(request, {
+        cwd: this.cwd,
+        usageContext: { role: "CONVERSATION", operation: "subprocessCompact" },
+      });
 
       if (result.success && result.rawOutput) {
         const trimmed = result.rawOutput.trim();
@@ -188,7 +191,8 @@ export class ConversationCompactor implements IConversationCompactor {
     };
 
     const result = await this.sessionLauncher.launch(request, {
-      cwd: this.cwd
+      cwd: this.cwd,
+      usageContext: { role: "CONVERSATION", operation: "compact" },
     });
 
     if (result.success && result.rawOutput) {

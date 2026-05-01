@@ -17,6 +17,8 @@ export interface ToolNames {
   grepSearch: string;
   globSearch: string;
   sendAgoraMessage: string;
+  getUsageSummary: string;
+  queryMetrics: string;
 }
 
 const CLAUDE_TOOL_NAMES: ToolNames = {
@@ -27,6 +29,8 @@ const CLAUDE_TOOL_NAMES: ToolNames = {
   grepSearch: "Grep",
   globSearch: "Glob",
   sendAgoraMessage: "mcp__tinybus__send_agora_message",
+  getUsageSummary: "mcp__tinybus__get_usage_summary",
+  queryMetrics: "mcp__tinybus__query_metrics",
 };
 
 const GEMINI_TOOL_NAMES: ToolNames = {
@@ -37,6 +41,8 @@ const GEMINI_TOOL_NAMES: ToolNames = {
   grepSearch: "grep_search",
   globSearch: "glob",
   sendAgoraMessage: "send_agora_message",
+  getUsageSummary: "get_usage_summary",
+  queryMetrics: "query_metrics",
 };
 
 export const TOOL_NAMES_BY_LAUNCHER: Record<string, ToolNames> = {
@@ -79,7 +85,9 @@ Built-in tool names for this session (use these exact names when calling tools):
 - Run shell command: \`${tools.runShell}\`
 - Search file contents: \`${tools.grepSearch}\`
 - Find files by pattern: \`${tools.globSearch}\`
-- Send Agora message (MCP): \`${tools.sendAgoraMessage}\``;
+- Send Agora message (MCP): \`${tools.sendAgoraMessage}\`
+- Get usage summary (MCP): \`${tools.getUsageSummary}\`
+- Query metrics with read-only SQL (MCP): \`${tools.queryMetrics}\``;
 }
 
 export interface FileContext {
