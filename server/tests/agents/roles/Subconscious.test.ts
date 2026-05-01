@@ -63,6 +63,7 @@ describe("Subconscious agent", () => {
     await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\nConfig here");
     await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n\n");
     await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
+    await fs.writeFile("/substrate/OPERATING_CONTEXT.md", "# Operating Context\n\n");
   });
 
   describe("execute", () => {
@@ -72,7 +73,10 @@ describe("Subconscious agent", () => {
         summary: "Implemented the feature",
         progressEntry: "Completed task A implementation",
         skillUpdates: null,
+        memoryUpdates: null,
+        operatingContextEntry: "Next cycle should verify Task A",
         proposals: [],
+        agoraReplies: [],
       });
       launcher.enqueueSuccess(claudeResponse);
 
@@ -83,6 +87,17 @@ describe("Subconscious agent", () => {
 
       expect(result.result).toBe("success");
       expect(result.summary).toBe("Implemented the feature");
+      expect(result.operatingContextEntry).toBe("Next cycle should verify Task A");
+    });
+
+    it("appends operating context without touching CONVERSATION", async () => {
+      await subconscious.logOperatingContext("Current direction");
+
+      const operatingContext = await fs.readFile("/substrate/OPERATING_CONTEXT.md");
+      expect(operatingContext).toContain("[SUBCONSCIOUS] Current direction");
+
+      const conversation = await fs.readFile("/substrate/CONVERSATION.md");
+      expect(conversation).not.toContain("Current direction");
     });
 
     it("passes substratePath as cwd to session launcher", async () => {

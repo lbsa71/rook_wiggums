@@ -12,12 +12,16 @@ import type { IMessageInjector } from "../../src/loop/IMessageInjector";
 class MockConversationManager implements IConversationManager {
   public appendedEntries: Array<{ role: AgentRole; entry: string }> = [];
   public operatingContextEntries: Array<{ role: AgentRole; entry: string }> = [];
+  public failOperatingContext = false;
 
   async append(role: AgentRole, entry: string): Promise<void> {
     this.appendedEntries.push({ role, entry });
   }
 
   async appendOperatingContext(role: AgentRole, entry: string): Promise<void> {
+    if (this.failOperatingContext) {
+      throw new Error("operating context unavailable");
+    }
     this.operatingContextEntries.push({ role, entry });
   }
 }
@@ -315,6 +319,29 @@ describe("HeartbeatScheduler", () => {
       expect(conversationManager.operatingContextEntries).toHaveLength(1);
       expect(conversationManager.operatingContextEntries[0].entry).toContain("Operating note.");
       expect(injector.injectedMessages).toHaveLength(1);
+    });
+
+    it("warns and falls back to CONVERSATION when OPERATING_CONTEXT append fails", async () => {
+      await fs.writeFile(HEARTBEAT_PATH, "# @once\nFallback note.\n");
+      conversationManager.failOperatingContext = true;
+      const logger = new InMemoryLogger();
+      const scheduler = new HeartbeatScheduler(
+        fs,
+        clock,
+        logger,
+        HEARTBEAT_PATH,
+        conversationManager,
+        new Map(),
+        undefined,
+        conversationManager
+      );
+
+      await scheduler.run();
+
+      expect(conversationManager.operatingContextEntries).toHaveLength(0);
+      expect(conversationManager.appendedEntries).toHaveLength(1);
+      expect(conversationManager.appendedEntries[0].entry).toContain("Fallback note.");
+      expect(logger.getWarnEntries()[0]).toContain("falling back to CONVERSATION.md");
     });
 
     it("injects fired entries into messageInjector when provided", async () => {

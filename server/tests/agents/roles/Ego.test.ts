@@ -83,6 +83,7 @@ describe("Ego agent", () => {
     await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\nConfig here");
     await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n\n");
     await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
+    await fs.writeFile("/substrate/OPERATING_CONTEXT.md", "# Operating Context\n\n");
   });
 
   describe("decide", () => {
@@ -96,6 +97,21 @@ describe("Ego agent", () => {
 
       const decision = await ego.decide();
       expect(decision.action).toBe("dispatch");
+    });
+
+    it("appends operating context when decision includes operatingContextEntry", async () => {
+      launcher.enqueueSuccess(JSON.stringify({
+        action: "idle",
+        reason: "handoff",
+        agoraReplies: [],
+        operatingContextEntry: "Keep watching Agora state",
+      }));
+
+      const decision = await ego.decide();
+
+      expect(decision.operatingContextEntry).toBe("Keep watching Agora state");
+      const operatingContext = await fs.readFile("/substrate/OPERATING_CONTEXT.md");
+      expect(operatingContext).toContain("[EGO] Keep watching Agora state");
     });
 
     it("returns idle decision with stderr when Claude fails", async () => {

@@ -22,6 +22,7 @@ describe("SubstrateSizeTracker", () => {
     await fs.writeFile(`${substratePath}/PROGRESS.md`, "# Progress\n" + "entry\n".repeat(150)); // 152 lines
     await fs.writeFile(`${substratePath}/MEMORY.md`, "# Memory\n" + "fact\n".repeat(100)); // 102 lines
     await fs.writeFile(`${substratePath}/CONVERSATION.md`, "# Conversation\n" + "msg\n".repeat(250)); // 252 lines
+    await fs.writeFile(`${substratePath}/OPERATING_CONTEXT.md`, "# Operating Context\n" + "note\n".repeat(20)); // 22 lines
   }
 
   describe("recordSnapshot", () => {
@@ -39,6 +40,7 @@ describe("SubstrateSizeTracker", () => {
       expect(snapshot.files["PROGRESS.md"]).toBe(152);
       expect(snapshot.files["MEMORY.md"]).toBe(102);
       expect(snapshot.files["CONVERSATION.md"]).toBe(252);
+      expect(snapshot.files["OPERATING_CONTEXT.md"]).toBe(22);
       expect(snapshot.totalBytes).toBeGreaterThan(0);
     });
 
@@ -53,6 +55,7 @@ describe("SubstrateSizeTracker", () => {
       expect(snapshot!.files["PLAN.md"]).toBeGreaterThan(0);
       expect(snapshot!.files["PROGRESS.md"]).toBe(0); // Missing file
       expect(snapshot!.files["MEMORY.md"]).toBe(0);
+      expect(snapshot!.files["OPERATING_CONTEXT.md"]).toBe(0);
     });
 
     it("should append multiple snapshots", async () => {
@@ -129,7 +132,7 @@ describe("SubstrateSizeTracker", () => {
       
       // Verify all expected files are checked
       const expectedFiles = [
-        "PLAN.md", "PROGRESS.md", "MEMORY.md", "CONVERSATION.md",
+        "PLAN.md", "PROGRESS.md", "MEMORY.md", "CONVERSATION.md", "OPERATING_CONTEXT.md",
         "HABITS.md", "SKILLS.md", "VALUES.md", "ID.md",
         "SECURITY.md", "CHARTER.md", "SUPEREGO.md", "CLAUDE.md"
       ];

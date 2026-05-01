@@ -89,6 +89,7 @@ Valid values: `"claude"` (default, same launcher as other roles), `"vertex"` (re
 ## 7. Substrate File Locations
 
 All substrate files live in `~/.local/share/substrate/` by default (the `substratePath` config value).
+Templates only seed files that do not already exist. Existing autarks receive additive substrate migrations for durable guidance changes; do not assume template edits rewrite lived substrate files.
 
 | File | Purpose |
 |------|---------|

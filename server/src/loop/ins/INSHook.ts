@@ -85,6 +85,15 @@ export class INSHook {
       );
       if (progAction) actions.push(progAction);
 
+      // Rule 2a: OPERATING_CONTEXT.md compaction (risk tier: low — current handoff, recoverable)
+      const operatingContextAction = await this.checkFileLineCount(
+        SubstrateFileType.OPERATING_CONTEXT,
+        "OPERATING_CONTEXT.md",
+        this.config.conversationLineThreshold,
+        'low',
+      );
+      if (operatingContextAction) actions.push(operatingContextAction);
+
       // Rule 2b: PLAN.md compaction (risk tier: high — overwrite incidents tracked separately; Stefan authorization required)
       const planAction = await this.checkFileLineCount(
         SubstrateFileType.PLAN,

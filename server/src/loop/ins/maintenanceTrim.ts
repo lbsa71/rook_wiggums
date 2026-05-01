@@ -2,7 +2,7 @@ import { IFileSystem } from "../../substrate/abstractions/IFileSystem";
 import { ILogger } from "../../logging";
 
 /**
- * Trims a single substrate file (CONVERSATION.md or PROGRESS.md) if it
+ * Trims a single substrate file (CONVERSATION.md, OPERATING_CONTEXT.md, or PROGRESS.md) if it
  * exceeds the threshold. Removes the oldest timestamped entries from the
  * raw tail until the line count reaches floor(threshold * targetRatio).
  * Structural blocks (markdown headers, summaries) are always preserved.
@@ -59,10 +59,11 @@ async function trimFile(
 }
 
 /**
- * Deterministic trim for CONVERSATION.md and PROGRESS.md during rate-limit
+ * Deterministic trim for CONVERSATION.md, OPERATING_CONTEXT.md, and PROGRESS.md during rate-limit
  * sleep. Runs without any model calls.
  *
  * - CONVERSATION.md: trims oldest raw entries to floor(threshold * 0.75)
+ * - OPERATING_CONTEXT.md: trims oldest raw entries to floor(threshold * 0.75)
  * - PROGRESS.md: trims oldest raw entries to floor(threshold * 0.85)
  *   (higher ratio preserves more history)
  *
@@ -77,6 +78,7 @@ async function trimFile(
  * @param fs - File system abstraction
  * @param logger - Logger
  * @param progressPath - Optional absolute path to PROGRESS.md
+ * @param operatingContextPath - Optional absolute path to OPERATING_CONTEXT.md
  */
 export async function insMaintenanceTrim(
   conversationPath: string,
@@ -84,8 +86,12 @@ export async function insMaintenanceTrim(
   fs: IFileSystem,
   logger: ILogger,
   progressPath?: string,
+  operatingContextPath?: string,
 ): Promise<void> {
   await trimFile(conversationPath, threshold, 0.75, fs, logger);
+  if (operatingContextPath !== undefined) {
+    await trimFile(operatingContextPath, threshold, 0.75, fs, logger);
+  }
   if (progressPath !== undefined) {
     await trimFile(progressPath, threshold, 0.85, fs, logger);
   }

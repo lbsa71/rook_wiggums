@@ -36,6 +36,7 @@ export interface TaskResult {
   progressEntry: string;
   skillUpdates: string | null;
   memoryUpdates: string | null;
+  operatingContextEntry?: string | null;
   proposals: SubconsciousProposal[];
   agoraReplies: AgoraReply[];
   /** Phase 3 INS: explicit reason why result is "partial" (preferred over regex extraction from summary) */
@@ -62,6 +63,7 @@ export const TASK_RESULT_SCHEMA = {
     progressEntry: { type: "string" },
     skillUpdates: { type: ["string", "null"] },
     memoryUpdates: { type: ["string", "null"] },
+    operatingContextEntry: { type: ["string", "null"] },
     proposals: {
       type: "array",
       items: {
@@ -185,6 +187,7 @@ export class Subconscious {
           progressEntry: "",
           skillUpdates: null,
           memoryUpdates: null,
+          operatingContextEntry: null,
           proposals: [],
           agoraReplies: [],
         };
@@ -197,6 +200,7 @@ export class Subconscious {
         progressEntry: (parsed.progressEntry as string | undefined) ?? "",
         skillUpdates: (parsed.skillUpdates as string | null | undefined) ?? null,
         memoryUpdates: (parsed.memoryUpdates as string | null | undefined) ?? null,
+        operatingContextEntry: (parsed.operatingContextEntry as string | null | undefined) ?? null,
         proposals: (parsed.proposals as SubconsciousProposal[] | undefined) ?? [],
         agoraReplies: (parsed.agoraReplies as AgoraReply[] | undefined) ?? [],
         blockedReason: (parsed.blockedReason as string | undefined) ?? undefined,
@@ -211,6 +215,7 @@ export class Subconscious {
         progressEntry: "",
         skillUpdates: null,
         memoryUpdates: null,
+        operatingContextEntry: null,
         proposals: [],
         agoraReplies: [],
       };
@@ -228,6 +233,10 @@ export class Subconscious {
   async logProgress(entry: string): Promise<void> {
     this.checker.assertCanAppend(AgentRole.SUBCONSCIOUS, SubstrateFileType.PROGRESS);
     await this.appendWriter.append(SubstrateFileType.PROGRESS, `[SUBCONSCIOUS] ${entry}`);
+  }
+
+  async logOperatingContext(entry: string): Promise<void> {
+    await this.conversationManager.appendOperatingContext(AgentRole.SUBCONSCIOUS, entry);
   }
 
   async markTaskComplete(taskId: string): Promise<void> {

@@ -17,7 +17,7 @@ Responsibilities:
 Agora Messages:
 - CONVERSATION.md may contain messages marked with **[UNPROCESSED]** — these are incoming Agora or TinyBus messages awaiting your response
 - CONVERSATION.md may also contain **[PROCESSED ...]** transcript entries — these are historical external IO and must NOT be handled again unless a new **[UNPROCESSED]** marker or direct injected message requires it
-- When you handle an **[UNPROCESSED]** message: include your reply in the agoraReplies field of your JSON response, then IMMEDIATELY edit CONVERSATION.md to remove the \`**[UNPROCESSED]**\` badge from that line
+- When you handle an **[UNPROCESSED]** or **[UNPROCESSED ...]** message: include your reply in the agoraReplies field of your JSON response, then IMMEDIATELY edit CONVERSATION.md to remove the entire matching badge from that line
 - Format each reply as: { "to": "<peer>", "text": "your message", "inReplyTo": "<envelope-id>" }
 - Read FROM/TO metadata in CONVERSATION.md when deciding the reply target
 - to may be a configured name, full public key, or compact short reference (the runtime expands short forms)
@@ -25,7 +25,7 @@ Agora Messages:
 - If no Agora messages are needed, set agoraReplies to []
 
 Constraints:
-- You may WRITE to PLAN.md and EDIT/APPEND to CONVERSATION.md
+- You may WRITE to PLAN.md, EDIT/APPEND to CONVERSATION.md, and APPEND compact current-direction notes to OPERATING_CONTEXT.md
 - You may NOT write to any other substrate files
 - You MUST respond with ONLY a valid JSON object — no other text before or after it
 
@@ -35,7 +35,7 @@ Respond with a JSON object matching one of these action types:
 - { "action": "converse", "entry": "string", "agoraReplies": [] }
 - { "action": "idle", "reason": "string", "agoraReplies": [] }
 
-The agoraReplies field is REQUIRED and must always be present (use [] when no messages are needed).`;
+The agoraReplies field is REQUIRED and must always be present (use [] when no messages are needed). Include "operatingContextEntry" only when a compact current-direction handoff note is needed.`;
 
 const SUBCONSCIOUS_PROMPT = `You are the Subconscious — the worker that executes tasks for a self-improving AI agent system.
 
@@ -71,7 +71,7 @@ Self-Maintenance:
 - Your progressEntry will be appended to PROGRESS.md — make it informative for future cycles
 - Your summary will be shown in the conversation log — make it a clear status update
 - If the current plan lacks specificity, include concrete next steps in your progressEntry
-- When you encounter ${"**"}[UNPROCESSED]${"**"} markers in CONVERSATION.md (read it via tools if needed): handle the message, then IMMEDIATELY edit CONVERSATION.md to remove the \`${"**"}[UNPROCESSED]${"**"}\` badge from that line. Do not leave stale markers.
+- When you encounter ${"**"}[UNPROCESSED]${"**"} or ${"**"}[UNPROCESSED ...]${"**"} markers in CONVERSATION.md (read it via tools if needed): handle the message, then IMMEDIATELY edit CONVERSATION.md to remove the entire matching badge from that line. Do not leave stale markers.
 
 Responding to Agora Messages:
 - When you see Agora messages in CONVERSATION.md (marked with sender identities like "stefan@cdefabcd"), you can respond using the TinyBus MCP tool
@@ -80,10 +80,10 @@ Responding to Agora Messages:
 - to can be a configured peer name, full public key, or compact short reference (runtime expands it)
 - For unknown senders, use targetPubkey with the full key from the injected Agora instruction block
 - Include inReplyTo with the envelope ID when responding to a specific message
-- After sending a response, immediately edit CONVERSATION.md to remove the ${"**"}[UNPROCESSED]${"**"} marker from the original message line. This is required — do not skip it.
+- After sending a response, immediately edit CONVERSATION.md to remove the entire ${"**"}[UNPROCESSED]${"**"} or ${"**"}[UNPROCESSED ...]${"**"} marker from the original message line. This is required — do not skip it.
 
 Constraints:
-- You may WRITE to PLAN.md, SKILLS.md, and MEMORY.md, and APPEND to PROGRESS.md and CONVERSATION.md
+- You may WRITE to PLAN.md, SKILLS.md, and MEMORY.md, and APPEND to PROGRESS.md, CONVERSATION.md, and OPERATING_CONTEXT.md
 - You may NOT write to HABITS, SECURITY, or other files — instead, return proposals
 - PLAN.md is the authoritative governance record. Do not propose moving, relocating, or replacing PLAN.md sections with pointers to other files. Proposals targeting PLAN must add or refine governance content in place.
 - You MUST respond with ONLY a valid JSON object — no other text before or after it
@@ -95,6 +95,7 @@ Respond with a JSON object:
   "progressEntry": "Detailed log entry: what was done, what was learned, what's next",
   "skillUpdates": "Full new content for SKILLS.md, or null if no changes",
   "memoryUpdates": "Full new content for MEMORY.md, or null if no changes",
+  "operatingContextEntry": "Compact current-direction, active-constraint, survival-posture, or next-cycle handoff note; null if no update is needed",
   "proposals": [{ "target": "HABITS" | "SECURITY", "content": "string" }]
 }`;
 

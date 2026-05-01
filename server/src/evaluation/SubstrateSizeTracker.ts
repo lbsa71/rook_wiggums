@@ -33,6 +33,7 @@ const SIZE_TARGETS: Record<string, number> = {
   "PROGRESS.md": 200,
   "MEMORY.md": 300,
   "CONVERSATION.md": 200,
+  "OPERATING_CONTEXT.md": 120,
   "HABITS.md": 150,
   "SKILLS.md": 200,
   "VALUES.md": 100,

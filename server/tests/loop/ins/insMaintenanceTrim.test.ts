@@ -290,3 +290,34 @@ describe("insMaintenanceTrim — PROGRESS.md", () => {
     expect(progContent.split("\n").length).toBe(Math.floor(threshold * 0.85));
   });
 });
+
+describe("insMaintenanceTrim — OPERATING_CONTEXT.md", () => {
+  const conversationPath = "/substrate/CONVERSATION.md";
+  const operatingContextPath = "/substrate/OPERATING_CONTEXT.md";
+  const threshold = 10;
+  let fs: InMemoryFileSystem;
+  let logger: InMemoryLogger;
+
+  beforeEach(async () => {
+    fs = new InMemoryFileSystem();
+    logger = new InMemoryLogger();
+    await fs.mkdir("/substrate", { recursive: true });
+    await fs.writeFile(conversationPath, "# Conversation\n\nshort\n");
+  });
+
+  it("trims OPERATING_CONTEXT.md oldest raw entries when provided", async () => {
+    const lines = [
+      "# Operating Context",
+      "",
+      ...Array.from({ length: 12 }, (_, i) => `[2026-03-01T12:${String(i).padStart(2, "0")}:00.000Z] note ${i}`),
+    ];
+    await fs.writeFile(operatingContextPath, lines.join("\n"));
+
+    await insMaintenanceTrim(conversationPath, threshold, fs, logger, undefined, operatingContextPath);
+
+    const content = await fs.readFile(operatingContextPath);
+    expect(content).toContain("# Operating Context");
+    expect(content).not.toContain("note 0");
+    expect(content).toContain("note 11");
+  });
+});

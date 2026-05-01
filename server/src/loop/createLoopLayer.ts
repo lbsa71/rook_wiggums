@@ -42,6 +42,7 @@ import { AgoraMessageHandler } from "../agora/AgoraMessageHandler";
 import { AgoraOutboundProvider } from "../agora/AgoraOutboundProvider";
 import { AgoraStateStore } from "../agora/AgoraStateStore";
 import { AgoraWakePoller } from "../agora/AgoraWakePoller";
+import { isActionableUnprocessedLine } from "../agora/UnprocessedMarker";
 import { IAgoraService } from "../agora/IAgoraService";
 import { FileEnvelopeDedupStore } from "../agora/FileEnvelopeDedupStore";
 import { buildPeerReferenceDirectory } from "../agora/utils";
@@ -486,8 +487,9 @@ export async function createLoopLayer(
     // Wire deterministic rate-limit trim — no LLM call, runs before each rate-limit re-sleep.
     const conversationPath = path.join(config.substratePath, "CONVERSATION.md");
     const progressPath = path.join(config.substratePath, "PROGRESS.md");
+    const operatingContextPath = path.join(config.substratePath, "OPERATING_CONTEXT.md");
     orchestrator.setRateLimitTrimFn(() =>
-      insMaintenanceTrim(conversationPath, insConfig.conversationLineThreshold, fs, logger, progressPath),
+      insMaintenanceTrim(conversationPath, insConfig.conversationLineThreshold, fs, logger, progressPath, operatingContextPath),
     );
     // ComplianceStateManager saves after each state change in INSHook — no shutdown hook needed.
   }
@@ -896,9 +898,7 @@ export async function createLoopLayer(
     // broadcasts (e.g. heartbeat/capability ads) that don't require agent response.
     // Only trigger STARTUP SCAN for actionable [UNPROCESSED] messages.
     const lines = conversationContent.rawMarkdown.split("\n");
-    const hasActionableUnprocessed = lines.some(
-      (line) => /:\s*\*\*\[UNPROCESSED(?:\s+[^\]]+)?\]\*\*/.test(line) && !/ announce:\s*\*\*\[UNPROCESSED(?:\s+[^\]]+)?\]\*\*/.test(line)
-    );
+    const hasActionableUnprocessed = lines.some((line) => isActionableUnprocessedLine(line));
     if (hasActionableUnprocessed) {
       const startupPrompt = "[STARTUP SCAN] Unprocessed messages detected in CONVERSATION.md from before the last restart. Please read CONVERSATION.md and respond to any messages marked with **[UNPROCESSED]** or **[UNPROCESSED envelopeId=...]**.";
       orchestrator.queueStartupMessage(startupPrompt);

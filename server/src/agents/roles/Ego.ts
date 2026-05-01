@@ -24,6 +24,7 @@ export interface EgoDecision {
   entry?: string;        // present when action === "converse"
   reason?: string;       // present when action === "idle"
   agoraReplies: AgoraReply[];
+  operatingContextEntry?: string | null;
 }
 
 /**
@@ -42,6 +43,7 @@ export const EGO_DECISION_SCHEMA = {
     content: { type: "string" },
     entry: { type: "string" },
     reason: { type: "string" },
+    operatingContextEntry: { type: ["string", "null"] },
     agoraReplies: {
       type: "array",
       items: {
@@ -125,6 +127,9 @@ export class Ego {
       if (!Array.isArray(parsed.agoraReplies)) {
         parsed.agoraReplies = [];
       }
+      if (parsed.operatingContextEntry) {
+        await this.appendOperatingContext(parsed.operatingContextEntry);
+      }
       return parsed;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -145,6 +150,10 @@ export class Ego {
 
   async appendConversation(entry: string): Promise<void> {
     await this.conversationManager.append(AgentRole.EGO, entry);
+  }
+
+  async appendOperatingContext(entry: string): Promise<void> {
+    await this.conversationManager.appendOperatingContext(AgentRole.EGO, entry);
   }
 
   async respondToMessage(

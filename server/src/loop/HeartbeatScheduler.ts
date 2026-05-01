@@ -202,8 +202,8 @@ export class HeartbeatScheduler {
         await this.operatingContextWriter.appendOperatingContext(AgentRole.SUBCONSCIOUS, message);
         return;
       } catch (err) {
-        this.logger.debug(
-          `[HEARTBEAT] Failed to append to OPERATING_CONTEXT.md: ${err instanceof Error ? err.message : String(err)}`
+        this.logger.warn(
+          `[HEARTBEAT] Failed to append to OPERATING_CONTEXT.md; falling back to CONVERSATION.md: ${err instanceof Error ? err.message : String(err)}`
         );
       }
     }

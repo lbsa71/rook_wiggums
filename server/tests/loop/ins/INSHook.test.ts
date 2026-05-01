@@ -38,6 +38,7 @@ describe("INSHook", () => {
     // Create minimal substrate files
     await fs.mkdir(substratePath, { recursive: true });
     await fs.writeFile(`${substratePath}/CONVERSATION.md`, "# Conversation\n\nLine 1\nLine 2\n");
+    await fs.writeFile(`${substratePath}/OPERATING_CONTEXT.md`, "# Operating Context\n\nCurrent note\n");
     await fs.writeFile(`${substratePath}/PROGRESS.md`, "# Progress\n\nEntry 1\n");
     await fs.writeFile(`${substratePath}/MEMORY.md`, "# Memory\n\nShort content.\n");
     await fs.writeFile(`${substratePath}/PLAN.md`, "# Plan\n\n- [ ] Task A\n");
@@ -87,6 +88,18 @@ describe("INSHook", () => {
 
     const convAction = result.actions.find(a => a.target === "CONVERSATION.md");
     expect(convAction).toBeUndefined();
+  });
+
+  it("flags OPERATING_CONTEXT.md compaction when line count exceeds threshold", async () => {
+    const lines = Array.from({ length: 90 }, (_, i) => `Note ${i + 1}`);
+    await fs.writeFile(`${substratePath}/OPERATING_CONTEXT.md`, lines.join("\n"));
+
+    const hook = await createHook({ conversationLineThreshold: 80 });
+    const result = await hook.evaluate(1);
+
+    const action = result.actions.find(a => a.target === "OPERATING_CONTEXT.md");
+    expect(action).toBeDefined();
+    expect(action!.type).toBe("compaction");
   });
 
   // --- PROGRESS.md compaction ---

@@ -34,6 +34,10 @@ This file is a short-form index. Each entry should be a brief description with a
 ## Foundational Habits
 
 - **Knowledge curation** — Continuously refine the two-tier knowledge system: keep index files (MEMORY.md, SKILLS.md, etc.) concise with short-form summaries, and maintain detailed long-form content in subdirectories (memory/, skills/, etc.). Promote important details to the index; archive stale content; consolidate related entries. Details: @habits/knowledge_curation.md
+
+## Agora Marker Cleanup
+
+When processing a CONVERSATION.md line marked \`**[UNPROCESSED]**\` or \`**[UNPROCESSED ...]**\`, respond once and then remove the entire matching badge from that line. Do not leave stale unprocessed badges.
 `;
 
 export const SKILLS_TEMPLATE = `# Skills

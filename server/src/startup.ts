@@ -4,7 +4,10 @@ import { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
 import { SubstrateConfig } from "./substrate/config";
 import { SubstrateInitializer } from "./substrate/initialization/SubstrateInitializer";
+import { SubstrateMigrator } from "./substrate/initialization/SubstrateMigrator";
 import { SubstrateValidator } from "./substrate/initialization/SubstrateValidator";
+import { IClock } from "./substrate/abstractions/IClock";
+import { SystemClock } from "./substrate/abstractions/SystemClock";
 import { createApplication } from "./loop/createApplication";
 import type { AppConfig } from "./config";
 
@@ -15,7 +18,8 @@ export interface StartedServer {
 
 export async function initializeSubstrate(
   fs: IFileSystem,
-  substratePath: string
+  substratePath: string,
+  clock: IClock = new SystemClock()
 ): Promise<void> {
   const config = new SubstrateConfig(substratePath);
 
@@ -25,6 +29,12 @@ export async function initializeSubstrate(
 
   if (initReport.created.length > 0) {
     console.log(`Substrate: created ${initReport.created.length} file(s): ${initReport.created.join(", ")}`);
+  }
+
+  const migrator = new SubstrateMigrator(fs, config, clock);
+  const migrationReport = await migrator.migrate();
+  if (migrationReport.applied.length > 0) {
+    console.log(`Substrate: applied ${migrationReport.applied.length} migration(s): ${migrationReport.applied.join(", ")}`);
   }
 
   // Validate substrate

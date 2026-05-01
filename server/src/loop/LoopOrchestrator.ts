@@ -605,6 +605,10 @@ export class LoopOrchestrator implements IMessageInjector {
         this.logger.debug(`cycle ${this.cycleNumber}: task "${dispatch.taskId}" ${success ? "succeeded" : "failed"} — ${taskResult.summary}`);
       }
 
+      if (taskResult.operatingContextEntry) {
+        await this.subconscious.logOperatingContext(taskResult.operatingContextEntry);
+      }
+
       if (success) {
         this.metrics.successfulCycles++;
         this.metrics.consecutiveIdleCycles = 0;

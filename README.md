@@ -255,7 +255,9 @@ cd server && npx eslint src/ tests/
 
 ## Substrate File Formats
 
-The substrate is a directory of 16 markdown files that serve as the system's shared memory (12 required + 4 optional). Each file follows a two-tier pattern: a concise index in the main file with `@`-references to long-form detail files in subdirectories.
+The substrate is a directory of markdown files that serve as the system's shared memory. Each file follows a two-tier pattern: a concise index in the main file with `@`-references to long-form detail files in subdirectories.
+
+Templates are copied only when a substrate file does not already exist. Existing autarks keep their lived substrate content; source-code updates that need to evolve existing substrate guidance must use additive substrate migrations rather than template rewrites.
 
 | File | Write Mode | Description |
 |------|-----------|-------------|
@@ -306,7 +308,7 @@ Substrate integrates with the [Agora protocol](https://github.com/rookdaemon/ago
 4. **State Markers** — Messages delivered to an active session are marked `**[PROCESSED envelopeId=...]**`; messages needing restart/next-cycle handling are marked `**[UNPROCESSED envelopeId=...]**`
 5. **Injection** — Messages are injected directly into the orchestrator via `injectMessage()` for immediate processing
 6. **Auto-Inclusion** — `CONVERSATION.md` is automatically included in Ego prompts, so the agent sees external transcript and unprocessed messages naturally
-7. **Marker Cleanup** — The agent removes `**[UNPROCESSED]**` markers after processing messages (via HABITS guidance)
+7. **Marker Cleanup** — The agent removes the full `**[UNPROCESSED]**` or `**[UNPROCESSED ...]**` marker after processing messages (via HABITS guidance and substrate migrations)
 
 **CONVERSATION.md Format:**
 ```markdown
@@ -427,8 +429,8 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 **Key constraints:**
 - **Superego** has read access to all substrate file types; it can write `HABITS` and `SECURITY`, and append to `PROGRESS` and `ESCALATE_TO_STEFAN`
 - **Id** has read-only access to 7 files (ID, VALUES, PLAN, OPERATING_CONTEXT, PROGRESS, SKILLS, MEMORY) — no writes
-- **Ego** can overwrite PLAN and append to CONVERSATION, read PEERS
-- **Subconscious** can overwrite PLAN, SKILLS, MEMORY, and PEERS; append to PROGRESS and CONVERSATION
+- **Ego** can overwrite PLAN and append to CONVERSATION and OPERATING_CONTEXT, read PEERS
+- **Subconscious** can overwrite PLAN, SKILLS, MEMORY, and PEERS; append to PROGRESS, CONVERSATION, and OPERATING_CONTEXT
 
 ---
 
