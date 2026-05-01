@@ -31,6 +31,7 @@ describe("CodexSessionLauncher", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("codex");
     expect(calls[0].args.slice(0, 2)).toEqual(["exec", "--dangerously-bypass-approvals-and-sandbox"]);
+    expect(calls[0].args).toContain("--json");
     expect(calls[0].args).toContain("--color");
     expect(calls[0].args).toContain("never");
     expect(calls[0].args).toContain("--skip-git-repo-check");
@@ -135,7 +136,15 @@ describe("CodexSessionLauncher", () => {
   });
 
   it("returns success=true and rawOutput on exit code 0", async () => {
-    runner.enqueue({ stdout: "final output", stderr: "", exitCode: 0 });
+    runner.enqueue({
+      stdout: [
+        JSON.stringify({ type: "thread.started", thread_id: "thread-1" }),
+        JSON.stringify({ type: "item.completed", item: { id: "item_0", type: "agent_message", text: "final output" } }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1000, cached_input_tokens: 400, output_tokens: 10, reasoning_output_tokens: 2 } }),
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0,
+    });
 
     const result = await launcher.launch(makeRequest());
 
@@ -143,6 +152,53 @@ describe("CodexSessionLauncher", () => {
     expect(result.rawOutput).toBe("final output");
     expect(result.exitCode).toBe(0);
     expect(result.error).toBeUndefined();
+  });
+
+  it("parses Codex JSONL usage and estimates known-model cost", async () => {
+    const codexLauncher = new CodexSessionLauncher(runner, clock, "gpt-5.5");
+    runner.enqueue({
+      stdout: [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "ok" } }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 14646, cached_input_tokens: 7552, output_tokens: 5, reasoning_output_tokens: 0 } }),
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const result = await codexLauncher.launch(makeRequest());
+
+    expect(result.rawOutput).toBe("ok");
+    expect(result.usage).toEqual({
+      provider: "codex",
+      model: "gpt-5.5",
+      promptTokens: 14646,
+      cachedInputTokens: 7552,
+      nonCachedInputTokens: 7094,
+      completionTokens: 5,
+      reasoningOutputTokens: 0,
+      totalTokens: 14651,
+      costUsd: ((7094 * 5) + (7552 * 0.5) + (5 * 30)) / 1_000_000,
+      costKnown: false,
+      costEstimate: true,
+      billingSource: "static_estimate",
+      telemetrySource: "codex-exec-json",
+    });
+  });
+
+  it("emits only agent message text to process logs when reading JSONL stdout", async () => {
+    runner.enqueue({
+      stdout: [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "streamed text" } }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } }),
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0,
+    });
+    const entries: Array<{ type: string; content: string }> = [];
+
+    await launcher.launch(makeRequest(), { onLogEntry: (entry) => entries.push(entry) });
+
+    expect(entries).toEqual([{ type: "text", content: "streamed text" }]);
   });
 
   it("returns success=false on non-zero exit code", async () => {

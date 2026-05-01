@@ -8,12 +8,29 @@ export interface ClaudeSessionRequest {
   message: string;
 }
 
+export interface SessionUsage {
+  provider: "claude" | "codex" | "gemini" | "groq" | "anthropic" | "ollama" | "vertex" | "copilot" | "deterministic";
+  model?: string;
+  promptTokens?: number;
+  cachedInputTokens?: number;
+  nonCachedInputTokens?: number;
+  completionTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  costUsd?: number;
+  costKnown: boolean;
+  costEstimate: boolean;
+  billingSource: "sdk" | "api_usage" | "cli_usage" | "static_estimate" | "free_tier" | "subscription" | "local" | "unknown";
+  telemetrySource: string;
+}
+
 export interface ClaudeSessionResult {
   rawOutput: string;
   exitCode: number;
   durationMs: number;
   success: boolean;
   error?: string;
+  usage?: SessionUsage;
 }
 
 export interface LaunchOptions {
