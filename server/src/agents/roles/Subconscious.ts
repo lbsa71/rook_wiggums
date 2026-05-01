@@ -311,7 +311,9 @@ export class Subconscious {
    */
   static computeDriveRating(result: TaskResult): number {
     let score = 5; // baseline
-    if (result.memoryUpdates || result.skillUpdates) score += 3;
+    // NOTE: No bonus for skillUpdates/memoryUpdates — interim fix for F3.
+    // The +3 created selection pressure for governance bypass (see GitHub issue F3).
+    // Re-enable only after F1/F2 are resolved and writes go through a governed pathway.
     if (result.result === "failure") score -= 2;
     const entry = result.progressEntry.toLowerCase();
     if (
