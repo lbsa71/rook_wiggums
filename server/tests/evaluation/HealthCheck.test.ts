@@ -1,5 +1,6 @@
 import { HealthCheck } from "../../src/evaluation/HealthCheck";
 import { InferenceLivenessTracker } from "../../src/evaluation/InferenceLivenessTracker";
+import { OutputQualityMonitor } from "../../src/evaluation/OutputQualityMonitor";
 import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFileSystem";
 import { SubstrateConfig } from "../../src/substrate/config";
 import { SubstrateFileReader } from "../../src/substrate/io/FileReader";
@@ -101,6 +102,36 @@ describe("HealthCheck", () => {
       lastError: "HTTP 401",
     }));
     expect(criticalResult.inferenceAlive).toBe("degraded");
+    expect(criticalResult.healthy).toBe(false);
+  });
+
+  it("reports unobserved output quality as unknown and prevents healthy full status", async () => {
+    await writeHealthySubstrate();
+    const outputQualityMonitor = new OutputQualityMonitor();
+    healthCheck = new HealthCheck(reader, null, fs, "/substrate", undefined, outputQualityMonitor);
+
+    const fullResult = await healthCheck.run();
+    const criticalResult = await healthCheck.runCriticalChecks();
+
+    expect(fullResult.overall).toBe("degraded");
+    expect(criticalResult.outputQuality).toBe("unknown");
+    expect(criticalResult.healthy).toBe(true);
+    expect(healthCheck.runtimeSignalsHealthy()).toBe(false);
+  });
+
+  it("marks health unhealthy when output quality is degraded", async () => {
+    await writeHealthySubstrate();
+    const outputQualityMonitor = new OutputQualityMonitor();
+    outputQualityMonitor.recordCycleStats({ totalChecks: 1, parseErrors: 1, placeholderActions: 0 });
+    outputQualityMonitor.recordCycleStats({ totalChecks: 1, parseErrors: 1, placeholderActions: 0 });
+    outputQualityMonitor.recordCycleStats({ totalChecks: 1, parseErrors: 1, placeholderActions: 0 });
+    healthCheck = new HealthCheck(reader, null, fs, "/substrate", undefined, outputQualityMonitor);
+
+    const fullResult = await healthCheck.run();
+    const criticalResult = await healthCheck.runCriticalChecks();
+
+    expect(fullResult.overall).toBe("unhealthy");
+    expect(criticalResult.outputQuality).toBe("degraded");
     expect(criticalResult.healthy).toBe(false);
   });
 });

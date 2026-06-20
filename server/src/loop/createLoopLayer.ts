@@ -8,6 +8,7 @@ import { LoopHttpServer } from "./LoopHttpServer";
 import { LoopWebSocketServer } from "./LoopWebSocketServer";
 import { defaultLoopConfig } from "./types";
 import { HealthCheck } from "../evaluation/HealthCheck";
+import { OutputQualityMonitor } from "../evaluation/OutputQualityMonitor";
 import { MetricsStore } from "../evaluation/MetricsStore";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
 import { CanaryLogger, readConvMdStats } from "../evaluation/CanaryLogger";
@@ -201,6 +202,8 @@ export async function createLoopLayer(
     fs,
     iterationPlanner,
   );
+  const outputQualityMonitor = new OutputQualityMonitor(clock);
+  orchestrator.setOutputQualityMonitor(outputQualityMonitor);
 
   // Wire up sleep/wake infrastructure
   const mode = config.mode ?? "cycle";
@@ -448,7 +451,7 @@ export async function createLoopLayer(
 
   // Create metrics store for quantitative drift monitoring
   const metricsStore = new MetricsStore(fs, clock, config.substratePath);
-  httpServer.setHealthCheck(new HealthCheck(reader, metricsStore, fs, config.substratePath, agents.livenessTracker));
+  httpServer.setHealthCheck(new HealthCheck(reader, metricsStore, fs, config.substratePath, agents.livenessTracker, outputQualityMonitor));
   httpServer.setMetricsComponents(taskMetrics, sizeTracker, delegationTracker);
 
   // Create governance report store and wire into both httpServer and orchestrator
@@ -699,7 +702,7 @@ export async function createLoopLayer(
 
   // Health check scheduler setup
   if (config.enableHealthChecks !== false) { // Default enabled
-    const healthCheck = new HealthCheck(reader, metricsStore, undefined, undefined, agents.livenessTracker);
+    const healthCheck = new HealthCheck(reader, metricsStore, undefined, undefined, agents.livenessTracker, outputQualityMonitor);
     const healthCheckScheduler = new HealthCheckScheduler(
       healthCheck,
       clock,
