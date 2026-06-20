@@ -220,7 +220,7 @@ describe("direct HTTP tool routes", () => {
 
     const response = await request<{ success: boolean; backendUsed: BackendType; output: string; filesChanged: string[] }>(port, "POST", "/api/code-dispatch/invoke", {
       spec: "change it",
-      backend: "auto",
+      backend: "codex",
       files: [],
       cwd: "/repo",
     });

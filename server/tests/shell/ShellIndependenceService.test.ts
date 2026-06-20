@@ -76,7 +76,7 @@ describe("ShellIndependenceService", () => {
     expect(readCount).toBe(readsAfterFirst);
   });
 
-  it("scores a local Ollama route higher than commercial shell defaults", async () => {
+  it("reports configured commercial code defaults as blocked from implicit dispatch", async () => {
     const fs = new InMemoryFileSystem();
     const clock = new FixedClock(new Date("2026-05-08T00:00:00.000Z"));
     const service = new ShellIndependenceService(fs, clock, {
@@ -91,7 +91,41 @@ describe("ShellIndependenceService", () => {
     const snapshot = await service.refresh();
 
     expect(snapshot.inventory.activeCognitiveRoute.kind).toBe("self-hosted");
-    expect(snapshot.scorecard.blockers).toContain("default code dispatch depends on commercial shell: gemini");
+    expect(snapshot.inventory.codeDispatchRoute).toMatchObject({
+      provider: "pi",
+      kind: "portable-shell",
+    });
+    expect(snapshot.inventory.codeDispatchRoute.evidence.join("\n")).toContain("implicit commercial default gemini is blocked");
+    expect(snapshot.scorecard.blockers).not.toContain("default code dispatch depends on commercial shell: gemini");
     expect(snapshot.scorecard.score).toBeGreaterThanOrEqual(60);
+  });
+
+  it("keeps the active cognitive launcher as the remaining blocker after code dispatch is forced portable", async () => {
+    const fs = new InMemoryFileSystem();
+    const clock = new FixedClock(new Date("2026-05-08T00:00:00.000Z"));
+    const service = new ShellIndependenceService(fs, clock, {
+      sessionLauncher: "codex",
+      defaultCodeBackend: "claude",
+      idLauncher: "vertex",
+      vertexKeyPath: "/keys/vertex",
+      ollama: {
+        baseUrl: "http://localhost:11434",
+        model: "qwen3:14b",
+      },
+    });
+
+    const snapshot = await service.refresh();
+
+    expect(snapshot.inventory.activeCognitiveRoute).toMatchObject({
+      provider: "codex",
+      kind: "commercial-shell",
+    });
+    expect(snapshot.inventory.codeDispatchRoute).toMatchObject({
+      provider: "pi",
+      kind: "portable-shell",
+    });
+    expect(snapshot.scorecard.blockers).toEqual(["active cognitive launcher is commercial shell: codex"]);
+    expect(snapshot.scorecard.commercialShellCount).toBe(1);
+    expect(snapshot.scorecard.score).toBeGreaterThan(48);
   });
 });
