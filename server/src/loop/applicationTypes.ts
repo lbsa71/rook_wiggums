@@ -23,6 +23,8 @@ export interface ProviderConfig {
   defaultIdleTimeoutMs?: number;
   maxLoggedTextChars?: number;
   minLoggedTextChars?: number;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  bypassApprovalsAndSandbox?: boolean;
 }
 
 export interface IterationModelClassConfig {

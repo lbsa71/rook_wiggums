@@ -297,7 +297,10 @@ export async function createAgentLayer(
   } else if (config.sessionLauncher === "codex") {
     logger.debug("agent-layer: using CodexSessionLauncher for cognitive roles");
     const { CodexSessionLauncher } = await import("../agents/codex/CodexSessionLauncher");
-    const codexLauncher = new CodexSessionLauncher(new NodeProcessRunner(), clock, activeModel, logger, activeEffort);
+    const codexLauncher = new CodexSessionLauncher(new NodeProcessRunner(), clock, activeModel, logger, activeEffort, {
+      sandboxMode: activeProviderConfig?.sandboxMode,
+      bypassApprovalsAndSandbox: activeProviderConfig?.bypassApprovalsAndSandbox,
+    });
     const { CodexMcpSetup } = await import("../agents/codex/CodexMcpSetup");
     const codexMcpSetup = new CodexMcpSetup(new NodeProcessRunner(), logger);
     await codexMcpSetup.register("tinybus", mcpUrl);

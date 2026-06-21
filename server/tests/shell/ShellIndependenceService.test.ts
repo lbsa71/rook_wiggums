@@ -106,6 +106,9 @@ describe("ShellIndependenceService", () => {
     const service = new ShellIndependenceService(fs, clock, {
       sessionLauncher: "codex",
       defaultCodeBackend: "claude",
+      codex: {
+        sandboxMode: "workspace-write",
+      },
       idLauncher: "vertex",
       vertexKeyPath: "/keys/vertex",
       ollama: {
@@ -120,6 +123,10 @@ describe("ShellIndependenceService", () => {
       provider: "codex",
       kind: "commercial-shell",
     });
+    expect(snapshot.inventory.activeCognitiveRoute.evidence).toEqual(expect.arrayContaining([
+      "codex.sandbox: workspace-write",
+      "codex.approvalPolicy: never",
+    ]));
     expect(snapshot.inventory.codeDispatchRoute).toMatchObject({
       provider: "pi",
       kind: "portable-shell",

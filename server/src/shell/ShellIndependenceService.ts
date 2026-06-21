@@ -14,6 +14,8 @@ export interface ShellProviderConfig {
   strategicModel?: string;
   tacticalModel?: string;
   idModel?: string;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  bypassApprovalsAndSandbox?: boolean;
 }
 
 export interface ShellIndependenceConfig {
@@ -208,6 +210,14 @@ export class ShellIndependenceService implements IShellIndependenceService {
     if (provider === "pi") {
       const piProvider = this.piProvider();
       if (piProvider) evidence.push(`pi.provider: ${piProvider}`);
+    }
+    if (provider === "codex") {
+      evidence.push(providerConfig?.bypassApprovalsAndSandbox
+        ? "codex.sandbox: bypassed"
+        : `codex.sandbox: ${providerConfig?.sandboxMode ?? "workspace-write"}`);
+      if (!providerConfig?.bypassApprovalsAndSandbox) {
+        evidence.push("codex.approvalPolicy: never");
+      }
     }
     if (provider === "ollama") {
       evidence.push(`baseUrl: ${providerConfig?.baseUrl ?? this.config.ollamaBaseUrl ?? "http://localhost:11434"}`);
