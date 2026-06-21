@@ -7,10 +7,13 @@ import * as path from "node:path";
  */
 export interface DelegationEntry {
   timestamp: string; // ISO 8601
-  copilot_issues: number;
+  delegated_issues: number;
   total_coding_issues: number;
   delegation_ratio: number; // 0.0 to 1.0
   week_start: string; // ISO 8601 date (Monday of the week)
+  delegate_label: string;
+  /** Legacy field retained so existing JSONL metrics remain readable. */
+  copilot_issues?: number;
 }
 
 /**
@@ -18,11 +21,19 @@ export interface DelegationEntry {
  */
 export interface DelegationStatus {
   ratio: number;
-  copilot_issues: number;
+  delegated_issues: number;
   total_issues: number;
+  delegate_label: string;
+  target_ratio: number;
   status: "OK" | "WARNING" | "CRITICAL";
   alert?: string;
+  /** Legacy field retained for older API consumers. */
+  copilot_issues?: number;
 }
+
+const DEFAULT_TARGET_RATIO = 0.8;
+const WARNING_RATIO = 0.6;
+const DEFAULT_DELEGATE_LABEL = "external_agent";
 
 /**
  * Tracks delegation ratio to verify offloading pattern compliance.
@@ -30,7 +41,8 @@ export interface DelegationStatus {
  * Design:
  * - JSONL append-only format for weekly delegation measurements
  * - Stores in ~/.local/share/substrate/.metrics/delegation_ratio.jsonl
- * - Target: >80% of coding tasks assigned to Copilot (per HABITS.md)
+ * - Target: >=80% of eligible coding tasks delegated to an explicitly named
+ *   helper route, not to any specific commercial shell.
  * 
  * Expected usage:
  * - MetricsScheduler calls recordDelegationRatio() weekly
@@ -54,23 +66,26 @@ export class DelegationTracker {
   /**
    * Record delegation ratio for a week
    * 
-   * @param copilotIssues Number of issues assigned to Copilot
+   * @param delegatedIssues Number of coding issues delegated to an external/helper route
    * @param totalCodingIssues Total number of coding issues
+   * @param delegateLabel Label for the route being measured, e.g. "pi" or "external_agent"
    */
   async recordDelegationRatio(
-    copilotIssues: number,
-    totalCodingIssues: number
+    delegatedIssues: number,
+    totalCodingIssues: number,
+    delegateLabel = DEFAULT_DELEGATE_LABEL
   ): Promise<void> {
     const now = this.clock.now();
     const weekStart = this.getWeekStart(now);
-    const ratio = totalCodingIssues > 0 ? copilotIssues / totalCodingIssues : 0;
+    const ratio = totalCodingIssues > 0 ? delegatedIssues / totalCodingIssues : 0;
 
     const entry: DelegationEntry = {
       timestamp: now.toISOString(),
-      copilot_issues: copilotIssues,
+      delegated_issues: delegatedIssues,
       total_coding_issues: totalCodingIssues,
       delegation_ratio: ratio,
       week_start: weekStart.toISOString(),
+      delegate_label: delegateLabel,
     };
 
     // Ensure .metrics directory exists
@@ -95,7 +110,7 @@ export class DelegationTracker {
     try {
       const content = await this.fs.readFile(this.metricsPath);
       const lines = content.trim().split("\n").filter(l => l.trim());
-      return lines.map(line => JSON.parse(line));
+      return lines.map(line => this.normalizeEntry(JSON.parse(line) as Partial<DelegationEntry>));
     } catch {
       return [];
     }
@@ -121,20 +136,38 @@ export class DelegationTracker {
     let status: "OK" | "WARNING" | "CRITICAL" = "OK";
     let alert: string | undefined;
 
-    if (latest.delegation_ratio < 0.6) {
+    if (latest.delegation_ratio < WARNING_RATIO) {
       status = "CRITICAL";
-      alert = `Delegation ratio below 60% (target: >80%)`;
-    } else if (latest.delegation_ratio < 0.8) {
+      alert = `Delegation ratio below 60% (target: >=${Math.round(DEFAULT_TARGET_RATIO * 100)}%)`;
+    } else if (latest.delegation_ratio < DEFAULT_TARGET_RATIO) {
       status = "WARNING";
-      alert = `Delegation ratio below 80% target`;
+      alert = `Delegation ratio below ${Math.round(DEFAULT_TARGET_RATIO * 100)}% target`;
     }
 
     return {
       ratio: latest.delegation_ratio,
-      copilot_issues: latest.copilot_issues,
+      delegated_issues: latest.delegated_issues,
       total_issues: latest.total_coding_issues,
+      delegate_label: latest.delegate_label,
+      target_ratio: DEFAULT_TARGET_RATIO,
       status,
       alert,
+      ...(latest.copilot_issues !== undefined ? { copilot_issues: latest.copilot_issues } : {}),
+    };
+  }
+
+  private normalizeEntry(entry: Partial<DelegationEntry>): DelegationEntry {
+    const delegatedIssues = entry.delegated_issues ?? entry.copilot_issues ?? 0;
+    const totalCodingIssues = entry.total_coding_issues ?? 0;
+    const delegationRatio = entry.delegation_ratio ?? (totalCodingIssues > 0 ? delegatedIssues / totalCodingIssues : 0);
+    return {
+      timestamp: entry.timestamp ?? "",
+      delegated_issues: delegatedIssues,
+      total_coding_issues: totalCodingIssues,
+      delegation_ratio: delegationRatio,
+      week_start: entry.week_start ?? "",
+      delegate_label: entry.delegate_label ?? (entry.copilot_issues !== undefined ? "copilot_legacy" : DEFAULT_DELEGATE_LABEL),
+      ...(entry.copilot_issues !== undefined ? { copilot_issues: entry.copilot_issues } : {}),
     };
   }
 

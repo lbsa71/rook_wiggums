@@ -854,8 +854,11 @@ export class LoopHttpServer {
         files: fileStatus,
         delegation: delegationStatus ? {
           ratio: delegationStatus.ratio,
+          delegated_issues: delegationStatus.delegated_issues,
           copilot_issues: delegationStatus.copilot_issues,
           total_issues: delegationStatus.total_issues,
+          delegate_label: delegationStatus.delegate_label,
+          target_ratio: delegationStatus.target_ratio,
           status: delegationStatus.status,
         } : null,
         taskClassifier: {

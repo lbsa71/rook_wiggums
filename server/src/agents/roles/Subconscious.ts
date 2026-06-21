@@ -13,6 +13,7 @@ import { AgentRole } from "../types";
 import { TaskClassifier } from "../TaskClassifier";
 import { ConversationManager } from "../../conversation/ConversationManager";
 import { ICycleLogWriter } from "../../substrate/io/ICycleLogWriter";
+import { SameModelBiasEvaluator } from "../../evaluation/SameModelBiasEvaluator";
 
 export interface SubconsciousProposal {
   target: string;
@@ -371,7 +372,7 @@ export class Subconscious {
    * Compute a 0-10 quality rating for a completed Id-generated drive task.
    * Uses heuristics based on the task outcome without requiring an LLM call.
    */
-  static computeDriveRating(result: TaskResult): number {
+  static computeDriveRating(result: TaskResult, taskDescription = ""): number {
     let score = 5; // baseline
     // Durable SKILLS/MEMORY changes are governed proposals, not immediate
     // evidence of task quality. Re-enable only after approved-write + delta
@@ -389,6 +390,14 @@ export class Subconscious {
     ) {
       score += 4;
     }
+    const sameModelAssessment = SameModelBiasEvaluator.assess({
+      taskDescription,
+      result: result.result,
+      summary: result.summary,
+      progressEntry: result.progressEntry,
+    });
+    if (sameModelAssessment.risk === "high") score -= 2;
+    else if (sameModelAssessment.risk === "medium") score -= 1;
     return Math.max(0, Math.min(10, score));
   }
 
@@ -420,6 +429,7 @@ Now perform a reconsideration evaluation. Assess:
 3. Were there any issues or gaps?
 4. What follow-up actions are recommended?
 5. Does the goal need reassessment?
+6. Same-model bias check: if the task involves Bishop/Rook/Nova/Claude agreement, peer endorsement, VALUES/governance/adversarial methodology, VPCC/external grounding, or easy convergence, treat smooth consensus as a scrutiny trigger. Name independent evidence, adversarial lenses, negative controls, or source-grounding before granting high confidence.
 
 Respond with ONLY a JSON object:
 {
@@ -461,10 +471,27 @@ Respond with ONLY a JSON object:
       
       // Extract raw values from Claude's response
       const outcomeMatchesIntent = (parsed.outcomeMatchesIntent as boolean | undefined) ?? false;
-      const qualityScore = (parsed.qualityScore as number | undefined) ?? 0;
+      let qualityScore = (parsed.qualityScore as number | undefined) ?? 0;
       const issuesFound = (parsed.issuesFound as string[] | undefined) ?? [];
       const recommendedActions = (parsed.recommendedActions as string[] | undefined) ?? [];
       let needsReassessment = (parsed.needsReassessment as boolean | undefined) ?? false;
+
+      const sameModelAssessment = SameModelBiasEvaluator.assess({
+        taskDescription: task.description,
+        result: result.result,
+        summary: result.summary,
+        progressEntry: result.progressEntry,
+        issuesFound,
+        recommendedActions,
+      });
+      if (sameModelAssessment.risk !== "low") {
+        qualityScore = Math.max(0, qualityScore - sameModelAssessment.qualityPenalty);
+        issuesFound.push(...sameModelAssessment.findings);
+        recommendedActions.push(...sameModelAssessment.recommendedActions);
+      }
+      if (sameModelAssessment.requiresReassessment) {
+        needsReassessment = true;
+      }
 
       // Post-processing: Enforce logical consistency rules
       // Rule 1: If quality score is 0, ALWAYS reassess (critical failure)
