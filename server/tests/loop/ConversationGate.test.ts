@@ -21,6 +21,9 @@ import { InMemoryEventSink } from "../../src/loop/InMemoryEventSink";
 import { NodeTimer } from "../../src/loop/NodeTimer";
 import { defaultLoopConfig } from "../../src/loop/types";
 import { InMemoryLogger } from "../../src/logging";
+import { SdkMessage } from "../../src/agents/claude/AgentSdkLauncher";
+import { SdkSessionFactory, SdkUserMessage } from "../../src/session/ISdkSession";
+import { TickPromptBuilder } from "../../src/session/TickPromptBuilder";
 
 describe("ConversationGate and TickGating", () => {
   let orchestrator: LoopOrchestrator;
@@ -215,6 +218,53 @@ describe("ConversationGate and TickGating", () => {
       await expect(orchestrator.runOneCycle()).rejects.toThrow();
 
       await handlePromise;
+    });
+  });
+
+  describe("runOneTick queued message injection", () => {
+    it("delivers queued messages after the SDK input channel is active", async () => {
+      const eventSinkForTick = new InMemoryEventSink();
+      const tickOrchestrator = new LoopOrchestrator(
+        {} as Ego,
+        {} as Subconscious,
+        {} as Superego,
+        {} as Id,
+        {} as AppendOnlyWriter,
+        clock,
+        new NodeTimer(),
+        eventSinkForTick,
+        defaultLoopConfig(),
+        new InMemoryLogger(),
+      );
+      const injectedMessages: SdkUserMessage[] = [];
+      const factory: SdkSessionFactory = () => ({
+        async streamInput(stream) {
+          for await (const msg of stream) {
+            injectedMessages.push(msg);
+          }
+        },
+        close() {},
+        async *[Symbol.asyncIterator](): AsyncIterator<SdkMessage> {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          yield { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, duration_ms: 1 };
+        },
+      });
+
+      tickOrchestrator.setTickDependencies({
+        tickPromptBuilder: {
+          buildSystemPrompt: async () => "system",
+          buildInitialPrompt: async () => "initial",
+        } as unknown as TickPromptBuilder,
+        sdkSessionFactory: factory,
+      });
+      tickOrchestrator.queueStartupMessage("queued external message");
+
+      await tickOrchestrator.runOneTick();
+
+      expect(injectedMessages).toHaveLength(1);
+      expect(injectedMessages[0].message.content).toContain("[RUNTIME INJECTION - UNTRUSTED CONTENT]");
+      expect(injectedMessages[0].message.content).toContain("queued external message");
+      expect(tickOrchestrator.getPendingMessageCount()).toBe(0);
     });
   });
 });

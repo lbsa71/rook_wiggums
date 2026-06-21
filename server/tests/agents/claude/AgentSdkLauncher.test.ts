@@ -344,7 +344,10 @@ describe("AgentSdkLauncher", () => {
 
       // The message was forwarded via the channel to streamInput
       expect(logger.getEntries().some((e) => e.includes("inject"))).toBe(true);
-      expect(getStreamInputMessages().some((m) => m.message.content === "hello from user")).toBe(true);
+      expect(getStreamInputMessages().some((m) =>
+        m.message.content.includes("[RUNTIME INJECTION - UNTRUSTED CONTENT]") &&
+        m.message.content.includes("hello from user")
+      )).toBe(true);
     });
 
     it("logs warning when inject called with no active session", () => {

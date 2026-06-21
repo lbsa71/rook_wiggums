@@ -9,7 +9,7 @@ import {
 } from "./ISessionLauncher";
 import type { ReasoningEffort } from "../reasoningEffort";
 import { MessageChannel } from "../../session/MessageChannel";
-import { SdkUserMessage } from "../../session/ISdkSession";
+import { createInjectedUserMessage, SdkUserMessage } from "../../session/ISdkSession";
 import { ProcessTracker } from "./ProcessTracker";
 
 // Minimal SDK-compatible types so we don't leak transitive SDK dependencies
@@ -109,13 +109,7 @@ export class AgentSdkLauncher implements ISessionLauncher {
       return;
     }
     this.logger.debug(`sdk-launch: inject message (${message.length} chars)`);
-    const userMessage: SdkUserMessage = {
-      type: "user",
-      message: { role: "user", content: message },
-      parent_tool_use_id: null,
-      session_id: "injected",
-    };
-    this.activeChannel.push(userMessage);
+    this.activeChannel.push(createInjectedUserMessage(message));
   }
 
   async launch(

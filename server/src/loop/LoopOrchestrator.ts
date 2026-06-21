@@ -1046,7 +1046,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
     this.activeSessionManager = sessionManager;
 
-    // Inject any queued messages
+    const runPromise = sessionManager.run();
+
+    // Inject any queued messages after run() creates the SDK input channel.
     if (this.pendingMessages.length > 0) {
       this.eventSink.emit({
         type: "message_processing_started",
@@ -1060,7 +1062,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.pendingMessages = [];
     }
 
-    const result = await sessionManager.run();
+    const result = await runPromise;
 
     this.activeSessionManager = null;
 
