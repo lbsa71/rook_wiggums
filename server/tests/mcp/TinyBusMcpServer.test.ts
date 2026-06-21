@@ -118,6 +118,28 @@ describe("TinyBusMcpServer", () => {
       expect(sent[0].payload).toEqual({ text: "hello" });
     });
 
+    it("assigns MCP as the source for generic tool messages", async () => {
+      const provider = bus.getProviders()[0] as MemoryProvider;
+      await client.callTool({
+        name: "send_message",
+        arguments: { type: "chat.message" },
+      });
+      const sent = provider.getSentMessages();
+      expect(sent[0].source).toBe("mcp");
+    });
+
+    it("rejects caller-supplied provider source impersonation", async () => {
+      const provider = bus.getProviders()[0] as MemoryProvider;
+      const result = await client.callTool({
+        name: "send_message",
+        arguments: { type: "chat.message", source: "p1" },
+      });
+      const data = parseResult(result as Parameters<typeof parseResult>[0]) as Record<string, unknown>;
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("source is assigned by the MCP server");
+      expect(provider.getSentMessages()).toHaveLength(0);
+    });
+
     it("passes meta through to TinyBus", async () => {
       const provider = bus.getProviders()[0] as MemoryProvider;
       await client.callTool({

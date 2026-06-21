@@ -55,7 +55,7 @@ export class TinyBus {
 
     // Setup inbound message handler
     provider.onMessage(async (message: Message) => {
-      await this.handleInboundMessage(message);
+      await this.handleInboundMessage(provider, message);
     });
   }
 
@@ -179,7 +179,28 @@ export class TinyBus {
   /**
    * Handle inbound message from a provider
    */
-  private async handleInboundMessage(message: Message): Promise<void> {
+  private authenticateInboundMessage(provider: Provider, message: Message): Message {
+    if (message.source === provider.id) {
+      return message;
+    }
+
+    const meta = message.source
+      ? { ...message.meta, tinybusClaimedSource: message.source }
+      : message.meta;
+
+    this.logger?.warn(
+      `[TINYBUS] Source corrected: provider=${provider.id} claimed=${message.source ?? "none"} type=${message.type} id=${message.id}`
+    );
+
+    return {
+      ...message,
+      source: provider.id,
+      meta,
+    };
+  }
+
+  private async handleInboundMessage(provider: Provider, inboundMessage: Message): Promise<void> {
+    const message = this.authenticateInboundMessage(provider, inboundMessage);
     this.logger?.debug(
       `[TINYBUS] Inbound: type=${message.type} source=${message.source ?? "unknown"} id=${message.id}`
     );
