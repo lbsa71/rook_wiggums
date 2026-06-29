@@ -193,6 +193,7 @@ export class AgentSdkLauncher implements ISessionLauncher {
     let isError = false;
     let errorMessage: string | undefined;
     let rateLimitText: string | null = null;
+    let totalCostUsd: number | undefined;
 
     const timeoutMs = options?.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
     const idleTimeoutMs = options?.idleTimeoutMs;
@@ -252,6 +253,9 @@ export class AgentSdkLauncher implements ISessionLauncher {
             if (msg.type === "result") {
               this.logger.verbose(`sdk-launch: result message: ${JSON.stringify(msg)}`);
               const resultMsg = msg as SdkResultSuccess | SdkResultError;
+              if (typeof resultMsg.total_cost_usd === "number") {
+                totalCostUsd = resultMsg.total_cost_usd;
+              }
               if (resultMsg.subtype === "success") {
                 resultOutput = (resultMsg as SdkResultSuccess).result;
               } else {
@@ -346,6 +350,20 @@ export class AgentSdkLauncher implements ISessionLauncher {
       durationMs,
       success: !isError,
       error: errorMessage,
+      // Live per-op cost probe: surface the SDK result message's total_cost_usd
+      // so the (already-complete) MeteredSessionLauncher -> IMetricsService pipeline
+      // actually records a row. Under a Claude subscription/OAuth deployment,
+      // total_cost_usd is the API-EQUIVALENT estimate, not actual billed dollars —
+      // so it is flagged costEstimate:true / costKnown:false, never asserted as known.
+      usage: {
+        provider: "claude",
+        model: modelToUse,
+        costUsd: totalCostUsd,
+        costKnown: false,
+        costEstimate: true,
+        billingSource: "subscription",
+        telemetrySource: "agent-sdk.total_cost_usd",
+      },
     };
   }
 

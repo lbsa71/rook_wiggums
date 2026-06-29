@@ -37,6 +37,26 @@ describe("AgentSdkLauncher", () => {
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("populates usage with API-equivalent cost estimate from result message", async () => {
+    const messages: SdkMessage[] = [
+      { type: "result", subtype: "success", result: "ok", total_cost_usd: 0.042, duration_ms: 100 },
+    ];
+    const queryFn = createMockQueryFn(messages);
+    const launcher = new AgentSdkLauncher(queryFn, clock, "claude-sonnet-4-5");
+
+    const result = await launcher.launch({ systemPrompt: "Go", message: "Hi" });
+
+    expect(result.usage).toBeDefined();
+    expect(result.usage?.provider).toBe("claude");
+    expect(result.usage?.model).toBe("claude-sonnet-4-5");
+    expect(result.usage?.costUsd).toBe(0.042);
+    // total_cost_usd under subscription/OAuth is an estimate, never asserted as known.
+    expect(result.usage?.costKnown).toBe(false);
+    expect(result.usage?.costEstimate).toBe(true);
+    expect(result.usage?.billingSource).toBe("subscription");
+    expect(result.usage?.telemetrySource).toBe("agent-sdk.total_cost_usd");
+  });
+
   it("emits ProcessLogEntry for assistant text blocks", async () => {
     const messages: SdkMessage[] = [
       {
