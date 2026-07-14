@@ -248,4 +248,42 @@ describe("DeferredWorkQueue drain at end-of-cycle", () => {
     expect(progress).toContain("error=proposal crashed");
     expect(progress).toContain("disposition=dropped");
   });
+
+  it("persists proposals when evaluation throws and reapplies them on the next healthy cycle", async () => {
+    const deps = createDeps();
+    await setupIdleSubstrate(deps.fs);
+    const logger = new InMemoryLogger();
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ImmediateTimer(), new InMemoryEventSink(),
+      defaultLoopConfig({ maxConsecutiveIdleCycles: 100 }), logger,
+      undefined, undefined, undefined, undefined, undefined,
+      "/substrate", deps.fs,
+    );
+    const proposal = { target: "SKILLS", content: "# Skills\n\nDurable update", mode: "replace" as const };
+    const evaluate = jest.spyOn(deps.superego, "evaluateProposals")
+      .mockRejectedValueOnce(new Error("rate limited"))
+      .mockResolvedValueOnce([{ approved: true, reason: "approved" }]);
+    const apply = jest.spyOn(deps.superego, "applyProposals").mockResolvedValue();
+    const process = (orchestrator as unknown as {
+      processGovernedProposals(proposals: typeof proposal[]): Promise<void>;
+    }).processGovernedProposals.bind(orchestrator);
+
+    await expect(process([proposal])).rejects.toThrow("rate limited");
+    const pendingPath = "/data/pending_proposals.json";
+    expect(await deps.fs.readFile(pendingPath)).toContain("Durable update");
+    expect(await deps.fs.readFile("/substrate/PROGRESS.md")).toContain(
+      "Proposal for SKILLS evaluation deferred: rate limited; persisted for retry",
+    );
+
+    orchestrator.start();
+    await orchestrator.runOneCycle();
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(apply).toHaveBeenCalledWith(
+      [proposal],
+      [{ approved: true, reason: "approved" }],
+    );
+    await expect(deps.fs.exists(pendingPath)).resolves.toBe(false);
+  });
 });

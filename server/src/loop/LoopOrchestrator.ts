@@ -47,12 +47,14 @@ import type { INSResult } from "./ins/types";
 import type { INSHook } from "./ins/INSHook";
 import type { ISleepWakeTimer } from "./SleepWakeTimer";
 import type { IShellIndependenceService } from "../shell/ShellIndependenceService";
+import { PendingProposalStore } from "./PendingProposalStore";
 
 /** Maximum rate-limit backoff duration (2 hours). Any parsed reset time beyond this
  *  is capped to prevent multi-day sleeps from poisoning the restart loop. */
 export const MAX_RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000;
 
 class EndorsementExternalActionBlockedError extends Error {}
+class PendingProposalPersistenceError extends Error {}
 type EndorsementInterceptEvaluation = Awaited<ReturnType<EndorsementInterceptor["evaluateOutput"]>>;
 const WATCHDOG_MESSAGE_PREFIX = "[Watchdog]";
 const ROUTINE_INS_MESSAGE_PREFIX = "[INS:ROUTINE]";
@@ -118,6 +120,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
   // Deferred work queue — overlaps post-execution work with next cycle dispatch
   private readonly deferredWork: DeferredWorkQueue;
+  private readonly pendingProposalStore: PendingProposalStore | null;
 
   // Endorsement interceptor — compliance circuit-breaker
   private endorsementInterceptor: EndorsementInterceptor | null = null;
@@ -192,14 +195,26 @@ export class LoopOrchestrator implements IMessageInjector {
       this.findingTracker = findingTracker;
     }
     this.findingTrackerSave = findingTrackerSave ?? null;
+    this.pendingProposalStore = this.fileSystem && this.substratePath
+      ? new PendingProposalStore(
+          this.fileSystem,
+          path.resolve(this.substratePath, "..", "data", "pending_proposals.json"),
+          (message) => this.logger.warn(message),
+        )
+      : null;
     this.deferredWork = new DeferredWorkQueue(
       async (err, label) => {
         const workType = label ?? "unknown";
         this.logger.warn(`deferred work failed [${workType}]: ${err.message}`);
         try {
+          const disposition = err instanceof PendingProposalPersistenceError
+            ? "persistence_failed"
+            : workType === "proposal_evaluation" && this.pendingProposalStore
+              ? "retry_pending"
+              : "dropped";
           await this._appendWriter.append(
             SubstrateFileType.PROGRESS,
-            `DEFERRED_WORK_FAILURE: type=${workType}, error=${err.message}, disposition=dropped`,
+            `DEFERRED_WORK_FAILURE: type=${workType}, error=${err.message}, disposition=${disposition}`,
           );
         } catch (appendErr) {
           this.logger.warn(`failed to write DEFERRED_WORK_FAILURE to PROGRESS.md: ${appendErr instanceof Error ? appendErr.message : String(appendErr)}`);
@@ -551,6 +566,7 @@ export class LoopOrchestrator implements IMessageInjector {
 
     let result: CycleResult;
     let llmSessionInvokedThisCycle = false;
+    let newGovernedProposals: SubconsciousProposal[] = [];
 
     if (!dispatch) {
       const blockedUntilForIdle = heldUntil ?? nextTimeBlockedUntil;
@@ -726,19 +742,7 @@ export class LoopOrchestrator implements IMessageInjector {
         await this.recordDriveRatingIfApplicable(dispatch.description, taskResult);
       }
 
-      const proposals = this.governedProposalsFromTaskResult(taskResult);
-
-      // Enqueue proposal evaluation as deferred work (overlaps with next cycle's dispatch)
-      if (proposals.length > 0) {
-        this.logger.debug(`cycle ${this.cycleNumber}: deferring evaluation of ${proposals.length} proposal(s)`);
-        this.deferredWork.enqueue(
-          (async () => {
-            const evaluations = await this.superego.evaluateProposals(proposals, this.createLogCallback("SUPEREGO"));
-            await this.superego.applyProposals(proposals, evaluations);
-          })(),
-          "proposal_evaluation"
-        );
-      }
+      newGovernedProposals = this.governedProposalsFromTaskResult(taskResult);
 
       // Enqueue reconsideration as deferred work
       if (success || (taskResult.result === "partial" && !blocked)) {
@@ -788,6 +792,16 @@ export class LoopOrchestrator implements IMessageInjector {
     // Superego audit — enqueue as deferred work (overlaps with next cycle's dispatch)
     if (this.shouldRunSuperegoAudit(result)) {
       this.deferredWork.enqueue(this.runAudit(), "audit");
+    }
+
+    // Persist before evaluation and retry any prior failed batch on every cycle.
+    // The promise is intentionally deferred so evaluation overlaps other end-of-cycle work.
+    if (newGovernedProposals.length > 0 || this.pendingProposalStore) {
+      this.logger.debug(`cycle ${this.cycleNumber}: checking governed proposal queue (${newGovernedProposals.length} new)`);
+      this.deferredWork.enqueue(
+        this.processGovernedProposals(newGovernedProposals),
+        "proposal_evaluation",
+      );
     }
 
 
@@ -1544,6 +1558,53 @@ export class LoopOrchestrator implements IMessageInjector {
       });
     }
     return proposals;
+  }
+
+  private async processGovernedProposals(incoming: SubconsciousProposal[]): Promise<void> {
+    let proposals: SubconsciousProposal[];
+    try {
+      proposals = this.pendingProposalStore
+        ? await this.pendingProposalStore.mergeAndPersist(incoming)
+        : incoming;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      for (const proposal of incoming) {
+        try {
+          await this.superego.logAudit(
+            `Proposal for ${proposal.target} persistence failed: ${message}; evaluation skipped`,
+          );
+        } catch (auditError) {
+          this.logger.warn(
+            `failed to audit proposal persistence failure for ${proposal.target}: ${auditError instanceof Error ? auditError.message : String(auditError)}`,
+          );
+        }
+      }
+      throw new PendingProposalPersistenceError(message);
+    }
+    if (proposals.length === 0) return;
+
+    try {
+      const evaluations = await this.superego.evaluateProposals(
+        proposals,
+        this.createLogCallback("SUPEREGO"),
+      );
+      await this.superego.applyProposals(proposals, evaluations);
+      await this.pendingProposalStore?.clear();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      for (const proposal of proposals) {
+        try {
+          await this.superego.logAudit(
+            `Proposal for ${proposal.target} evaluation deferred: ${message}; ${this.pendingProposalStore ? "persisted for retry" : "retry unavailable"}`,
+          );
+        } catch (auditError) {
+          this.logger.warn(
+            `failed to audit deferred proposal for ${proposal.target}: ${auditError instanceof Error ? auditError.message : String(auditError)}`,
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   private async planIteration(
