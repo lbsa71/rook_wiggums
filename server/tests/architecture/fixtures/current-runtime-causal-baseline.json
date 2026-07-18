@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "sourceBaseline": "838d524",
+  "capturedAt": "2026-07-18",
+  "interventions": {
+    "planMutation": {
+      "classification": "operative_parallel_authority",
+      "expectedOrder": ["parse_plan", "select_first_pending"]
+    },
+    "superegoDenial": {
+      "classification": "operative_path_local_veto",
+      "expectedOrder": ["evaluate_denied", "audit_rejection", "target_unchanged"]
+    },
+    "permissionDenial": {
+      "classification": "operative_structured_api_only",
+      "expectedOrder": ["structured_write_denied", "ambient_filesystem_out_of_scope"]
+    },
+    "pendingProposalReplay": {
+      "classification": "operative_at_least_once_batch_replay",
+      "expectedOrder": ["persist_batch", "evaluation_fails", "retry_batch", "apply_batch", "clear_batch"]
+    },
+    "partialBatchReplay": {
+      "classification": "failure_signature_duplicate_first_effect",
+      "expectedOrder": ["apply_first", "fail_second", "retry_first", "retry_second"]
+    },
+    "irreversibleEffectReceipt": {
+      "classification": "missing_typed_receipt_completion_precedes_effect",
+      "expectedOrder": ["mark_task_complete", "attempt_deferred_effect", "retain_task_complete"]
+    }
+  }
+}
