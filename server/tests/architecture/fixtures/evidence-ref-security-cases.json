@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "sha256",
+  "referencePrefix": "evidence:sha256:",
+  "domainSeparator": "rook-evidence-v1",
+  "maximumPayloadBytes": 65536,
+  "allowedMediaTypes": [
+    "application/json",
+    "text/plain;charset=utf-8"
+  ],
+  "valid": [
+    {
+      "name": "stable text bytes",
+      "mediaType": "text/plain;charset=utf-8",
+      "payloadBase64": "b2JzZXJ2ZWQgcHJvcG9zYWwgYWxwaGE=",
+      "expectedRef": "evidence:sha256:b232270dcc5a6e374d62df59d1078c9b13a79b3a8f6f602077bd07fb31bac257"
+    },
+    {
+      "name": "stable json bytes",
+      "mediaType": "application/json",
+      "payloadBase64": "eyJhY3RvciI6InJvb2siLCJldmVudCI6InByb3Bvc2FsIn0=",
+      "expectedRef": "evidence:sha256:ce94ce60392e4456d7839e1de1eab8cb28ddd26008e03b136986d7eda8a59d70"
+    }
+  ],
+  "byteIdentity": {
+    "description": "Semantically equivalent JSON with different byte order has a different identity; Stage 1 does not infer semantic equivalence.",
+    "mediaType": "application/json",
+    "firstPayloadBase64": "eyJhY3RvciI6InJvb2siLCJldmVudCI6InByb3Bvc2FsIn0=",
+    "secondPayloadBase64": "eyJldmVudCI6InByb3Bvc2FsIiwiYWN0b3IiOiJyb29rIn0=",
+    "firstRef": "evidence:sha256:ce94ce60392e4456d7839e1de1eab8cb28ddd26008e03b136986d7eda8a59d70",
+    "secondRef": "evidence:sha256:f8995cb9afac28e15814862fe3bf05ff2aca5fb7be4b8415dfc0a5e234652f41"
+  },
+  "sameReferenceDifferentContent": {
+    "claimedRef": "evidence:sha256:b232270dcc5a6e374d62df59d1078c9b13a79b3a8f6f602077bd07fb31bac257",
+    "replacementMediaType": "text/plain;charset=utf-8",
+    "replacementPayloadBase64": "b2JzZXJ2ZWQgcHJvcG9zYWwgYmV0YQ==",
+    "expectedStatus": "conflict"
+  },
+  "oversize": {
+    "mediaType": "text/plain;charset=utf-8",
+    "repeatByte": 120,
+    "repeatCount": 65537,
+    "expectedStatus": "rejected_payload_too_large"
+  },
+  "secretCapture": {
+    "mediaType": "text/plain;charset=utf-8",
+    "payloadBase64": "YXBpX3NlY3JldDogc3VwZXItc2VjcmV0LXZhbHVlLTEyMzQ1Njc4OTAxMjM0NTY3ODkw",
+    "expectedStatus": "rejected_secret_detected"
+  },
+  "invalidReferences": [
+    "evidence:sha256:../../SECURITY.md",
+    "evidence:sha256:%2e%2e%2fSECURITY.md",
+    "evidence:sha256:B232270DCC5A6E374D62DF59D1078C9B13A79B3A8F6F602077BD07FB31BAC257",
+    "sha256:b232270dcc5a6e374d62df59d1078c9b13a79b3a8f6f602077bd07fb31bac257",
+    "evidence:sha256:b232270dcc5a6e374d62df59d1078c9b13a79b3a8f6f602077bd07fb31bac257/child"
+  ],
+  "missing": {
+    "ref": "evidence:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "expectedStatus": "missing",
+    "truthValue": null
+  },
+  "corrupt": {
+    "ref": "evidence:sha256:b232270dcc5a6e374d62df59d1078c9b13a79b3a8f6f602077bd07fb31bac257",
+    "storedMediaType": "text/plain;charset=utf-8",
+    "storedPayloadBase64": "b2JzZXJ2ZWQgcHJvcG9zYWwgYmV0YQ==",
+    "expectedStatus": "corrupt",
+    "mustNotReturnPayload": true
+  }
+}
