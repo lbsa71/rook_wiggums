@@ -17,7 +17,16 @@
     },
     "pendingProposalReplay": {
       "classification": "operative_at_least_once_batch_replay",
-      "expectedOrder": ["persist_batch", "evaluation_fails", "retry_batch", "apply_batch", "clear_batch"]
+      "expectedOrder": [
+        "persist_batch",
+        "evaluate_first_begin",
+        "evaluation_failed",
+        "persist_batch",
+        "evaluate_retry_begin",
+        "apply_begin",
+        "apply_resolved",
+        "clear_batch"
+      ]
     },
     "partialBatchReplay": {
       "classification": "failure_signature_duplicate_first_effect",

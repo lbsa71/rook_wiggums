@@ -152,15 +152,37 @@ describe("pre-implementation current-runtime causal baseline", () => {
   it("persists a failed proposal batch and replays then clears it on a healthy cycle", async () => {
     const runtime = await createRuntime("# Plan\n\n## Tasks\n- [x] Idle");
     const proposal = { target: "SKILLS", content: "# Skills\n\nReplay", mode: "replace" as const };
+    const trace: string[] = [];
+    const originalRename = runtime.fs.rename.bind(runtime.fs);
+    jest.spyOn(runtime.fs, "rename").mockImplementation(async (from, to) => {
+      await originalRename(from, to);
+      if (to === "/data/pending_proposals.json") trace.push("persist_batch");
+    });
+    const originalUnlink = runtime.fs.unlink.bind(runtime.fs);
+    jest.spyOn(runtime.fs, "unlink").mockImplementation(async (path) => {
+      await originalUnlink(path);
+      if (path === "/data/pending_proposals.json") trace.push("clear_batch");
+    });
     const evaluate = jest.spyOn(runtime.superego, "evaluateProposals")
-      .mockRejectedValueOnce(new Error("baseline rate limit"))
-      .mockResolvedValueOnce([{ approved: true, reason: "healthy retry" }]);
-    const apply = jest.spyOn(runtime.superego, "applyProposals").mockResolvedValue();
+      .mockImplementationOnce(async () => {
+        trace.push("evaluate_first_begin");
+        throw new Error("baseline rate limit");
+      })
+      .mockImplementationOnce(async () => {
+        trace.push("evaluate_retry_begin");
+        return [{ approved: true, reason: "healthy retry" }];
+      });
+    const apply = jest.spyOn(runtime.superego, "applyProposals").mockImplementation(async () => {
+      trace.push("apply_begin");
+      await Promise.resolve();
+      trace.push("apply_resolved");
+    });
     const process = (runtime.orchestrator as unknown as {
       processGovernedProposals(proposals: typeof proposal[]): Promise<void>;
     }).processGovernedProposals.bind(runtime.orchestrator);
 
     await expect(process([proposal])).rejects.toThrow("baseline rate limit");
+    trace.push("evaluation_failed");
     expect(await runtime.fs.readFile("/data/pending_proposals.json")).toContain("Replay");
 
     runtime.orchestrator.start();
@@ -169,6 +191,7 @@ describe("pre-implementation current-runtime causal baseline", () => {
     expect(evaluate).toHaveBeenCalledTimes(2);
     expect(apply).toHaveBeenLastCalledWith([proposal], [{ approved: true, reason: "healthy retry" }]);
     await expect(runtime.fs.exists("/data/pending_proposals.json")).resolves.toBe(false);
+    expect(trace).toEqual(baseline.interventions.pendingProposalReplay.expectedOrder);
     expect(baseline.interventions.pendingProposalReplay.classification).toBe("operative_at_least_once_batch_replay");
   });
 
@@ -200,9 +223,19 @@ describe("pre-implementation current-runtime causal baseline", () => {
     runtime.launcher.enqueueSuccess(successfulTaskResult({
       agoraReplies: [{ to: "peer", text: "effect" }],
     }));
-    const sends: string[] = [];
+    const trace: string[] = [];
+    const originalWrite = runtime.writer.write.bind(runtime.writer);
+    jest.spyOn(runtime.writer, "write").mockImplementation(async (fileType, content) => {
+      await originalWrite(fileType, content);
+      if (fileType === SubstrateFileType.PLAN && content.includes("- [x] Baseline task")) {
+        trace.push("mark_task_complete");
+      }
+    });
     const agora: IAgoraService = {
-      sendMessage: async () => { sends.push("attempted"); return { ok: false, status: 503, error: "offline" }; },
+      sendMessage: async () => {
+        trace.push("attempt_deferred_effect");
+        return { ok: false, status: 503, error: "offline" };
+      },
       sendToAll: async () => ({ ok: false, errors: [] }),
       replyToEnvelope: async () => ({ ok: false, status: 503, error: "offline" }),
       decodeInbound: async () => ({ ok: false, reason: "unused" }),
@@ -219,8 +252,9 @@ describe("pre-implementation current-runtime causal baseline", () => {
     const result = await runtime.orchestrator.runOneCycle();
 
     expect(result.success).toBe(true);
-    expect(sends).toEqual(["attempted"]);
     expect(await runtime.fs.readFile("/substrate/PLAN.md")).toContain("- [x] Baseline task");
+    trace.push("retain_task_complete");
+    expect(trace).toEqual(baseline.interventions.irreversibleEffectReceipt.expectedOrder);
     expect(await runtime.fs.exists("/data/action_receipts.json")).toBe(false);
     expect(baseline.interventions.irreversibleEffectReceipt.classification)
       .toBe("missing_typed_receipt_completion_precedes_effect");
