@@ -16,7 +16,8 @@
     "transfer": "tsx src/cli.ts transfer",
     "logs": "tsx src/cli.ts logs",
     "lint": "eslint src/ tests/",
-    "preflight:ollama": "tsx src/tools/preflight/runOllamaPreflight.ts"
+    "preflight:ollama": "tsx src/tools/preflight/runOllamaPreflight.ts",
+    "measure:evidence-pressure": "tsx scripts/measure-evidence-registry-pressure.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
