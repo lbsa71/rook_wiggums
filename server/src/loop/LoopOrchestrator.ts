@@ -40,6 +40,7 @@ import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
 import { OutputQualityMonitor } from "../evaluation/OutputQualityMonitor";
 import { IterationPlanner, type IterationAssignment, type IterationPlan } from "../agents/IterationPlanner";
+import type { CommitmentObserver } from "../causal/commitments/CommitmentObserver";
 import type { SubstrateSnapshot } from "../agents/prompts/PromptBuilder";
 import type { IAgoraService } from "../agora/IAgoraService";
 import { buildPeerReferenceDirectory, resolvePeerReference } from "../agora/utils";
@@ -186,6 +187,7 @@ export class LoopOrchestrator implements IMessageInjector {
     substratePath?: string,
     private readonly fileSystem?: IFileSystem,
     private readonly iterationPlanner?: IterationPlanner,
+    private readonly commitmentObserver?: CommitmentObserver,
   ) {
     this.substratePath = substratePath ?? "";
     this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 20_000; // Default 20s
@@ -652,6 +654,15 @@ export class LoopOrchestrator implements IMessageInjector {
         this.lastBlockedTaskId = null;
       }
       this.logger.debug(`cycle ${this.cycleNumber}: dispatching task "${dispatch.taskId}"${dispatch.correlationId ? ` [correlationId: ${dispatch.correlationId}]` : ""}`);
+
+      // Stage-2 shadow observation is deliberately fire-and-forget. This call
+      // must remain synchronous/void: registry or ledger backpressure cannot
+      // delay dispatch, change invocation counts, or become authorization.
+      this.commitmentObserver?.observeTaskDispatch({
+        taskId: dispatch.taskId,
+        cycleNumber: this.cycleNumber,
+        ...(dispatch.correlationId ? { correlationId: dispatch.correlationId } : {}),
+      });
 
       // Endpoint state injection — provide runtime context alongside task dispatch
       const pending = await this.buildPendingWithEndpointState(dispatch.description);

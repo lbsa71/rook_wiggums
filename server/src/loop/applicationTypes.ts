@@ -68,6 +68,8 @@ export interface ApplicationConfig {
   };
   /** Optional two-stage dispatch: a cheap planner can choose direct execution or bounded fanout. */
   dualPrompt?: DualPromptConfig;
+  /** Non-authoritative commitment observation. Defaults to off. */
+  commitmentLedger?: { mode: "off" | "shadow" };
   maxConsecutiveIdleCycles?: number;
   mode?: "cycle" | "tick";
   sdkQueryFn?: SdkQueryFn;
