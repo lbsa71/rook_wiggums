@@ -63,9 +63,6 @@ import type { ReasoningEffort } from "../agents/reasoningEffort";
 import type { ApplicationConfig } from "./applicationTypes";
 import type { SubstrateLayerResult } from "./createSubstrateLayer";
 import type { AgentLayerResult } from "./createAgentLayer";
-import { EvidenceRefRegistry } from "../causal/EvidenceRefRegistry";
-import { ShadowCommitmentStore } from "../causal/commitments/ShadowCommitmentStore";
-import { CommitmentObserver } from "../causal/commitments/CommitmentObserver";
 
 export interface LoopLayerResult {
   orchestrator: LoopOrchestrator;
@@ -192,19 +189,6 @@ export async function createLoopLayer(
 
   const idleHandler = new IdleHandler(id, superego, ego, clock, logger, canaryLogger, idLauncherName, convMdReader);
 
-  let commitmentObserver: CommitmentObserver | undefined;
-  if (config.commitmentLedger?.mode === "shadow") {
-    const evidenceRoot = path.resolve(config.substratePath, "..", "data", "evidence-registry");
-    const shadowPath = path.resolve(config.substratePath, "..", "data", "shadow_commitments.json");
-    const registry = new EvidenceRefRegistry(evidenceRoot, {
-      audit: (event) => logger.debug(`evidence-registry: ${event.operation} ${event.status}`),
-    });
-    const store = new ShadowCommitmentStore(shadowPath, registry, clock, {
-      audit: (message) => logger.warn(message),
-    });
-    commitmentObserver = new CommitmentObserver(registry, store, clock);
-  }
-
   const orchestrator = new LoopOrchestrator(
     ego, subconscious, superego, id,
     appendWriter, clock, timer, wsServer, loopConfig,
@@ -216,7 +200,6 @@ export async function createLoopLayer(
     config.substratePath,
     fs,
     iterationPlanner,
-    commitmentObserver,
   );
 
   // Wire up sleep/wake infrastructure

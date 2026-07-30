@@ -127,7 +127,6 @@ const AppConfigSchema = z
       })
       .optional(),
     dualPrompt: DualPromptConfigSchema.optional(),
-    commitmentLedger: z.object({ mode: z.enum(["off", "shadow"]) }).optional(),
     cycleDelayMs: z.number().min(0).optional(),
     conversationIdleTimeoutMs: z.number().min(0).optional(),
     conversationArchive: z
@@ -326,8 +325,6 @@ export interface AppConfig {
   };
   /** Optional two-stage dispatch: a cheap planner can choose direct execution or bounded fanout. */
   dualPrompt?: DualPromptConfig;
-  /** Non-authoritative commitment observation. Defaults to off. */
-  commitmentLedger?: { mode: "off" | "shadow" };
   /** Delay between loop cycles in ms (default: 30000). For primarily reactive agents, consider 60000 or more. */
   cycleDelayMs?: number;
   /** How long (ms) a conversation session stays open after the last message before being closed (default: 20000). */
@@ -498,7 +495,6 @@ export async function resolveConfig(
       qualityThreshold: 85,
     },
     dualPrompt: undefined,
-    commitmentLedger: { mode: "off" },
     conversationIdleTimeoutMs: 20000,
     conversationSessionMaxDurationMs: 300_000,
     conversationArchive: {
@@ -601,7 +597,6 @@ export async function resolveConfig(
         modelClasses: fileConfig.dualPrompt.modelClasses,
       }
       : defaults.dualPrompt,
-    commitmentLedger: fileConfig.commitmentLedger ?? defaults.commitmentLedger,
     conversationIdleTimeoutMs: fileConfig.conversationIdleTimeoutMs ?? defaults.conversationIdleTimeoutMs,
     conversationSessionMaxDurationMs: fileConfig.conversationSessionMaxDurationMs ?? defaults.conversationSessionMaxDurationMs,
     conversationArchive: fileConfig.conversationArchive
