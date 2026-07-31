@@ -1,5 +1,6 @@
 import type { IHttpClient } from "./IHttpClient";
 import type { ILogger } from "../../logging";
+import { stripThinkPreamble } from "./stripThinkPreamble";
 
 /**
  * Result of an Ollama inference call.
@@ -60,7 +61,10 @@ export class OllamaInferenceClient implements IOllamaInferenceClient {
         return { ok: false, reason: "parse_error" };
       }
 
-      return { ok: true, result: body.response };
+      // Normalize reasoning-model output the same way OllamaSessionLauncher does,
+      // so offloaded work (e.g. CONVERSATION.md compaction) never persists raw
+      // <think>...</think> chain-of-thought tokens into the durable substrate.
+      return { ok: true, result: stripThinkPreamble(body.response) };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("abort") || msg.includes("timeout")) {

@@ -6,6 +6,7 @@ import type {
   LaunchOptions,
 } from "../claude/ISessionLauncher";
 import type { IHttpClient } from "./IHttpClient";
+import { stripThinkPreamble } from "./stripThinkPreamble";
 
 export const DEFAULT_MODEL = "qwen3:14b";
 export const DEFAULT_BASE_URL = "http://localhost:11434";
@@ -163,8 +164,7 @@ export class OllamaSessionLauncher implements ISessionLauncher {
       const assistantContent = data.message?.content ?? "";
 
       // Strip <think>...</think> CoT preamble emitted by reasoning models (e.g. deepseek-r1)
-      const stripped = assistantContent.replace(/^<think>[\s\S]*?<\/think>\s*/i, "").trimStart();
-      const finalContent = stripped.length > 0 ? stripped : assistantContent;
+      const finalContent = stripThinkPreamble(assistantContent);
 
       // Update conversation history for future continueSession calls
       if (options?.continueSession) {
