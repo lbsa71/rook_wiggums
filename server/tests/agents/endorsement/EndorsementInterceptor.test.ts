@@ -78,7 +78,7 @@ describe("EndorsementInterceptor", () => {
       const result = await interceptor.evaluateOutput("[ENDORSEMENT_CHECK: restart service]");
 
       expect(result.injectionMessage).toContain("🔔 Endorsement: NOTIFY");
-      expect(result.injectionMessage).toContain("Proceed and notify partner");
+      expect(result.injectionMessage).toContain("deliver the partner notification before proceeding");
     });
 
     it("generates ESCALATE injection message", async () => {

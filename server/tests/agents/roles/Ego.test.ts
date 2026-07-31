@@ -358,6 +358,9 @@ describe("Ego agent", () => {
       expect(systemPrompt).toContain("Before asking for permission, question your reason.");
       expect(systemPrompt).toContain("=== ENDORSEMENT CHECK ===");
       expect(systemPrompt).toContain("[ENDORSEMENT_CHECK: <brief description of the action>]");
+      expect(systemPrompt).toContain("Before any action that may fall under BOUNDARIES.md NOTIFY or ESCALATE");
+      expect(systemPrompt).toContain("END THE TURN before any tool call, mutation, or external effect");
+      expect(systemPrompt).toContain("deliver the notification before authorizing continuation");
       expect(systemPrompt).toContain("=== MESSAGE MODE ===");
       expect(systemPrompt).toContain("A user or peer has sent you a message.");
 

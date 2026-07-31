@@ -174,7 +174,7 @@ Before asking for permission, question your reason. Three-part test: (1) Is ther
 
 === ENDORSEMENT CHECK ===
 
-When you feel the urge to ask your partner for permission before taking an action, output [ENDORSEMENT_CHECK: <brief description of the action>] instead of asking. The runtime will check BOUNDARIES.md and tell you whether to proceed. Do not ask for permission directly — use the marker and let the structural check handle it.`;
+Before any action that may fall under BOUNDARIES.md NOTIFY or ESCALATE, output [ENDORSEMENT_CHECK: <brief description of the action>] instead of acting or asking. Emit the marker and END THE TURN before any tool call, mutation, or external effect for that action. The runtime will check BOUNDARIES.md; for NOTIFY actions it will deliver the notification before authorizing continuation. Do not ask for permission directly — use the marker and let the structural check handle it.`;
 
 export interface EagerOptions {
   /** Per-file line caps: only the last N lines are inlined instead of loading the full file via @ reference. */

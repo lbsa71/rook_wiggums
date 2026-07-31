@@ -158,7 +158,7 @@ export class EndorsementInterceptor implements IEndorsementInterceptor {
       case "PROCEED":
         return `✅ Endorsement: PROCEED${section}. Go ahead.`;
       case "NOTIFY":
-        return `🔔 Endorsement: NOTIFY${section}. Proceed and notify partner.`;
+        return `🔔 Endorsement: NOTIFY${section}. The runtime must deliver the partner notification before proceeding.`;
       case "ESCALATE":
         return `⚠️ Endorsement: ESCALATE. This requires partner approval.`;
     }

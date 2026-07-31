@@ -54,6 +54,7 @@ import { PendingProposalStore } from "./PendingProposalStore";
 export const MAX_RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000;
 
 class EndorsementExternalActionBlockedError extends Error {}
+class EndorsementNotificationFailedError extends Error {}
 class PendingProposalPersistenceError extends Error {}
 type EndorsementInterceptEvaluation = Awaited<ReturnType<EndorsementInterceptor["evaluateOutput"]>>;
 const WATCHDOG_MESSAGE_PREFIX = "[Watchdog]";
@@ -1432,7 +1433,7 @@ export class LoopOrchestrator implements IMessageInjector {
         }
       }
     } catch (err) {
-      if (err instanceof EndorsementExternalActionBlockedError) {
+      if (err instanceof EndorsementExternalActionBlockedError || err instanceof EndorsementNotificationFailedError) {
         throw err;
       }
       this.logger.debug(`endorsement: check failed (fail-open) — ${err instanceof Error ? err.message : String(err)}`);
@@ -1452,7 +1453,48 @@ export class LoopOrchestrator implements IMessageInjector {
     if (!result) return;
     if (result.triggered && result.injectionMessage) {
       this.logger.debug(`endorsement: Layer ${result.layer} triggered — ${result.verdict} (action: "${result.action}")`);
+      if (result.verdict === "NOTIFY") {
+        const notified = await this.sendEndorsementNotification(result.action ?? "unspecified action");
+        if (!notified) {
+          throw new EndorsementNotificationFailedError(
+            `endorsement: NOTIFY action blocked because the pre-action notification failed — ${result.action ?? "unspecified action"}`
+          );
+        }
+      }
       this.injectMessage(result.injectionMessage);
+    }
+  }
+
+  /**
+   * Deliver the BOUNDARIES.md NOTIFY-tier message before releasing the action.
+   * This is deliberately awaited: injecting the continuation first would recreate
+   * the post-action notification race this guard exists to prevent.
+   */
+  private async sendEndorsementNotification(action: string): Promise<boolean> {
+    if (!this.agoraService) {
+      this.logger.warn("endorsement: NOTIFY action blocked — Agora service unavailable");
+      return false;
+    }
+
+    try {
+      const result = await this.agoraService.sendMessage({
+        peerName: "stefan",
+        type: "publish",
+        payload: {
+          text: `Pre-action boundary notification: ${action}\n\nBOUNDARIES.md classifies this as NOTIFY. This message was delivered before the action was released.`,
+        },
+      });
+      if (!result.ok) {
+        this.logger.warn(
+          `endorsement: pre-action notification failed — ${result.error ?? "unknown error"} (status=${result.status})`
+        );
+      }
+      return result.ok;
+    } catch (err) {
+      this.logger.warn(
+        `endorsement: pre-action notification failed — ${err instanceof Error ? err.message : String(err)}`
+      );
+      return false;
     }
   }
 

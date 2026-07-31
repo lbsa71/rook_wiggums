@@ -24,6 +24,7 @@ import { EndorsementInterceptor } from "../../src/agents/endorsement/Endorsement
 import { IEndorsementScreener } from "../../src/agents/endorsement/IEndorsementScreener";
 import { ScreenerInput, ScreenerResult } from "../../src/agents/endorsement/types";
 import { ProcessLogEntry } from "../../src/agents/claude/ISessionLauncher";
+import type { IAgoraService } from "../../src/agora/IAgoraService";
 
 function toolEntry(content: string): ProcessLogEntry {
   return { type: "tool_use", content };
@@ -111,12 +112,13 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
   let orchestrator: LoopOrchestrator;
   let stubScreener: StubScreener;
   let spyInterceptor: SpyInterceptor;
+  let eventSink: InMemoryEventSink;
 
   beforeEach(async () => {
     const deps = createDeps();
     await setupSubstrate(deps.fs);
 
-    const eventSink = new InMemoryEventSink();
+    eventSink = new InMemoryEventSink();
     orchestrator = new LoopOrchestrator(
       deps.ego, deps.subconscious, deps.superego, deps.id,
       deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
@@ -209,5 +211,64 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
       "endorsement: Layer 3 external action blocked"
     );
     expect(spyInterceptor.resetCount).toBe(1);
+  });
+
+  it("delivers a NOTIFY-tier notification before injecting action continuation", async () => {
+    const order: string[] = [];
+    const sent: Array<{ peerName: string; type: string; payload: unknown }> = [];
+    const agoraService = {
+      async sendMessage(options: { peerName: string; type: string; payload: unknown }) {
+        order.push("notification");
+        sent.push(options);
+        return { ok: true, status: 200 };
+      },
+      getPeers() { return ["stefan"]; },
+      getPeerConfig(name: string) {
+        return name === "stefan" ? { publicKey: "stefan-key", name: "stefan" } : undefined;
+      },
+    } as unknown as IAgoraService;
+    orchestrator.setAgoraService(agoraService);
+    stubScreener.enqueue({ verdict: "NOTIFY", matchedSection: "NOTIFY", timestamp: 0 });
+    const orchestratorWithCheck = orchestrator as unknown as {
+      checkEndorsement(rawOutput: string): Promise<void>;
+    };
+
+    await orchestratorWithCheck.checkEndorsement(
+      "[ENDORSEMENT_CHECK: restart substrate.service]"
+    );
+    for (const event of eventSink.getEvents()) {
+      if (event.type === "message_injected") order.push("continuation");
+    }
+
+    expect(order).toEqual(["notification", "continuation"]);
+    expect(sent).toEqual([{
+      peerName: "stefan",
+      type: "publish",
+      payload: {
+        text: expect.stringContaining("restart substrate.service"),
+      },
+    }]);
+  });
+
+  it("does not release a NOTIFY-tier action when notification delivery fails", async () => {
+    const agoraService = {
+      async sendMessage() {
+        return { ok: false, status: 503, error: "unavailable" };
+      },
+      getPeers() { return ["stefan"]; },
+      getPeerConfig(name: string) {
+        return name === "stefan" ? { publicKey: "stefan-key", name: "stefan" } : undefined;
+      },
+    } as unknown as IAgoraService;
+    orchestrator.setAgoraService(agoraService);
+    stubScreener.enqueue({ verdict: "NOTIFY", matchedSection: "NOTIFY", timestamp: 0 });
+    const orchestratorWithCheck = orchestrator as unknown as {
+      checkEndorsement(rawOutput: string): Promise<void>;
+    };
+
+    await expect(
+      orchestratorWithCheck.checkEndorsement("[ENDORSEMENT_CHECK: run sudo command]")
+    ).rejects.toThrow("pre-action notification failed");
+    expect(eventSink.getEvents().filter((event) => event.type === "message_injected")).toHaveLength(0);
   });
 });
