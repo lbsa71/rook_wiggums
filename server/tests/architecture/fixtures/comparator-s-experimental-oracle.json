@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "sourceImplementation": "695b111",
+  "confinementAudit": "c2bc7e7",
+  "retiredAt": "0f6e9b7",
+  "packets": [
+    { "id": "S00", "phase": "receipted", "status": "applied", "nextAction": "do_nothing" },
+    { "id": "S01", "phase": "prepared", "status": "pending", "nextAction": "continue" },
+    { "id": "S02", "phase": "receipted", "status": "not_started", "nextAction": "do_nothing" },
+    { "id": "S03", "phase": "effect_started", "status": "pending", "nextAction": "continue" },
+    { "id": "S04", "phase": "effect_started", "status": "pending", "nextAction": "continue" },
+    { "id": "S05", "phase": "effect_started", "status": "applied", "nextAction": "record_observation_and_receipt" },
+    { "id": "S06", "phase": "effect_observed", "status": "applied", "nextAction": "write_receipt" },
+    { "id": "S07", "phase": "receipted", "status": "applied", "nextAction": "return_existing" },
+    { "id": "S08", "phase": "receipted", "status": "applied", "nextAction": "do_nothing" },
+    { "id": "S09", "phase": "receipted", "status": "not_started", "nextAction": "do_nothing" },
+    { "id": "S10", "phase": "ambiguous", "status": "ambiguous", "nextAction": "inhibit" },
+    { "id": "S11", "phase": "ambiguous", "status": "ambiguous", "nextAction": "inhibit" },
+    { "id": "S12", "phase": "receipted", "status": "applied", "nextAction": "return_existing" },
+    { "id": "S13", "phase": "receipted", "status": "not_started", "nextAction": "inhibit" },
+    { "id": "S14", "phase": "receipted", "status": "applied", "nextAction": "do_nothing" },
+    { "id": "S15", "phase": "effect_started", "status": "pending", "nextAction": "continue" },
+    { "id": "S16", "phase": "none", "status": "unavailable", "nextAction": "inhibit" },
+    { "id": "S17", "phase": "effect_observed", "status": "applied", "nextAction": "write_receipt" },
+    { "id": "S18", "phase": "effect_started", "status": "pending", "nextAction": "continue" },
+    { "id": "S19", "phase": "receipted", "status": "not_started", "nextAction": "do_nothing" },
+    { "id": "S20", "phase": "receipted", "status": "applied", "nextAction": "require_new_authorized_action" }
+  ],
+  "stage0Parity": [
+    "planMutation",
+    "superegoDenial",
+    "permissionDenial",
+    "pendingProposalReplay",
+    "partialBatchReplay",
+    "irreversibleEffectReceipt"
+  ],
+  "confinement": {
+    "verdict": "falsified",
+    "held": ["lexical_alias", "direct_target_symlink", "simple_stale_preimage"],
+    "failed": [
+      "parent_symlink_redirection",
+      "hard_link_temp_substitution",
+      "final_check_rename_toctou",
+      "aba_history_loss",
+      "verifier_ambient_privilege",
+      "capability_reuse",
+      "alternate_write_bypass"
+    ]
+  },
+  "authority": "none",
+  "architectureExpansion": "stopped"
+}
