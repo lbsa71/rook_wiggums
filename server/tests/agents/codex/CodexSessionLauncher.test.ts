@@ -30,7 +30,7 @@ describe("CodexSessionLauncher", () => {
     const calls = runner.getCalls();
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("codex");
-    expect(calls[0].args.slice(0, 6)).toEqual(["exec", "--ask-for-approval", "never", "--sandbox", "workspace-write", "--json"]);
+    expect(calls[0].args.slice(0, 6)).toEqual(["exec", "--sandbox", "workspace-write", "--json", "--color", "never"]);
     expect(calls[0].args).toContain("--json");
     expect(calls[0].args).toContain("--color");
     expect(calls[0].args).toContain("never");
@@ -156,7 +156,7 @@ describe("CodexSessionLauncher", () => {
     runner.enqueue({ stdout: "", stderr: "", exitCode: 0 });
     await launcher.launch(makeRequest(), { cwd: "/workspace/ego", continueSession: true });
 
-    expect(runner.getCalls()[0].args.slice(0, 6)).toEqual(["exec", "--ask-for-approval", "never", "--sandbox", "workspace-write", "--json"]);
+    expect(runner.getCalls()[0].args.slice(0, 6)).toEqual(["exec", "--sandbox", "workspace-write", "--json", "--color", "never"]);
   });
 
   it("keeps continueSession stateless because prompts already include substrate context", async () => {
@@ -166,7 +166,7 @@ describe("CodexSessionLauncher", () => {
     await launcher.launch(makeRequest({ message: "first" }), { cwd: "/workspace/ego", continueSession: true });
     await launcher.launch(makeRequest({ message: "second" }), { cwd: "/workspace/ego", continueSession: true });
 
-    expect(runner.getCalls()[1].args.slice(0, 6)).toEqual(["exec", "--ask-for-approval", "never", "--sandbox", "workspace-write", "--json"]);
+    expect(runner.getCalls()[1].args.slice(0, 6)).toEqual(["exec", "--sandbox", "workspace-write", "--json", "--color", "never"]);
     expect(runner.getCalls()[1].args).not.toContain("resume");
     expect(runner.getCalls()[1].args.at(-1)).toBe("-");
     expect(runner.getCalls()[1].options?.stdin).toBe("second");
@@ -179,7 +179,7 @@ describe("CodexSessionLauncher", () => {
     await launcher.launch(makeRequest(), { cwd: "/workspace/ego", continueSession: true });
     await launcher.launch(makeRequest(), { cwd: "/workspace/id", continueSession: true });
 
-    expect(runner.getCalls()[1].args.slice(0, 6)).toEqual(["exec", "--ask-for-approval", "never", "--sandbox", "workspace-write", "--json"]);
+    expect(runner.getCalls()[1].args.slice(0, 6)).toEqual(["exec", "--sandbox", "workspace-write", "--json", "--color", "never"]);
   });
 
   it("returns success=true and rawOutput on exit code 0", async () => {

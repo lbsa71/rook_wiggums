@@ -114,7 +114,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
     if (this.config.bypassApprovalsAndSandbox) {
       args.push("--dangerously-bypass-approvals-and-sandbox");
     } else {
-      args.push("--ask-for-approval", "never", "--sandbox", this.codexSandboxMode());
+      args.push("--sandbox", this.codexSandboxMode());
     }
     args.push("--json", "--color", "never", "--skip-git-repo-check", "--ephemeral");
     if (model) {
