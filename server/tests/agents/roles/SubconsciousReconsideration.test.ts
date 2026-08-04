@@ -245,6 +245,37 @@ describe("Subconscious reconsideration", () => {
       expect(launches[0].request.message).toContain("task-db-1");
       expect(launches[0].request.message).toContain("Migrate user table to new schema");
       expect(launches[0].request.message).toContain("Database migration completed");
+      expect(launches[0].request.message).toContain("Same-model bias check");
+    });
+
+    it("post-processes smooth same-model convergence as reassessment risk", async () => {
+      const evaluation = JSON.stringify({
+        outcomeMatchesIntent: true,
+        qualityScore: 95,
+        issuesFound: [],
+        recommendedActions: [],
+        needsReassessment: false,
+      });
+      launcher.enqueueSuccess(evaluation);
+
+      const taskResult: TaskResult = {
+        result: "success",
+        summary: "Rook and Bishop agreed; no issues remain",
+        progressEntry: "Easy consensus accepted the VALUES governance wording.",
+        skillUpdates: null,
+        memoryUpdates: null,
+        proposals: [],
+      };
+
+      const outcome = await subconscious.evaluateOutcome(
+        { taskId: "task-sm-1", description: "Review Rook's VALUES refinement under same-model conditions" },
+        taskResult
+      );
+
+      expect(outcome.qualityScore).toBe(75);
+      expect(outcome.needsReassessment).toBe(true);
+      expect(outcome.issuesFound.join("\n")).toContain("Same-model bias risk");
+      expect(outcome.recommendedActions.join("\n")).toContain("Apply same-model mitigation");
     });
 
     it("defaults missing fields to safe values", async () => {

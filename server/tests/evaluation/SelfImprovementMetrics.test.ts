@@ -282,6 +282,22 @@ describe("SelfImprovementMetricsCollector", () => {
       const snapshot = await collector.collect();
       expect(snapshot.governance.remediationRate).toBe(0);
     });
+
+    it("caps addressed findings and remediation rate at the finding count", async () => {
+      await reportStore.save({
+        findings: [{ severity: "high", message: "F1" }],
+        proposalEvaluations: [
+          { approved: true, reason: "proposal A" },
+          { approved: true, reason: "proposal B" },
+          { approved: true, reason: "proposal C" },
+        ],
+        summary: "audit",
+      });
+
+      const snapshot = await collector.collect();
+      expect(snapshot.governance.findingsAddressed).toBe(1);
+      expect(snapshot.governance.remediationRate).toBe(1);
+    });
   });
 
   // ---------------------------------------------------------------------------

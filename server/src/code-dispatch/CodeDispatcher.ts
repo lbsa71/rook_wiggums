@@ -154,15 +154,19 @@ export class CodeDispatcher {
   private selectBackend(task: CodeTask): { backend: BackendType; error?: string } {
     if (task.backend && task.backend !== "auto") return { backend: task.backend };
 
-    // A configured legacy shell default would make paid/opaque dispatch implicit
-    // again. Keep those paths explicit per dispatch instead.
+    // A configured commercial-shell default would make paid/opaque dispatch
+    // implicit again. Prefer the portable Pi route for implicit dispatch while
+    // keeping commercial shells available only as explicit per-task overrides.
     if (this.defaultBackend !== "auto") {
-      if (isLegacyCommercialShellBackend(this.defaultBackend)) {
+      if (isCommercialShellBackend(this.defaultBackend)) {
+        if (this.backends.has("pi")) {
+          return { backend: "pi" };
+        }
         return {
           backend: this.defaultBackend,
           error:
-            `Default code backend "${this.defaultBackend}" is a legacy commercial shell route. ` +
-            `Set defaultCodeBackend to "pi", "codex", or "auto", or pass backend="${this.defaultBackend}" on an individual dispatch for an explicit one-off override.`,
+            `Default code backend "${this.defaultBackend}" is a commercial shell route and Pi is not registered for implicit dispatch. ` +
+            `Set defaultCodeBackend to "pi" or "auto", or pass backend="${this.defaultBackend}" on an individual dispatch for an explicit one-off override.`,
         };
       }
       return { backend: this.defaultBackend };
@@ -215,8 +219,8 @@ export class CodeDispatcher {
 
 }
 
-function isLegacyCommercialShellBackend(backend: BackendType): boolean {
-  return backend === "claude" || backend === "copilot" || backend === "gemini";
+function isCommercialShellBackend(backend: BackendType): boolean {
+  return backend === "claude" || backend === "copilot" || backend === "codex" || backend === "gemini";
 }
 
 function parseGitStatusPath(line: string): string {

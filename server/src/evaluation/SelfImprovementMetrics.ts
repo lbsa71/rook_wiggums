@@ -313,18 +313,22 @@ export class SelfImprovementMetricsCollector {
     const auditsThisPeriod = periodReports.length;
 
     let findingsThisPeriod = 0;
-    let findingsAddressed = 0;
+    let approvedProposalEvaluations = 0;
 
     for (const report of periodReports) {
       if (Array.isArray(report.findings)) {
         findingsThisPeriod += report.findings.length;
       }
       if (Array.isArray(report.proposalEvaluations)) {
-        findingsAddressed += (report.proposalEvaluations as Array<{ approved: boolean }>)
+        approvedProposalEvaluations += (report.proposalEvaluations as Array<{ approved: boolean }>)
           .filter((p) => p.approved).length;
       }
     }
 
+    // Proposal approvals are only a proxy for remediated findings. Cap the
+    // count so governance reporting cannot claim >100% remediation when several
+    // approved proposals correspond to one finding or to non-finding work.
+    const findingsAddressed = Math.min(findingsThisPeriod, approvedProposalEvaluations);
     const remediationRate = findingsThisPeriod > 0 ? findingsAddressed / findingsThisPeriod : 0;
 
     return {

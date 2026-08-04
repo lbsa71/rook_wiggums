@@ -251,14 +251,18 @@ describe("CodeDispatcher", () => {
       expect(piBackend.calls).toHaveLength(1);
     });
 
-    it("uses configured codex default for auto dispatch", async () => {
-      codexBackend.enqueue(successBackendResult());
+    it("routes configured commercial shell defaults through Pi for auto dispatch", async () => {
+      const piBackend = new InMemoryCodeBackend("pi");
+      piBackend.enqueue(successBackendResult());
       processRunner.enqueue({ stdout: "", stderr: "", exitCode: 0 }); // git status
       const codexDefaultDispatcher = new CodeDispatcher(
         fs,
         processRunner,
         SUBSTRATE_PATH,
-        new Map<BackendType, ICodeBackend>([["codex", codexBackend]]),
+        new Map<BackendType, ICodeBackend>([
+          ["codex", codexBackend],
+          ["pi", piBackend],
+        ]),
         clock,
         "codex",
       );
@@ -266,11 +270,12 @@ describe("CodeDispatcher", () => {
       const result = await codexDefaultDispatcher.dispatch(makeTask({ backend: "auto" }));
 
       expect(result.success).toBe(true);
-      expect(result.backendUsed).toBe("codex");
-      expect(codexBackend.calls).toHaveLength(1);
+      expect(result.backendUsed).toBe("pi");
+      expect(piBackend.calls).toHaveLength(1);
+      expect(codexBackend.calls).toHaveLength(0);
     });
 
-    it("blocks configured legacy commercial shell defaults for auto dispatch", async () => {
+    it("blocks configured commercial shell defaults for auto dispatch when Pi is unavailable", async () => {
       const geminiBackend = new InMemoryCodeBackend("gemini");
       geminiBackend.enqueue(successBackendResult());
       const geminiDefaultDispatcher = new CodeDispatcher(
@@ -286,7 +291,7 @@ describe("CodeDispatcher", () => {
 
       expect(result.success).toBe(false);
       expect(result.backendUsed).toBe("gemini");
-      expect(result.error).toContain("legacy commercial shell route");
+      expect(result.error).toContain("commercial shell route");
       expect(geminiBackend.calls).toHaveLength(0);
     });
 

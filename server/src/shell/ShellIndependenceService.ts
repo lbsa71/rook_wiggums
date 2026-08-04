@@ -14,6 +14,8 @@ export interface ShellProviderConfig {
   strategicModel?: string;
   tacticalModel?: string;
   idModel?: string;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  bypassApprovalsAndSandbox?: boolean;
 }
 
 export interface ShellIndependenceConfig {
@@ -209,6 +211,14 @@ export class ShellIndependenceService implements IShellIndependenceService {
       const piProvider = this.piProvider();
       if (piProvider) evidence.push(`pi.provider: ${piProvider}`);
     }
+    if (provider === "codex") {
+      evidence.push(providerConfig?.bypassApprovalsAndSandbox
+        ? "codex.sandbox: bypassed"
+        : `codex.sandbox: ${providerConfig?.sandboxMode ?? "workspace-write"}`);
+      if (!providerConfig?.bypassApprovalsAndSandbox) {
+        evidence.push("codex.approvalPolicy: never");
+      }
+    }
     if (provider === "ollama") {
       evidence.push(`baseUrl: ${providerConfig?.baseUrl ?? this.config.ollamaBaseUrl ?? "http://localhost:11434"}`);
     }
@@ -225,13 +235,19 @@ export class ShellIndependenceService implements IShellIndependenceService {
   }
 
   private routeForCodeBackend(defaultBackend: string): ShellRoute {
-    const provider = defaultBackend === "auto" ? "pi" : defaultBackend.toLowerCase();
+    const configuredProvider = defaultBackend.toLowerCase();
+    const commercialDefaultBlocked = defaultBackend !== "auto" && COMMERCIAL_SHELLS.has(configuredProvider);
+    const provider = defaultBackend === "auto" || commercialDefaultBlocked ? "pi" : configuredProvider;
     const providerConfig = this.providerConfig(provider);
     const kind = this.kindForProvider(provider);
     const model = providerConfig?.tacticalModel ?? providerConfig?.model ?? this.config.tacticalModel;
     const evidence = [
       `defaultCodeBackend: ${defaultBackend}`,
-      defaultBackend === "auto" ? "auto dispatch resolves to Pi backend" : `code backend: ${provider}`,
+      defaultBackend === "auto"
+        ? "auto dispatch resolves to Pi backend"
+        : commercialDefaultBlocked
+          ? `implicit commercial default ${configuredProvider} is blocked; CodeDispatcher routes auto dispatch to Pi`
+          : `code backend: ${provider}`,
     ];
     if (model) evidence.push(`model: ${model}`);
     return {

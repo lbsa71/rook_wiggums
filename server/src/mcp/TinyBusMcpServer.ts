@@ -8,6 +8,8 @@ import { createMessage } from "../tinybus/core/Message";
 import type { IAgoraService } from "../agora/IAgoraService";
 import { registerAgoraTools } from "../agora/AgoraMcpTools";
 
+const MCP_SOURCE = "mcp";
+
 // Re-export so existing callers importing from this module continue to work.
 export type { IgnoredPeersManager } from "../agora/AgoraMcpTools";
 
@@ -38,16 +40,20 @@ export function createTinyBusMcpServer(arg: TinyBus | McpServerOptions): McpServ
     "Send a message through TinyBus",
     {
       type: z.string().describe("Message type (e.g., 'agent.command.exec')"),
-      source: z.string().optional().describe("Source provider ID"),
+      source: z.string().optional().describe("Deprecated. Source is assigned by the MCP server and cannot be used to impersonate providers."),
       destination: z.string().optional().describe("Destination provider ID (omit for broadcast)"),
       payload: z.unknown().optional().describe("Message payload"),
       meta: z.record(z.string(), z.unknown()).optional().describe("Message metadata"),
     },
     async ({ type, source, destination, payload, meta }) => {
       try {
+        if (source && source !== MCP_SOURCE) {
+          throw new Error("send_message source is assigned by the MCP server; use specialized tools for provider-specific actions");
+        }
+
         const message = createMessage({
           type,
-          source,
+          source: MCP_SOURCE,
           destination,
           payload,
           meta,

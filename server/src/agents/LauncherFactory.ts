@@ -83,6 +83,8 @@ export interface OpenRouterLauncherArgs {
 
 export interface CliLauncherArgs {
   effort?: ReasoningEffort;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  bypassApprovalsAndSandbox?: boolean;
 }
 
 /**
@@ -107,7 +109,10 @@ export async function createLauncher(
     case "codex": {
       const { CodexSessionLauncher } = await import("./codex/CodexSessionLauncher");
       const cliArgs = args as unknown as CliLauncherArgs;
-      return new CodexSessionLauncher(deps.runner, deps.clock, model, deps.logger, cliArgs.effort);
+      return new CodexSessionLauncher(deps.runner, deps.clock, model, deps.logger, cliArgs.effort, {
+        sandboxMode: cliArgs.sandboxMode,
+        bypassApprovalsAndSandbox: cliArgs.bypassApprovalsAndSandbox,
+      });
     }
     case "pi": {
       const { PiSessionLauncher } = await import("./pi/PiSessionLauncher");

@@ -260,6 +260,27 @@ describe("TinyBus", () => {
 
       expect(listener).toHaveBeenCalledWith({ message });
     });
+
+    it("binds inbound message source to the emitting provider", async () => {
+      const message = createMessage({
+        type: "inbound.spoof",
+        source: "provider-2",
+      });
+
+      await provider1.injectMessage(message);
+
+      expect(provider2.getSentMessages()).toHaveLength(1);
+      expect(provider2.getSentMessages()[0]).toEqual(
+        expect.objectContaining({
+          type: "inbound.spoof",
+          source: "provider-1",
+          meta: expect.objectContaining({
+            tinybusClaimedSource: "provider-2",
+          }),
+        })
+      );
+      expect(provider1.getSentMessages()).toHaveLength(0);
+    });
   });
 
   describe("error handling", () => {

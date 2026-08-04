@@ -39,6 +39,7 @@ import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
 import { OutputQualityMonitor } from "../evaluation/OutputQualityMonitor";
+import { SameModelBiasEvaluator } from "../evaluation/SameModelBiasEvaluator";
 import { IterationPlanner, type IterationAssignment, type IterationPlan } from "../agents/IterationPlanner";
 import type { SubstrateSnapshot } from "../agents/prompts/PromptBuilder";
 import type { IAgoraService } from "../agora/IAgoraService";
@@ -1061,7 +1062,9 @@ export class LoopOrchestrator implements IMessageInjector {
 
     this.activeSessionManager = sessionManager;
 
-    // Inject any queued messages
+    const runPromise = sessionManager.run();
+
+    // Inject any queued messages after run() creates the SDK input channel.
     if (this.pendingMessages.length > 0) {
       this.eventSink.emit({
         type: "message_processing_started",
@@ -1075,7 +1078,7 @@ export class LoopOrchestrator implements IMessageInjector {
       this.pendingMessages = [];
     }
 
-    const result = await sessionManager.run();
+    const result = await runPromise;
 
     this.activeSessionManager = null;
 
@@ -1801,7 +1804,7 @@ export class LoopOrchestrator implements IMessageInjector {
     if (!match) return;
 
     const generatedAt = match[1];
-    const rating = Subconscious.computeDriveRating(taskResult);
+    const rating = Subconscious.computeDriveRating(taskResult, description);
     const category = DriveQualityTracker.inferCategory(description);
 
     try {
@@ -1911,10 +1914,16 @@ export class LoopOrchestrator implements IMessageInjector {
 
       if (!this.config.evaluateOutcomeEnabled) {
         // Heuristic path: use computeDriveRating() without spawning an LLM session
-        const driveRating = Subconscious.computeDriveRating(taskResult);
+        const sameModelAssessment = SameModelBiasEvaluator.assess({
+          taskDescription: dispatch.description,
+          result: taskResult.result,
+          summary: taskResult.summary,
+          progressEntry: taskResult.progressEntry,
+        });
+        const driveRating = Subconscious.computeDriveRating(taskResult, dispatch.description);
         const qualityScore = driveRating * 10; // scale 0-10 → 0-100
 
-        if (qualityScore >= this.config.evaluateOutcomeQualityThreshold) {
+        if (qualityScore >= this.config.evaluateOutcomeQualityThreshold && sameModelAssessment.risk === "low") {
           // Score is good enough — use heuristic result directly
           const outcomeMatchesIntent = taskResult.result !== "failure";
           // needsReassessment: only if quality is catastrophically 0 (threshold can't be ≤0 in practice)
@@ -1923,7 +1932,11 @@ export class LoopOrchestrator implements IMessageInjector {
           evaluation = { outcomeMatchesIntent, qualityScore, issuesFound: [], recommendedActions: [], needsReassessment };
         } else {
           // Score below threshold — fall back to LLM for safety
-          this.logger.debug(`reconsideration: heuristic score ${qualityScore}/100 below threshold — falling back to LLM`);
+          this.logger.debug(
+            `reconsideration: heuristic score ${qualityScore}/100` +
+            (sameModelAssessment.risk !== "low" ? ` with ${sameModelAssessment.risk} same-model bias risk` : " below threshold") +
+            ` — falling back to LLM`
+          );
           evaluation = await this.subconscious.evaluateOutcome(
             { taskId: dispatch.taskId, description: dispatch.description },
             taskResult,

@@ -22,12 +22,14 @@ describe("OutputQualityMonitor", () => {
 
   it("starts healthy with zero degraded cycles", () => {
     const state = monitor.getState();
+    expect(state.observed).toBe(false);
     expect(state.healthy).toBe(true);
     expect(state.consecutiveDegradedCycles).toBe(0);
     expect(state.lastDegradedReason).toBeUndefined();
     expect(state.lastHealthyAt).toBeNull();
     expect(state.lastDegradedAt).toBeNull();
     expect(monitor.isHealthy()).toBe(true);
+    expect(monitor.getHealthStatus()).toBe("unknown");
   });
 
   describe("healthy cycle recording", () => {
@@ -35,10 +37,12 @@ describe("OutputQualityMonitor", () => {
       monitor.recordCycleStats(stats({ totalChecks: 1, parseErrors: 0, placeholderActions: 0 }));
 
       const state = monitor.getState();
+      expect(state.observed).toBe(true);
       expect(state.healthy).toBe(true);
       expect(state.consecutiveDegradedCycles).toBe(0);
       expect(state.lastHealthyAt).toEqual(new Date("2026-06-18T12:00:00.000Z"));
       expect(state.lastDegradedAt).toBeNull();
+      expect(monitor.getHealthStatus()).toBe("healthy");
     });
 
     it("resets consecutiveDegradedCycles to zero after a healthy cycle", () => {
@@ -150,6 +154,7 @@ describe("OutputQualityMonitor", () => {
       }
 
       expect(monitor.isHealthy()).toBe(false);
+      expect(monitor.getHealthStatus()).toBe("degraded");
       expect(monitor.getState().lastDegradedReason).toContain("parse-error");
     });
   });

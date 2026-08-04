@@ -11,6 +11,15 @@ import type {
   SessionUsage,
 } from "../claude/ISessionLauncher";
 
+export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+export interface CodexSessionLauncherConfig {
+  sandboxMode?: CodexSandboxMode;
+  bypassApprovalsAndSandbox?: boolean;
+}
+
+const DEFAULT_CODEX_SANDBOX_MODE: CodexSandboxMode = "workspace-write";
+
 /**
  * ISessionLauncher implementation that invokes the Codex CLI for agent
  * reasoning sessions (Ego / Subconscious / Superego / Id).
@@ -23,7 +32,8 @@ import type {
  *   cwd             -> -C <cwd> and process cwd
  *   additionalDirs  -> --add-dir <dir>
  *   continueSession -> intentionally ignored; Substrate injects complete file context each turn
- *   bypass approvals -> required for non-interactive MCP tool execution
+ *   approvals      -> --ask-for-approval never so non-interactive runs fail closed
+ *   sandbox        -> workspace-write by default; use codex.bypassApprovalsAndSandbox only as an explicit break-glass override
  *   --json          -> parse final agent message and turn token usage from JSONL events
  */
 export class CodexSessionLauncher implements ISessionLauncher {
@@ -33,6 +43,7 @@ export class CodexSessionLauncher implements ISessionLauncher {
     private readonly model?: string,
     private readonly logger?: ILogger,
     private readonly effort?: ReasoningEffort,
+    private readonly config: CodexSessionLauncherConfig = {},
   ) {}
 
   async launch(
@@ -49,7 +60,8 @@ export class CodexSessionLauncher implements ISessionLauncher {
     const cwd = options?.cwd;
     const args = this.buildExecArgs(fullMessage, modelToUse, effortToUse, cwd, options?.additionalDirs);
 
-    this.logger?.debug(`codex-launch: exec model=${modelToUse ?? "default"} effort=${effortToUse ?? "default"} cwd=${cwd ?? process.cwd()}`);
+    const sandboxMode = this.codexSandboxMode();
+    this.logger?.debug(`codex-launch: exec model=${modelToUse ?? "default"} effort=${effortToUse ?? "default"} sandbox=${this.config.bypassApprovalsAndSandbox ? "bypass" : sandboxMode} cwd=${cwd ?? process.cwd()}`);
 
     try {
       const result = await this.processRunner.run("codex", args, {
@@ -98,15 +110,13 @@ export class CodexSessionLauncher implements ISessionLauncher {
     cwd: string | undefined,
     additionalDirs: string[] | undefined,
   ): string[] {
-    const args = [
-      "exec",
-      "--dangerously-bypass-approvals-and-sandbox",
-      "--json",
-      "--color",
-      "never",
-      "--skip-git-repo-check",
-      "--ephemeral",
-    ];
+    const args = ["exec"];
+    if (this.config.bypassApprovalsAndSandbox) {
+      args.push("--dangerously-bypass-approvals-and-sandbox");
+    } else {
+      args.push("--sandbox", this.codexSandboxMode());
+    }
+    args.push("--json", "--color", "never", "--skip-git-repo-check", "--ephemeral");
     if (model) {
       args.push("-m", model);
     }
@@ -121,6 +131,10 @@ export class CodexSessionLauncher implements ISessionLauncher {
     }
     args.push("-");
     return args;
+  }
+
+  private codexSandboxMode(): CodexSandboxMode {
+    return this.config.sandboxMode ?? DEFAULT_CODEX_SANDBOX_MODE;
   }
 
   private createJsonLogAdapter(onLogEntry: (entry: ProcessLogEntry) => void): (chunk: string) => void {

@@ -521,6 +521,19 @@ describe("Subconscious agent", () => {
       });
       expect(minRating).toBe(3);
     });
+
+    it("penalizes high same-model convergence risk in task scoring", () => {
+      const rating = Subconscious.computeDriveRating({
+        result: "success",
+        summary: "Rook and Bishop agreed; no issues remain",
+        progressEntry: "Completed adversarial governance review with easy consensus accepted.",
+        skillUpdates: null,
+        memoryUpdates: null,
+        proposals: [],
+      }, "Review Rook's VALUES refinement under same-model conditions");
+
+      expect(rating).toBe(7);
+    });
   });
 
   describe("validateTaskResult", () => {

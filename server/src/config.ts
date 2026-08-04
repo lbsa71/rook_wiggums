@@ -38,6 +38,10 @@ export interface ProviderConfig {
   /** Override the model's context window in tokens. When set, prompt truncation uses this value
    *  instead of the value fetched from the provider's model list API. */
   contextWindowTokens?: number;
+  /** CLI sandbox mode for shell-backed launchers that support it. Codex defaults to workspace-write. */
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  /** Break-glass Codex option. When true, restores Codex's dangerous no-sandbox/no-approval mode. */
+  bypassApprovalsAndSandbox?: boolean;
 }
 
 const ProviderConfigSchema = z.object({
@@ -58,6 +62,8 @@ const ProviderConfigSchema = z.object({
   maxLoggedTextChars: z.number().int().min(1).optional(),
   minLoggedTextChars: z.number().int().min(1).optional(),
   contextWindowTokens: z.number().int().min(1).optional(),
+  sandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+  bypassApprovalsAndSandbox: z.boolean().optional(),
 });
 
 export interface IterationModelClassConfig {

@@ -38,9 +38,9 @@ export interface CriticalChecksResult {
   inferenceAlive: "healthy" | "degraded" | "unknown";
   /**
    * Output quality status (Ego/Subconscious semantic output health).
-   * - "healthy": monitor present and fewer than MAX_DEGRADED_CYCLES consecutive degraded cycles.
+   * - "healthy": monitor present, at least one endorsement-check cycle observed, and fewer than MAX_DEGRADED_CYCLES consecutive degraded cycles.
    * - "degraded": monitor present and ≥ MAX_DEGRADED_CYCLES consecutive degraded cycles.
-   * - "unknown": no OutputQualityMonitor was provided.
+   * - "unknown": no OutputQualityMonitor was provided, or a tracker is present but no endorsement-check cycle has been observed yet.
    *
    * Detects the parse-error storm pattern (e.g. Kimi emitting placeholder ENDORSEMENT_CHECK
    * text → screener can't parse → parse-error ESCALATE repeated for 24+ hours).
@@ -201,7 +201,7 @@ export class HealthCheck {
 
   private evaluateOutputQuality(): "healthy" | "degraded" | "unknown" {
     if (!this.outputQualityMonitor) return "unknown";
-    return this.outputQualityMonitor.isHealthy(MAX_DEGRADED_CYCLES) ? "healthy" : "degraded";
+    return this.outputQualityMonitor.getHealthStatus(MAX_DEGRADED_CYCLES);
   }
 
   private determineOverall(
@@ -214,7 +214,7 @@ export class HealthCheck {
     outputQuality: "healthy" | "degraded" | "unknown",
   ): "healthy" | "degraded" | "unhealthy" {
     if (this.livenessTracker && inferenceAlive === "degraded") return "unhealthy";
-    if (this.outputQualityMonitor && outputQuality !== "healthy") return "unhealthy";
+    if (this.outputQualityMonitor && outputQuality === "degraded") return "unhealthy";
 
     const issues =
       (drift.score > 0.5 ? 1 : 0) +
@@ -224,7 +224,10 @@ export class HealthCheck {
       (!reasoning.valid ? 1 : 0);
 
     if (issues === 0) {
-      return this.livenessTracker && inferenceAlive === "unknown" ? "degraded" : "healthy";
+      return (this.livenessTracker && inferenceAlive === "unknown") ||
+        (this.outputQualityMonitor && outputQuality === "unknown")
+        ? "degraded"
+        : "healthy";
     }
     if (issues <= 2) return "degraded";
     return "unhealthy";

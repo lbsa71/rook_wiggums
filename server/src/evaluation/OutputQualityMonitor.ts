@@ -5,7 +5,9 @@ import type { EndorsementSessionStats } from "../agents/endorsement/EndorsementI
  * Snapshot of output quality as of the last recorded cycle.
  */
 export interface OutputQualityState {
-  /** True if no degradation detected (or no signal yet). */
+  /** True if at least one endorsement-check cycle has been recorded. */
+  observed: boolean;
+  /** True if the latest observed signal is below the degraded threshold. */
   healthy: boolean;
   /** Number of consecutive degraded cycles observed. */
   consecutiveDegradedCycles: number;
@@ -67,6 +69,7 @@ export class OutputQualityMonitor {
   /** Returns the current output quality state. Cheap: no I/O. */
   getState(): OutputQualityState {
     return {
+      observed: this.lastHealthyAt !== null || this.lastDegradedAt !== null,
       healthy: this.consecutiveDegradedCycles === 0,
       consecutiveDegradedCycles: this.consecutiveDegradedCycles,
       lastDegradedReason: this.lastDegradedReason,
@@ -81,5 +84,15 @@ export class OutputQualityMonitor {
    */
   isHealthy(maxConsecutiveDegradedCycles = 3): boolean {
     return this.consecutiveDegradedCycles < maxConsecutiveDegradedCycles;
+  }
+
+  /**
+   * Three-state health classification. "unknown" means no endorsement-check
+   * output quality signal has been observed yet; it is not evidence of health.
+   */
+  getHealthStatus(maxConsecutiveDegradedCycles = 3): "healthy" | "degraded" | "unknown" {
+    if (this.consecutiveDegradedCycles >= maxConsecutiveDegradedCycles) return "degraded";
+    if (this.lastHealthyAt === null && this.lastDegradedAt === null) return "unknown";
+    return "healthy";
   }
 }

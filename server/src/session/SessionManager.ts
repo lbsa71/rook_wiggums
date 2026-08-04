@@ -9,7 +9,7 @@ import {
   SdkResultError,
   SdkSystemMessage,
 } from "../agents/claude/AgentSdkLauncher";
-import { ISdkSession, SdkSessionFactory, SdkUserMessage } from "./ISdkSession";
+import { createInjectedUserMessage, ISdkSession, SdkSessionFactory, SdkUserMessage } from "./ISdkSession";
 import { MessageChannel } from "./MessageChannel";
 
 export interface SessionConfig {
@@ -120,14 +120,7 @@ export class SessionManager {
 
     this.logger.debug(`session-manager: inject message (${message.length} chars)`);
 
-    const userMessage: SdkUserMessage = {
-      type: "user",
-      message: { role: "user", content: message },
-      parent_tool_use_id: null,
-      session_id: "injected",
-    };
-
-    this.messageChannel.push(userMessage);
+    this.messageChannel.push(createInjectedUserMessage(message));
   }
 
   isActive(): boolean {
