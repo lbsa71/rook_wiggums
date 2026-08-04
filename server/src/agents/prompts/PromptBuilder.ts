@@ -295,7 +295,7 @@ export class PromptBuilder {
             content = fileContent.rawMarkdown;
             label = `${substratePath}/${fileName}`;
           } catch {
-            // File unreadable — fall back to @ reference so Claude CLI can still expand it
+            // File unreadable — fall back to an @ reference for launchers that support expansion.
             parts.push(`@${substratePath}/${fileName}`);
             continue;
           }

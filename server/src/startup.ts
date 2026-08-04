@@ -4,6 +4,7 @@ import { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import { NodeFileSystem } from "./substrate/abstractions/NodeFileSystem";
 import { SubstrateConfig } from "./substrate/config";
 import { SubstrateInitializer } from "./substrate/initialization/SubstrateInitializer";
+import { LegacyInstructionMigrator } from "./substrate/initialization/LegacyInstructionMigrator";
 import { SubstrateMigrator } from "./substrate/initialization/SubstrateMigrator";
 import { SubstrateValidator } from "./substrate/initialization/SubstrateValidator";
 import { IClock } from "./substrate/abstractions/IClock";
@@ -22,6 +23,14 @@ export async function initializeSubstrate(
   clock: IClock = new SystemClock()
 ): Promise<void> {
   const config = new SubstrateConfig(substratePath);
+
+  // Migrate the provider-named instruction file before template seeding so
+  // existing lived guidance wins over the new provider-neutral default.
+  const legacyInstructionMigrator = new LegacyInstructionMigrator(fs, config);
+  const legacyInstructionReport = await legacyInstructionMigrator.migrate();
+  if (legacyInstructionReport.copiedFromLegacy) {
+    console.log("Substrate: migrated legacy CLAUDE.md guidance to AGENTS.md");
+  }
 
   // Initialize substrate files from templates
   const initializer = new SubstrateInitializer(fs, config);

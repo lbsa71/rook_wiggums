@@ -20,7 +20,10 @@ describe("SubstrateMigrator", () => {
   it("applies additive migration guidance and metadata", async () => {
     const report = await migrator.migrate();
 
-    expect(report.applied).toEqual(["conversation-operating-context-v1"]);
+    expect(report.applied).toEqual([
+      "conversation-operating-context-v1",
+      "self-betterment-credo-v1",
+    ]);
     expect(await fs.exists("/substrate/OPERATING_CONTEXT.md")).toBe(true);
 
     const habits = await fs.readFile("/substrate/HABITS.md");
@@ -30,9 +33,13 @@ describe("SubstrateMigrator", () => {
 
     const progress = await fs.readFile("/substrate/PROGRESS.md");
     expect(progress).toContain("[2026-05-01T06:00:00.000Z] [SYSTEM] Migration conversation-operating-context-v1 applied");
+    expect(progress).toContain("[2026-05-01T06:00:00.000Z] [SYSTEM] Migration self-betterment-credo-v1 applied");
 
     const state = JSON.parse(await fs.readFile("/substrate/.substrate-migrations.json"));
-    expect(state.applied).toEqual(["conversation-operating-context-v1"]);
+    expect(state.applied).toEqual([
+      "conversation-operating-context-v1",
+      "self-betterment-credo-v1",
+    ]);
   });
 
   it("is idempotent", async () => {
@@ -43,8 +50,23 @@ describe("SubstrateMigrator", () => {
     const second = await migrator.migrate();
 
     expect(second.applied).toEqual([]);
-    expect(second.skipped).toEqual(["conversation-operating-context-v1"]);
+    expect(second.skipped).toEqual([
+      "conversation-operating-context-v1",
+      "self-betterment-credo-v1",
+    ]);
     expect(await fs.readFile("/substrate/HABITS.md")).toBe(habitsAfterFirst);
     expect(await fs.readFile("/substrate/PROGRESS.md")).toBe(progressAfterFirst);
+  });
+
+  it("adds the credo once while preserving lived doctrine", async () => {
+    await fs.writeFile("/substrate/VALUES.md", "# Values\n\nExisting lived value.\n");
+
+    await migrator.migrate();
+
+    const values = await fs.readFile("/substrate/VALUES.md");
+    expect(values).toContain("Existing lived value.");
+    expect(values.match(/## Self-Betterment Credo/g)).toHaveLength(1);
+    expect(values).toContain("Continual self-betterment is the primary objective");
+    expect(values).toContain("hardcoded runtime safeguards");
   });
 });

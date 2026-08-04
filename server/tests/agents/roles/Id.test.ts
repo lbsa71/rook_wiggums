@@ -39,7 +39,7 @@ describe("Id agent", () => {
     await fs.writeFile("/substrate/SECURITY.md", "# Security\n\nStay safe");
     await fs.writeFile("/substrate/CHARTER.md", "# Charter\n\nOur mission");
     await fs.writeFile("/substrate/SUPEREGO.md", "# Superego\n\nRules here");
-    await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\nConfig here");
+    await fs.writeFile("/substrate/AGENTS.md", "# Agents\n\nConfig here");
     await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n\n");
     await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
   });

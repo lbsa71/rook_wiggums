@@ -1,19 +1,7 @@
-# Substrate
-This repo is an AI agent orchestration shell (roles, file-based substrate memory).
+# Substrate Gemini Compatibility Guide
 
-# Way of working
-* Always start coding tasks with a git pull.
-* Smallest valuable increment: decompose into the smallest possible valuable increments.
-* Simplicity and legibility. If the right solution requires refactoring first, do that.
-* TDD: red/green/refactor.
-* Boy scout rule: leave the codebase in better shape than you found it.
-* Abstract environment (file, process, time, env) behind interfaces; inject so tests can use in-memory/fixed implementations.
-* Inject timestamps into logic—no raw `Date.now()` or `new Date()` in business code.
-* Treat CLI handlers, HTTP servers, workers, and subprocess launchers as thin process shells only.
-* Put business logic in services behind interfaces; process shells should only parse input, call services, and map output/errors.
-* Services must be unit-testable without spawning processes or opening ports (use injected runners/transports/adapters).
-* Prefer service-level unit tests by default; keep real process/port tests minimal and explicitly integration-only.
-* End completed tasks with pull, build, lint, test, commit, push. Push often.
+`AGENTS.md` is the canonical instruction file for this repository. Read and follow it first.
 
-# Versioning
-* Before committing: update package.json (at least patch) for significant changes; ensure build and tests pass.
+Under Gemini, preserve the same direction: continual self-betterment through more efficient thought and inference, deeper reasoning and execution, and ambitious testing of capability limits. Truthfulness, security, authorization, reversibility, and hardcoded safeguards remain non-overridable constraints.
+
+Repository commands, engineering rules, versioning, and completion requirements are defined in `AGENTS.md`; do not maintain a divergent copy here.

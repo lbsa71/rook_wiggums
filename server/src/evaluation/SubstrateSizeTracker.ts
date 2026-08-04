@@ -41,7 +41,7 @@ const SIZE_TARGETS: Record<string, number> = {
   "SECURITY.md": 150,
   "CHARTER.md": 200,
   "SUPEREGO.md": 150,
-  "CLAUDE.md": 100,
+  "AGENTS.md": 100,
 };
 
 /**

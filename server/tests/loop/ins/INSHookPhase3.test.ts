@@ -51,7 +51,7 @@ describe("INSHook Phase 3 — compliance pattern detection", () => {
     await fs.writeFile(`${substratePath}/SECURITY.md`, "# Security\n\n");
     await fs.writeFile(`${substratePath}/CHARTER.md`, "# Charter\n\n");
     await fs.writeFile(`${substratePath}/SUPEREGO.md`, "# Superego\n\n");
-    await fs.writeFile(`${substratePath}/CLAUDE.md`, "# Claude\n\n");
+    await fs.writeFile(`${substratePath}/AGENTS.md`, "# Agents\n\n");
     await fs.writeFile(`${substratePath}/PEERS.md`, "# Peers\n\n");
   });
 
@@ -449,7 +449,7 @@ describe("INSHook — compliance routing (Gap 1)", () => {
     await fs.writeFile(`${substratePath}/SECURITY.md`, "# Security\n\n");
     await fs.writeFile(`${substratePath}/CHARTER.md`, "# Charter\n\n");
     await fs.writeFile(`${substratePath}/SUPEREGO.md`, "# Superego\n\n");
-    await fs.writeFile(`${substratePath}/CLAUDE.md`, "# Claude\n\n");
+    await fs.writeFile(`${substratePath}/AGENTS.md`, "# Agents\n\n");
     await fs.writeFile(`${substratePath}/PEERS.md`, "# Peers\n\n");
   });
 

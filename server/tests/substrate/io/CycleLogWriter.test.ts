@@ -58,7 +58,7 @@ async function seedSubstrateFiles(fs: InMemoryFileSystem, substratePath = "/subs
   await fs.writeFile(`${substratePath}/SECURITY.md`, "# Security\n");
   await fs.writeFile(`${substratePath}/CHARTER.md`, "# Charter\n");
   await fs.writeFile(`${substratePath}/SUPEREGO.md`, "# Superego\n");
-  await fs.writeFile(`${substratePath}/CLAUDE.md`, "# Claude\n");
+  await fs.writeFile(`${substratePath}/AGENTS.md`, "# Agents\n");
   await fs.writeFile(`${substratePath}/PROGRESS.md`, "# Progress\n\n");
   await fs.writeFile(`${substratePath}/CONVERSATION.md`, "# Conversation\n\n");
 }

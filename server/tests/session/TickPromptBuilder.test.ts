@@ -24,7 +24,7 @@ describe("TickPromptBuilder", () => {
     await fs.writeFile("/substrate/SECURITY.md", "# Security\nNo secrets");
     await fs.writeFile("/substrate/CHARTER.md", "# Charter\nOur mission");
     await fs.writeFile("/substrate/SUPEREGO.md", "# Superego\nFollow rules");
-    await fs.writeFile("/substrate/CLAUDE.md", "# Claude Config\nModel: sonnet");
+    await fs.writeFile("/substrate/AGENTS.md", "# Agent Config\nModel: codex");
     await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n2025-01-01: Started");
     await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\nUser: hello");
   });

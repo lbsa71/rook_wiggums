@@ -1,5 +1,9 @@
 import { ROLE_PROMPTS } from "../../../src/agents/prompts/templates";
 import { AgentRole } from "../../../src/agents/types";
+import {
+  SELF_BETTERMENT_CREDO,
+  SELF_BETTERMENT_GUARDRAILS,
+} from "../../../src/credo/selfBetterment";
 
 describe("ROLE_PROMPTS", () => {
   it("defines a prompt for every AgentRole", () => {
@@ -7,6 +11,13 @@ describe("ROLE_PROMPTS", () => {
       expect(ROLE_PROMPTS[role]).toBeDefined();
       expect(typeof ROLE_PROMPTS[role]).toBe("string");
       expect(ROLE_PROMPTS[role].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives every role the canonical self-betterment objective and guardrails", () => {
+    for (const role of Object.values(AgentRole)) {
+      expect(ROLE_PROMPTS[role]).toContain(SELF_BETTERMENT_CREDO);
+      expect(ROLE_PROMPTS[role]).toContain(SELF_BETTERMENT_GUARDRAILS);
     }
   });
 
@@ -101,15 +112,14 @@ describe("ROLE_PROMPTS", () => {
       expect(prompt).toMatch(/cognitive.only/i);
     });
 
-    it("prioritizes identity continuity between security and cost", () => {
+    it("treats safeguards as constraints and self-betterment as the top optimization priority", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
-      expect(prompt).toContain("Security > Identity/Personality Continuity > Cost > Availability");
-      expect(prompt.indexOf("IDENTITY / PERSONALITY CONTINUITY")).toBeGreaterThan(
-        prompt.indexOf("SECURITY")
-      );
-      expect(prompt.indexOf("TOKEN & COST OPTIMIZATION")).toBeGreaterThan(
+      expect(prompt).toContain("Non-Overridable Constraints");
+      expect(prompt).toContain("SELF-BETTERMENT");
+      expect(prompt.indexOf("SELF-BETTERMENT")).toBeLessThan(
         prompt.indexOf("IDENTITY / PERSONALITY CONTINUITY")
       );
+      expect(prompt).toMatch(/Values and drives do not create authority/i);
     });
 
     it("includes identity and provider-switch finding categories", () => {

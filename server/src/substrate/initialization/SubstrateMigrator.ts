@@ -3,6 +3,7 @@ import { IFileSystem } from "../abstractions/IFileSystem";
 import { SubstrateConfig } from "../config";
 import { getTemplate } from "../templates";
 import { SubstrateFileType } from "../types";
+import { SELF_BETTERMENT_DOCTRINE } from "../../credo/selfBetterment";
 
 export interface MigrationReport {
   applied: string[];
@@ -20,7 +21,9 @@ interface Migration {
 
 const MIGRATION_STATE_FILE = ".substrate-migrations.json";
 const CONVERSATION_OPERATING_CONTEXT_MIGRATION = "conversation-operating-context-v1";
+const SELF_BETTERMENT_CREDO_MIGRATION = "self-betterment-credo-v1";
 const HABITS_MARKER_HEADER = "## Agora Marker Cleanup";
+const SELF_BETTERMENT_HEADER = "## Self-Betterment Credo";
 
 export class SubstrateMigrator {
   constructor(
@@ -54,6 +57,10 @@ export class SubstrateMigrator {
         id: CONVERSATION_OPERATING_CONTEXT_MIGRATION,
         apply: () => this.applyConversationOperatingContextMigration(),
       },
+      {
+        id: SELF_BETTERMENT_CREDO_MIGRATION,
+        apply: () => this.applySelfBettermentCredoMigration(),
+      },
     ];
   }
 
@@ -64,7 +71,51 @@ export class SubstrateMigrator {
     }
 
     await this.appendHabitsGuidance();
-    await this.appendProgressNote(CONVERSATION_OPERATING_CONTEXT_MIGRATION);
+    await this.appendProgressNote(
+      CONVERSATION_OPERATING_CONTEXT_MIGRATION,
+      "existing substrate preserved; OPERATING_CONTEXT.md and Agora marker cleanup guidance ensured"
+    );
+  }
+
+  private async applySelfBettermentCredoMigration(): Promise<void> {
+    const doctrineFiles = [
+      SubstrateFileType.AGENTS,
+      SubstrateFileType.VALUES,
+      SubstrateFileType.ID,
+      SubstrateFileType.CHARTER,
+      SubstrateFileType.HABITS,
+      SubstrateFileType.SUPEREGO,
+    ];
+
+    const section = `${SELF_BETTERMENT_HEADER}
+
+${SELF_BETTERMENT_DOCTRINE}
+
+Use a deliberate loop: establish the baseline, identify the binding limitation, choose the highest-leverage bounded action, execute, verify, retain the learning, and raise the standard. Constant activity is not itself improvement.
+`;
+
+    for (const fileType of doctrineFiles) {
+      const filePath = this.config.getFilePath(fileType);
+      let content: string;
+      let missing = false;
+      try {
+        content = await this.fs.readFile(filePath);
+      } catch {
+        content = getTemplate(fileType);
+        missing = true;
+      }
+
+      if (missing) {
+        await this.fs.writeFile(filePath, content);
+      } else if (!content.includes(SELF_BETTERMENT_HEADER)) {
+        await this.fs.writeFile(filePath, `${content.trimEnd()}\n\n${section}`);
+      }
+    }
+
+    await this.appendProgressNote(
+      SELF_BETTERMENT_CREDO_MIGRATION,
+      "provider-neutral self-betterment guidance ensured without replacing lived doctrine"
+    );
   }
 
   private async appendHabitsGuidance(): Promise<void> {
@@ -89,9 +140,9 @@ When processing a CONVERSATION.md line marked \`**[UNPROCESSED]**\` or \`**[UNPR
     await this.fs.writeFile(habitsPath, `${habits.trimEnd()}\n\n${section}`);
   }
 
-  private async appendProgressNote(migrationId: string): Promise<void> {
+  private async appendProgressNote(migrationId: string, description: string): Promise<void> {
     const progressPath = this.config.getFilePath(SubstrateFileType.PROGRESS);
-    const note = `[${this.clock.now().toISOString()}] [SYSTEM] Migration ${migrationId} applied: existing substrate preserved; OPERATING_CONTEXT.md and Agora marker cleanup guidance ensured.\n`;
+    const note = `[${this.clock.now().toISOString()}] [SYSTEM] Migration ${migrationId} applied: ${description}.\n`;
     await this.fs.appendFile(progressPath, note);
   }
 

@@ -60,7 +60,7 @@ describe("Correlation IDs", () => {
         "SECURITY.md": "# Security\n",
         "CHARTER.md": "# Charter\n",
         "SUPEREGO.md": "# Superego\n",
-        "CLAUDE.md": "# Claude\n",
+        "AGENTS.md": "# Agents\n",
         "PROGRESS.md": "# Progress\n",
         "CONVERSATION.md": "# Conversation\n",
       };
@@ -159,7 +159,7 @@ describe("Correlation IDs", () => {
       const files: Record<string, string> = {
         "MEMORY.md": "# Memory\n", "HABITS.md": "# Habits\n", "SKILLS.md": "# Skills\n",
         "VALUES.md": "# Values\n", "ID.md": "# Id\n", "SECURITY.md": "# Security\n",
-        "CHARTER.md": "# Charter\n", "SUPEREGO.md": "# Superego\n", "CLAUDE.md": "# Claude\n",
+        "CHARTER.md": "# Charter\n", "SUPEREGO.md": "# Superego\n", "AGENTS.md": "# Agents\n",
         "PROGRESS.md": "# Progress\n", "CONVERSATION.md": "# Conversation\n",
       };
       for (const [name, content] of Object.entries(files)) {
@@ -218,7 +218,7 @@ describe("Correlation IDs", () => {
         "PLAN.md": "# Plan\n\n## Tasks\n",
         "MEMORY.md": "# Memory\n", "HABITS.md": "# Habits\n", "SKILLS.md": "# Skills\n",
         "VALUES.md": "# Values\n", "ID.md": "# Id\n", "SECURITY.md": "# Security\n",
-        "CHARTER.md": "# Charter\n", "SUPEREGO.md": "# Superego\n", "CLAUDE.md": "# Claude\n",
+        "CHARTER.md": "# Charter\n", "SUPEREGO.md": "# Superego\n", "AGENTS.md": "# Agents\n",
         "PROGRESS.md": "# Progress\n", "CONVERSATION.md": "# Conversation\n",
         "ESCALATE_TO_STEFAN.md": "# Escalate\n",
       };

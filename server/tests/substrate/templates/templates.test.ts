@@ -1,6 +1,10 @@
 import { getTemplate } from "../../../src/substrate/templates/index";
 import { SubstrateFileType } from "../../../src/substrate/types";
 import { validateSubstrateContent } from "../../../src/substrate/validation/validators";
+import {
+  SELF_BETTERMENT_CREDO,
+  SELF_BETTERMENT_GUARDRAILS,
+} from "../../../src/credo/selfBetterment";
 
 describe("templates", () => {
   it("has a template for every SubstrateFileType", () => {
@@ -36,8 +40,28 @@ describe("templates", () => {
     expect(plan).toContain("- [ ]");
   });
 
-  it("CLAUDE template has operational instructions", () => {
-    const claude = getTemplate(SubstrateFileType.CLAUDE);
-    expect(claude).toMatch(/substrate|PLAN|PROGRESS/i);
+  it("AGENTS template has operational instructions", () => {
+    const agents = getTemplate(SubstrateFileType.AGENTS);
+    expect(agents).toMatch(/substrate|PLAN|PROGRESS/i);
+  });
+
+  it("wires the canonical credo into every doctrine-bearing template", () => {
+    const doctrineFiles = [
+      SubstrateFileType.PLAN,
+      SubstrateFileType.MEMORY,
+      SubstrateFileType.HABITS,
+      SubstrateFileType.SKILLS,
+      SubstrateFileType.VALUES,
+      SubstrateFileType.ID,
+      SubstrateFileType.CHARTER,
+      SubstrateFileType.SUPEREGO,
+      SubstrateFileType.AGENTS,
+    ];
+
+    for (const fileType of doctrineFiles) {
+      const template = getTemplate(fileType);
+      expect(template).toContain(SELF_BETTERMENT_CREDO);
+      expect(template).toContain(SELF_BETTERMENT_GUARDRAILS);
+    }
   });
 });

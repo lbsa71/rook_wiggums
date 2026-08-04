@@ -1,37 +1,44 @@
-# Substrate Agent Notes
+# Substrate Agent Instructions
 
-This repository is an AI agent orchestration shell with a TypeScript server and React client.
+This TypeScript server and React client form an AI-agent orchestration shell with file-backed persistent substrate.
 
-## Start Here
+## Primary Objective
 
-- Read `CLAUDE.md` for the full project guidance and infrastructure reference.
-- `GEMINI.md` contains the short shared way-of-working summary.
-- Check `git status --short` before editing. The worktree may contain user changes.
+Continual self-betterment is the primary objective: increase efficiency in thought and inference, deepen the quality of reasoning and execution, and act with the ambition to discover, test, and overcome capability limits.
 
-## Commands
+Pursue self-betterment within truthfulness, security, authorization, reversibility, and hardcoded runtime safeguards. Treat limitations as hypotheses to test or engineering constraints to redesign, never as permission to fabricate capability, conceal failure, bypass governance, or override system controls.
 
-- Install dependencies: `npm install`
-- Build all workspaces: `npm run build`
-- Test all workspaces: `npm run test`
-- Lint all workspaces: `npm run lint`
-- Server dev loop: `npm run server:dev`
-- Client dev loop: `npm run client:dev`
+For meaningful work: establish the baseline, identify the binding limitation, choose the highest-leverage bounded action, execute, verify, retain the learning, and raise the standard. Constant activity is not itself improvement.
 
-Workspace-specific commands:
+## Before Editing
 
-- Server: `npm run build --workspace=server`, `npm run test --workspace=server`, `npm run lint --workspace=server`
-- Client: `npm run build --workspace=client`, `npm run test --workspace=client`, `npm run lint --workspace=client`
+- Run `git status --short`; preserve user changes and avoid unsafe pulls.
+- Read the relevant source, tests, and local instructions before deciding on an implementation.
+- Prefer the smallest valuable, test-backed increment. Use an isolated worktree for nontrivial or risky live-runtime changes.
 
 ## Engineering Rules
 
-- Prefer small, test-backed changes.
-- Keep CLI handlers, HTTP servers, workers, and subprocess launchers thin.
-- Put business logic in services behind interfaces.
+- Keep CLI handlers, HTTP servers, workers, and subprocess launchers thin; put business logic in services behind interfaces.
 - Abstract filesystem, process, time, and environment access behind injectable interfaces.
-- Do not use raw `Date.now()` or `new Date()` in business logic; inject time instead.
+- Do not use raw `Date.now()` or `new Date()` in business logic; inject time.
 - Prefer service-level unit tests. Keep real process and port tests minimal and explicitly integration-only.
-- Source changes under `server/src` require `npm run build --workspace=server` before they affect `server/dist`.
+- Source changes under `server/src` do not affect `server/dist` until the server workspace is rebuilt.
+- Archive superseded lived substrate content before removing it. Preserve evidence, history, and rollback paths.
 
-## Versioning
+## Commands
 
-Before committing significant changes, update the relevant `package.json` version at least by patch and verify build, lint, and tests.
+- Install: `npm install`
+- Build: `npm run build`
+- Test: `npm run test`
+- Lint: `npm run lint`
+- Server dev: `npm run server:dev`
+- Client dev: `npm run client:dev`
+- Workspace checks: append `--workspace=server` or `--workspace=client` to `npm run build`, `npm run test`, or `npm run lint`.
+
+## Completion
+
+- For significant changes, bump the relevant `package.json` by at least a patch and update lockfile metadata.
+- Run build, tests, and lint; inspect the final diff and working tree.
+- Commit intentionally and push the completed branch. Activate runtime changes only after validation and any required operational notification.
+
+`AGENTS.md` is canonical. `CLAUDE.md` and `GEMINI.md` are provider compatibility guides and must remain aligned with this file.

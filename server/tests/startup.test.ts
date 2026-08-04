@@ -40,6 +40,17 @@ describe("initializeSubstrate", () => {
     expect(content).toContain("Custom plan content");
   });
 
+  it("preserves legacy instructions when migrating CLAUDE.md to canonical AGENTS.md", async () => {
+    await fs.mkdir("/substrate", { recursive: true });
+    await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\nExisting lived instruction.\n");
+
+    await initializeSubstrate(fs, "/substrate");
+
+    expect(await fs.readFile("/substrate/AGENTS.md")).toContain("Existing lived instruction.");
+    expect(await fs.readFile("/substrate/AGENTS.md")).toContain("## Self-Betterment Credo");
+    expect(await fs.readFile("/substrate/CLAUDE.md")).toContain("Existing lived instruction.");
+  });
+
   it("throws when validation fails after init", async () => {
     // Create a filesystem that produces corrupt files by overriding writeFile
     // to write empty content for one specific file

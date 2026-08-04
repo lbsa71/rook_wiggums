@@ -134,7 +134,7 @@ describe("SubstrateSizeTracker", () => {
       const expectedFiles = [
         "PLAN.md", "PROGRESS.md", "MEMORY.md", "CONVERSATION.md", "OPERATING_CONTEXT.md",
         "HABITS.md", "SKILLS.md", "VALUES.md", "ID.md",
-        "SECURITY.md", "CHARTER.md", "SUPEREGO.md", "CLAUDE.md"
+        "SECURITY.md", "CHARTER.md", "SUPEREGO.md", "AGENTS.md"
       ];
       
       for (const file of expectedFiles) {

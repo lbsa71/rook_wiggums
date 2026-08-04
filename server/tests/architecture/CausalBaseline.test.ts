@@ -76,7 +76,7 @@ async function createRuntime(plan = "# Plan\n\n## Tasks\n- [ ] Baseline task") {
     ["PLAN.md", plan], ["MEMORY.md", "# Memory\n"], ["HABITS.md", "# Habits\n"],
     ["SKILLS.md", "# Skills\n"], ["VALUES.md", "# Values\n"], ["ID.md", "# Id\n"],
     ["SECURITY.md", "# Security\n"], ["CHARTER.md", "# Charter\n"],
-    ["SUPEREGO.md", "# Superego\n"], ["CLAUDE.md", "# Claude\n"],
+    ["SUPEREGO.md", "# Superego\n"], ["AGENTS.md", "# Agents\n"],
     ["PROGRESS.md", "# Progress\n"], ["CONVERSATION.md", "# Conversation\n"],
     ["OPERATING_CONTEXT.md", "# Operating Context\n"],
     ["ESCALATE_TO_STEFAN.md", "# Escalate\n"],

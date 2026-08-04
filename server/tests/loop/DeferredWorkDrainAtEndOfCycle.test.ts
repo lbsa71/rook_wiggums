@@ -74,7 +74,7 @@ async function setupIdleSubstrate(fs: InMemoryFileSystem) {
   await fs.writeFile("/substrate/SECURITY.md", "# Security\n\n");
   await fs.writeFile("/substrate/CHARTER.md", "# Charter\n\n");
   await fs.writeFile("/substrate/SUPEREGO.md", "# Superego\n\n");
-  await fs.writeFile("/substrate/CLAUDE.md", "# Claude\n\n");
+  await fs.writeFile("/substrate/AGENTS.md", "# Agents\n\n");
   await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n\n");
   await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
   await fs.writeFile("/substrate/OPERATING_CONTEXT.md", "# Operating Context\n\n");

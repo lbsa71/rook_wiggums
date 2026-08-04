@@ -259,6 +259,8 @@ The substrate is a directory of markdown files that serve as the system's shared
 
 Templates are copied only when a substrate file does not already exist. Existing autarks keep their lived substrate content; source-code updates that need to evolve existing substrate guidance must use additive substrate migrations rather than template rewrites.
 
+`AGENTS.md` is the provider-neutral runtime instruction file. During upgrade, a legacy `CLAUDE.md` is copied to `AGENTS.md` only when no canonical file exists; the legacy file is preserved but no longer loaded as a substrate type.
+
 | File | Write Mode | Description |
 |------|-----------|-------------|
 | `PLAN.md` | OVERWRITE | Current task tree with `## Current Goal` and `## Tasks` sections |
@@ -273,7 +275,7 @@ Templates are copied only when a substrate file does not already exist. Existing
 | `SECURITY.md` | OVERWRITE | Security policies, references `security/*.md` |
 | `CHARTER.md` | OVERWRITE | Operational doctrine and boundaries |
 | `SUPEREGO.md` | OVERWRITE | Evaluation criteria, references `superego/*.md` |
-| `CLAUDE.md` | OVERWRITE | Claude Code capabilities and self-improvement doctrine |
+| `AGENTS.md` | OVERWRITE | Provider-neutral operating instructions and self-betterment doctrine |
 | `PEERS.md` | OVERWRITE | Agora peer registry for agent-to-agent communication (optional) |
 | `ESCALATE_TO_STEFAN.md` | APPEND | Escalation log for issues requiring manual intervention (optional) |
 | `restart-context.md` | OVERWRITE | Restart handoff context and state restoration notes (optional) |
@@ -421,7 +423,7 @@ Each agent role has specific file access permissions enforced by `PermissionChec
 | SECURITY | — | — | — | — | ✅ | ✅ overwrite | — |
 | CHARTER | ✅ | — | — | — | ✅ | — | — |
 | SUPEREGO | — | — | — | — | ✅ | — | — |
-| CLAUDE | — | — | — | — | ✅ | — | — |
+| AGENTS | — | — | — | — | ✅ | — | — |
 | PEERS | ✅ | — | ✅ | ✅ overwrite | ✅ | — | — |
 | ESCALATE_TO_STEFAN | — | — | — | — | ✅ | ✅ append | — |
 | RESTART_CONTEXT | — | — | — | — | ✅ | — | — |
@@ -690,13 +692,13 @@ Transfer is additive (no `--delete`) — it adds/updates files without removing 
 │                  Substrate (Markdown)                  │
 │  PLAN │ PROGRESS │ CONVERSATION │ MEMORY │ HABITS     │
 │  SKILLS │ VALUES │ ID │ SECURITY │ CHARTER            │
-│  SUPEREGO │ CLAUDE                                    │
+│  SUPEREGO │ AGENTS                                    │
 │  memory/ │ skills/ │ habits/ │ id/ │ ...  (long-form) │
 └───────────────────────────────────────────────────────┘
 ```
 
 **Data flow:**
-1. LoopOrchestrator runs cycles: Ego reads PLAN → selects task → Subconscious executes via Claude CLI → writes results to PLAN, PROGRESS, SKILLS, MEMORY
+1. LoopOrchestrator runs cycles: Ego reads PLAN → selects task → Subconscious executes through the configured session launcher (Codex by default in Rook's deployment) → writes results to PLAN, PROGRESS, SKILLS, MEMORY
 2. IdleHandler activates when consecutive idle cycles exceed threshold → Id generates drives → Ego writes new PLAN
 3. Superego audits can be triggered manually or automatically → reads all files → writes governance report
 4. Frontend connects via WebSocket for live process_output events and REST API for substrate reads/writes

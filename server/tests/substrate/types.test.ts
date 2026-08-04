@@ -20,7 +20,7 @@ describe("SubstrateFileType", () => {
     expect(SubstrateFileType.SECURITY).toBeDefined();
     expect(SubstrateFileType.CHARTER).toBeDefined();
     expect(SubstrateFileType.SUPEREGO).toBeDefined();
-    expect(SubstrateFileType.CLAUDE).toBeDefined();
+    expect(SubstrateFileType.AGENTS).toBeDefined();
     expect(SubstrateFileType.PROGRESS).toBeDefined();
     expect(SubstrateFileType.CONVERSATION).toBeDefined();
     expect(SubstrateFileType.OPERATING_CONTEXT).toBeDefined();
