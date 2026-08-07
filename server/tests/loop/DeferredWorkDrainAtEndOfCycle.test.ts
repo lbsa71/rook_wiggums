@@ -286,4 +286,56 @@ describe("DeferredWorkQueue drain at end-of-cycle", () => {
     );
     await expect(deps.fs.exists(pendingPath)).resolves.toBe(false);
   });
+
+  it("does not replay an already receipted first effect after the second effect crashes", async () => {
+    const deps = createDeps();
+    await setupIdleSubstrate(deps.fs);
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ImmediateTimer(), new InMemoryEventSink(),
+      defaultLoopConfig({ maxConsecutiveIdleCycles: 100 }), new InMemoryLogger(),
+      undefined, undefined, undefined, undefined, undefined,
+      "/substrate", deps.fs,
+    );
+    const proposals = [
+      { target: "HABITS", content: "First effect" },
+      { target: "MEMORY", content: "Second effect" },
+    ];
+    jest.spyOn(deps.superego, "evaluateProposals").mockImplementation(async (pending) => (
+      pending.map(() => ({ approved: true, reason: "approved" }))
+    ));
+    const originalApply = deps.superego.applyProposals.bind(deps.superego);
+    const apply = jest.spyOn(deps.superego, "applyProposals")
+      .mockImplementationOnce(originalApply)
+      .mockRejectedValueOnce(new Error("crash after first apply"))
+      .mockImplementation(originalApply);
+    const process = (orchestrator as unknown as {
+      processGovernedProposals(proposals: typeof proposals): Promise<void>;
+    }).processGovernedProposals.bind(orchestrator);
+    const unaffectedBefore = await Promise.all([
+      deps.fs.readFile("/substrate/PLAN.md"),
+      deps.fs.readFile("/substrate/SKILLS.md"),
+      deps.fs.readFile("/substrate/SECURITY.md"),
+    ]);
+
+    await expect(process(proposals)).rejects.toThrow("crash after first apply");
+    expect((await deps.fs.readFile("/substrate/HABITS.md")).match(/First effect/g)).toHaveLength(1);
+    expect(await deps.fs.readFile("/data/pending_proposals.json")).toContain("completedProposalKeys");
+
+    await process([]);
+
+    expect((await deps.fs.readFile("/substrate/HABITS.md")).match(/First effect/g)).toHaveLength(1);
+    expect((await deps.fs.readFile("/substrate/MEMORY.md")).match(/Second effect/g)).toHaveLength(1);
+    expect(apply.mock.calls.map(([pending]) => pending.map((proposal) => proposal.target))).toEqual([
+      ["HABITS"],
+      ["MEMORY"],
+      ["MEMORY"],
+    ]);
+    await expect(deps.fs.exists("/data/pending_proposals.json")).resolves.toBe(false);
+    await expect(Promise.all([
+      deps.fs.readFile("/substrate/PLAN.md"),
+      deps.fs.readFile("/substrate/SKILLS.md"),
+      deps.fs.readFile("/substrate/SECURITY.md"),
+    ])).resolves.toEqual(unaffectedBefore);
+  });
 });

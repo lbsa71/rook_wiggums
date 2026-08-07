@@ -1633,7 +1633,14 @@ export class LoopOrchestrator implements IMessageInjector {
         proposals,
         this.createLogCallback("SUPEREGO"),
       );
-      await this.superego.applyProposals(proposals, evaluations);
+      if (this.pendingProposalStore) {
+        for (let index = 0; index < proposals.length; index++) {
+          await this.superego.applyProposals([proposals[index]], [evaluations[index]]);
+          await this.pendingProposalStore.markCompleted(proposals[index]);
+        }
+      } else {
+        await this.superego.applyProposals(proposals, evaluations);
+      }
       await this.pendingProposalStore?.clear();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

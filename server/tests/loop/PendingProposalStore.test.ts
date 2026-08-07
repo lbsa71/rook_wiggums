@@ -43,4 +43,39 @@ describe("PendingProposalStore", () => {
 
     await expect(store.load()).resolves.toEqual([]);
   });
+
+  it("persists per-proposal completion and returns only unfinished effects after reconstruction", async () => {
+    const fs = new InMemoryFileSystem();
+    const first = { target: "HABITS", content: "First effect" };
+    const second = { target: "MEMORY", content: "Second effect" };
+    const store = new PendingProposalStore(fs, STATE_PATH, () => undefined);
+
+    await store.mergeAndPersist([first, second]);
+    await store.markCompleted(first);
+
+    const reconstructed = new PendingProposalStore(fs, STATE_PATH, () => undefined);
+    await expect(reconstructed.load()).resolves.toEqual([second]);
+    await expect(reconstructed.mergeAndPersist([])).resolves.toEqual([second]);
+    const state = JSON.parse(await fs.readFile(STATE_PATH)) as {
+      version: number;
+      completedProposalKeys: string[];
+    };
+    expect(state.version).toBe(2);
+    expect(state.completedProposalKeys).toHaveLength(1);
+  });
+
+  it("loads version 1 batches as entirely unfinished", async () => {
+    const fs = new InMemoryFileSystem();
+    const proposal = { target: "PLAN", content: "- [ ] legacy" };
+    await fs.mkdir("/data", { recursive: true });
+    await fs.writeFile(STATE_PATH, JSON.stringify({ version: 1, proposals: [proposal] }));
+
+    const store = new PendingProposalStore(fs, STATE_PATH, () => undefined);
+    await expect(store.load()).resolves.toEqual([proposal]);
+    await expect(store.mergeAndPersist([])).resolves.toEqual([proposal]);
+    expect(JSON.parse(await fs.readFile(STATE_PATH))).toMatchObject({
+      version: 2,
+      completedProposalKeys: [],
+    });
+  });
 });

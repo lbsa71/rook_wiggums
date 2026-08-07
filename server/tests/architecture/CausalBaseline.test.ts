@@ -156,7 +156,10 @@ describe("pre-implementation current-runtime causal baseline", () => {
     const originalRename = runtime.fs.rename.bind(runtime.fs);
     jest.spyOn(runtime.fs, "rename").mockImplementation(async (from, to) => {
       await originalRename(from, to);
-      if (to === "/data/pending_proposals.json") trace.push("persist_batch");
+      if (to === "/data/pending_proposals.json") {
+        const state = JSON.parse(await runtime.fs.readFile(to)) as { completedProposalKeys?: string[] };
+        if ((state.completedProposalKeys ?? []).length === 0) trace.push("persist_batch");
+      }
     });
     const originalUnlink = runtime.fs.unlink.bind(runtime.fs);
     jest.spyOn(runtime.fs, "unlink").mockImplementation(async (path) => {
