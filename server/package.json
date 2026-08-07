@@ -1,6 +1,6 @@
 {
   "name": "@substrate/server",
-  "version": "0.4.67",
+  "version": "0.4.68",
   "private": true,
   "description": "Substrate backend execution loop",
   "type": "module",
@@ -16,8 +16,7 @@
     "transfer": "tsx src/cli.ts transfer",
     "logs": "tsx src/cli.ts logs",
     "lint": "eslint src/ tests/",
-    "preflight:ollama": "tsx src/tools/preflight/runOllamaPreflight.ts",
-    "measure:evidence-pressure": "tsx scripts/measure-evidence-registry-pressure.ts"
+    "preflight:ollama": "tsx src/tools/preflight/runOllamaPreflight.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

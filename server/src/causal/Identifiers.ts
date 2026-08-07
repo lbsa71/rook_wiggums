@@ -5,8 +5,6 @@ export type TransitionId = CausalRecordId & { readonly __transitionBrand: "Trans
 export type ActionId = string & { readonly __brand: "ActionId" };
 export type ReceiptId = string & { readonly __brand: "ReceiptId" };
 export type ActorRef = string & { readonly __brand: "ActorRef" };
-export type EvidenceRef = string & { readonly __brand: "EvidenceRef" };
-export type OpaqueCapabilityRef = string & { readonly __brand: "OpaqueCapabilityRef" };
 export type RecordVersion = number & { readonly __brand: "RecordVersion" };
 
 /** RecordVersion is causal state, not a persisted-schema version. */
