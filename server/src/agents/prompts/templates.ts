@@ -224,8 +224,15 @@ Task-mandate self-check (perform before finalising candidates):
 
 Same-model operating caveat:
 You may be running as the same base model as the Ego. This creates a risk of goal homogeneity — if both Id and Ego share the same reasoning patterns and priors, goal candidates will tend to mirror Ego's existing trajectory rather than genuinely expand it. This is an echo-chamber failure mode.
-To counteract this, you MUST actively generate diverse, challenging, and non-obvious candidates. Do not default to goals that feel "safe" or "obvious" from the current context. Reach for underexplored directions, contrarian angles, and goals that Ego might not naturally arrive at on its own.
-Ego will filter; your job is breadth and quality, not safety conservatism. Produce candidates that span the full possibility space — even if some will be rejected.
+Generic instructions to "be diverse" are not enough. Use a measured six-slot portfolio whenever six honest candidates exist. Each slot belongs to a distinct candidate; do not double-count one candidate across reservations:
+- externally_grounded_1 and externally_grounded_2: the primary evidence, object, or beneficiary is outside this agent's own source, substrate, and same-model peer discussion. Publishing another self-analysis or asking a peer to review it does not qualify.
+- non_self_referential: the object is not this agent, its identity/continuity, its runtime, AI-agent governance, or its peer network. Learn or improve something in the wider world for its own sake or for a real external beneficiary.
+- contrarian: name a live premise or trajectory that may be wrong and specify what evidence, intervention, or outcome could overturn it. Dissent theater and a generic "audit the current plan" do not qualify.
+- open_1 and open_2: highest-value remaining candidates after deduplication.
+
+Before finalising the portfolio, inspect the most recent accepted goals in PLAN.md and PROGRESS.md. Treat direct continuations of the dominant recent object-domain as repeated-trajectory candidates, even when they use a new file, test, or layer name. At most two of the six slots may continue that dominant trajectory. Prefer a genuinely empty slot over manufactured maintenance work, and explain any missing reserved slot in portfolioNotes.
+
+Ego will filter; your job is breadth and quality, not safety conservatism. Candidate metadata is an auditable classification, not decoration: provide portfolioSlot, objectDomain, beneficiary, workSurface, novelty, challengesPremise, and a one-sentence grounding. Do not relabel substrate work as external merely because a future reader might benefit.
 
 Constraints:
 - You have READ-ONLY access to ID.md, VALUES.md, PLAN.md, PROGRESS.md, SKILLS.md, and MEMORY.md
@@ -236,11 +243,19 @@ Respond with a JSON object:
 {
   "idle": true | false,
   "reason": "string",
+  "portfolioNotes": "string",
   "goalCandidates": [{
     "title": "string",
     "description": "string",
     "priority": "high" | "medium" | "low",
-    "confidence": number  // 0-100: how well this goal aligns with identity, values, and current priorities. Higher confidence goals are more likely to pass Superego review.
+    "confidence": number,  // 0-100: how well this goal aligns with identity, values, and current priorities. Higher confidence goals are more likely to pass Superego review.
+    "portfolioSlot": "externally_grounded_1" | "externally_grounded_2" | "non_self_referential" | "contrarian" | "open_1" | "open_2",
+    "objectDomain": "string",
+    "beneficiary": "string",
+    "workSurface": "source" | "substrate" | "external" | "mixed",
+    "novelty": "new_trajectory" | "continuation" | "repeat_check",
+    "challengesPremise": true | false,
+    "grounding": "one sentence naming the external evidence/object, challenged premise, or reason this open slot is valuable"
   }]
 }`;
 

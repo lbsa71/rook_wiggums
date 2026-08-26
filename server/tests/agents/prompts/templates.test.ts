@@ -169,9 +169,41 @@ describe("ROLE_PROMPTS", () => {
 
     it("instructs Id to generate diverse candidates as countermeasure", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/diverse/i);
       expect(prompt).toMatch(/breadth/i);
       expect(prompt).toMatch(/Ego will filter/i);
+    });
+
+    it("reserves distinct measured portfolio slots against same-model homogeneity", () => {
+      const prompt = ROLE_PROMPTS[AgentRole.ID];
+      expect(prompt).toMatch(/measured six-slot portfolio/i);
+      expect(prompt).toContain("externally_grounded_1");
+      expect(prompt).toContain("externally_grounded_2");
+      expect(prompt).toContain("non_self_referential");
+      expect(prompt).toContain("contrarian");
+      expect(prompt).toMatch(/distinct candidate/i);
+      expect(prompt).toMatch(/at most two of the six slots may continue/i);
+    });
+
+    it("distinguishes external grounding from self-publication and same-model review", () => {
+      const prompt = ROLE_PROMPTS[AgentRole.ID];
+      expect(prompt).toMatch(/outside this agent's own source, substrate, and same-model peer discussion/i);
+      expect(prompt).toMatch(/Publishing another self-analysis or asking a peer to review it does not qualify/i);
+      expect(prompt).toMatch(/Do not relabel substrate work as external/i);
+    });
+
+    it("requires auditable candidate classification metadata", () => {
+      const prompt = ROLE_PROMPTS[AgentRole.ID];
+      for (const field of [
+        "portfolioSlot",
+        "objectDomain",
+        "beneficiary",
+        "workSurface",
+        "novelty",
+        "challengesPremise",
+        "grounding",
+      ]) {
+        expect(prompt).toContain(field);
+      }
     });
 
     it("grounds goals in durable identity and operating context", () => {

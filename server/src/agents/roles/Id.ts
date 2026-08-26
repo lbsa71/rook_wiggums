@@ -18,6 +18,13 @@ export interface GoalCandidate {
   description: string;
   priority: "high" | "medium" | "low";
   confidence: number; // 0-100: how certain the ID is that this goal is appropriate
+  portfolioSlot?: "externally_grounded_1" | "externally_grounded_2" | "non_self_referential" | "contrarian" | "open_1" | "open_2";
+  objectDomain?: string;
+  beneficiary?: string;
+  workSurface?: "source" | "substrate" | "external" | "mixed";
+  novelty?: "new_trajectory" | "continuation" | "repeat_check";
+  challengesPremise?: boolean;
+  grounding?: string;
   correlationId?: string;
 }
 

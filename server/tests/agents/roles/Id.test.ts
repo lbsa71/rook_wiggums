@@ -102,6 +102,35 @@ describe("Id agent", () => {
       expect(drives[1].confidence).toBe(45);
     });
 
+    it("preserves drive-portfolio classification metadata", async () => {
+      launcher.enqueueSuccess(JSON.stringify({
+        goalCandidates: [{
+          title: "Measure river restoration",
+          description: "Compare public watershed outcomes",
+          priority: "medium",
+          confidence: 76,
+          portfolioSlot: "externally_grounded_1",
+          objectDomain: "watershed ecology",
+          beneficiary: "local conservation planners",
+          workSurface: "external",
+          novelty: "new_trajectory",
+          challengesPremise: false,
+          grounding: "Uses independently published river-health observations.",
+        }],
+      }));
+
+      const { candidates } = await id.generateDrives();
+      expect(candidates[0]).toMatchObject({
+        portfolioSlot: "externally_grounded_1",
+        objectDomain: "watershed ecology",
+        beneficiary: "local conservation planners",
+        workSurface: "external",
+        novelty: "new_trajectory",
+        challengesPremise: false,
+        grounding: "Uses independently published river-health observations.",
+      });
+    });
+
     it("passes substratePath as cwd to session launcher", async () => {
       launcher.enqueueSuccess(JSON.stringify({
         goalCandidates: [{ title: "Goal", description: "Do it", priority: "high" }],
