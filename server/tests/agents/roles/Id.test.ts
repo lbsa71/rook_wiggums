@@ -131,6 +131,22 @@ describe("Id agent", () => {
       });
     });
 
+    it("returns portfolio notes for audit completeness without altering candidates", async () => {
+      launcher.enqueueSuccess(JSON.stringify({
+        portfolioNotes: "All six reserved slots are present.",
+        goalCandidates: [{
+          title: "Measure river restoration",
+          description: "Compare public watershed outcomes",
+          priority: "medium",
+          confidence: 76,
+        }],
+      }));
+
+      const result = await id.generateDrives();
+      expect(result.portfolioNotes).toBe("All six reserved slots are present.");
+      expect(result.candidates).toHaveLength(1);
+    });
+
     it("passes substratePath as cwd to session launcher", async () => {
       launcher.enqueueSuccess(JSON.stringify({
         goalCandidates: [{ title: "Goal", description: "Do it", priority: "high" }],

@@ -6,6 +6,7 @@ import { IClock } from "../substrate/abstractions/IClock";
 import { ILogger } from "../logging";
 import { CanaryLogger, ConvMdStats } from "../evaluation/CanaryLogger";
 import { PlanParser } from "../agents/parsers/PlanParser";
+import { IIdPortfolioAuditTrail, IdPortfolioAuditInput } from "../evaluation/IdPortfolioAuditTrail";
 
 export interface IdleHandlerResult {
   action: "plan_created" | "no_goals" | "all_rejected" | "not_idle";
@@ -22,6 +23,7 @@ export class IdleHandler {
     private readonly canaryLogger?: CanaryLogger,
     private readonly launcherName?: string,
     private readonly convMdReader?: () => Promise<ConvMdStats | null>,
+    private readonly portfolioAuditTrail?: IIdPortfolioAuditTrail,
   ) {}
 
   async handleIdle(
@@ -38,7 +40,20 @@ export class IdleHandler {
 
     // Step 2: Generate goal candidates
     this.logger.debug(`IdleHandler: idle detected (${detection.reason}), generating drives`);
-    const { candidates, parseErrors } = await this.id.generateDrives(createLogCallback?.("ID"));
+    const { candidates, parseErrors, portfolioNotes } = await this.id.generateDrives(createLogCallback?.("ID"));
+    const timestamp = this.clock.now().toISOString();
+    const runId = candidates[0]?.correlationId
+      ? `portfolio-${candidates[0].correlationId}`
+      : `portfolio-${timestamp}-cycle-${cycleNumber}`;
+    const baseAudit = {
+      runId,
+      timestamp,
+      cycle: cycleNumber,
+      launcher: this.launcherName ?? "claude",
+      candidates,
+      parseErrors,
+      portfolioNotesPresent: typeof portfolioNotes === "string" && portfolioNotes.trim().length > 0,
+    };
 
     // Step 3: Log canary record regardless of outcome
     if (this.canaryLogger) {
@@ -62,6 +77,7 @@ export class IdleHandler {
     }
 
     if (candidates.length === 0) {
+      this.recordPortfolioAudit({ ...baseAudit, planOutcome: "no_candidates" });
       this.logger.debug("IdleHandler: no goal candidates generated — using deterministic recovery goals");
       const created = await this.writeDeterministicRecoveryPlan();
       return created ? { action: "plan_created", goalCount: 3 } : { action: "no_goals" };
@@ -79,11 +95,18 @@ export class IdleHandler {
     }));
 
     this.logger.debug(`IdleHandler: evaluating ${proposals.length} proposal(s) via Superego`);
-    const evaluations = await this.superego.evaluateProposals(proposals, createLogCallback?.("SUPEREGO"));
+    let evaluations;
+    try {
+      evaluations = await this.superego.evaluateProposals(proposals, createLogCallback?.("SUPEREGO"));
+    } catch (err) {
+      this.recordPortfolioAudit({ ...baseAudit, planOutcome: "evaluation_failed" });
+      throw err;
+    }
 
     // Step 6: Filter to approved goals
     const approved = candidates.filter((_, i) => evaluations[i]?.approved);
     if (approved.length === 0) {
+      this.recordPortfolioAudit({ ...baseAudit, evaluations, planOutcome: "all_rejected" });
       this.logger.debug("IdleHandler: all proposals rejected by Superego — using deterministic recovery goals");
       const created = await this.writeDeterministicRecoveryPlan();
       return created ? { action: "plan_created", goalCount: 3 } : { action: "all_rejected" };
@@ -104,10 +127,27 @@ export class IdleHandler {
       existingPlan,
       newTaskLines,
     );
-    await this.ego.writePlan(mergedPlan);
+    try {
+      await this.ego.writePlan(mergedPlan);
+    } catch (err) {
+      this.recordPortfolioAudit({ ...baseAudit, evaluations, planOutcome: "plan_write_failed" });
+      throw err;
+    }
 
     this.logger.debug("IdleHandler: plan written successfully");
+    this.recordPortfolioAudit({ ...baseAudit, evaluations, planOutcome: "plan_written" });
     return { action: "plan_created", goalCount: approved.length };
+  }
+
+  private recordPortfolioAudit(input: IdPortfolioAuditInput): void {
+    if (!this.portfolioAuditTrail) return;
+    // Observational only: execution never awaits telemetry. A slow or failed
+    // recorder therefore cannot change generation, governance, PLAN bytes, or routing.
+    void this.portfolioAuditTrail.record(input).catch((err) => {
+      this.logger.debug(
+        `IdleHandler: portfolio audit write failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   private async writeDeterministicRecoveryPlan(): Promise<boolean> {

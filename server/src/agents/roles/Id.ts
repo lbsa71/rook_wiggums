@@ -36,6 +36,7 @@ export interface IdleDetectionResult {
 export interface GenerateDrivesResult {
   candidates: GoalCandidate[];
   parseErrors: number;
+  portfolioNotes?: string;
 }
 
 export class Id {
@@ -128,7 +129,11 @@ export class Id {
           ...c,
           correlationId: generateCorrelationId(),
         }));
-        return { candidates, parseErrors: 0 };
+        return {
+          candidates,
+          parseErrors: 0,
+          portfolioNotes: typeof parsed.portfolioNotes === "string" ? parsed.portfolioNotes : undefined,
+        };
       } catch {
         return { candidates: [], parseErrors: 1 };
       }

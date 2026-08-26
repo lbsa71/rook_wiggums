@@ -12,6 +12,7 @@ import { OutputQualityMonitor } from "../evaluation/OutputQualityMonitor";
 import { MetricsStore } from "../evaluation/MetricsStore";
 import { GovernanceReportStore } from "../evaluation/GovernanceReportStore";
 import { CanaryLogger, readConvMdStats } from "../evaluation/CanaryLogger";
+import { IdPortfolioAuditTrail } from "../evaluation/IdPortfolioAuditTrail";
 import { TickPromptBuilder } from "../session/TickPromptBuilder";
 import { createSdkSessionFactory } from "../session/SdkSessionAdapter";
 import { BackupScheduler } from "./BackupScheduler";
@@ -187,8 +188,20 @@ export async function createLoopLayer(
 
   const convMdPath = path.join(config.substratePath, "CONVERSATION.md");
   const convMdReader = () => readConvMdStats(fs, convMdPath);
+  const portfolioAuditPath = path.resolve(config.substratePath, "..", "data", "id-portfolio-audit.json");
+  const portfolioAuditTrail = new IdPortfolioAuditTrail(fs, portfolioAuditPath);
 
-  const idleHandler = new IdleHandler(id, superego, ego, clock, logger, canaryLogger, idLauncherName, convMdReader);
+  const idleHandler = new IdleHandler(
+    id,
+    superego,
+    ego,
+    clock,
+    logger,
+    canaryLogger,
+    idLauncherName,
+    convMdReader,
+    portfolioAuditTrail,
+  );
 
   const orchestrator = new LoopOrchestrator(
     ego, subconscious, superego, id,

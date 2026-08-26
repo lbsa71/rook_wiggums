@@ -15,6 +15,7 @@ import { PermissionChecker } from "../../src/agents/permissions";
 import { PromptBuilder } from "../../src/agents/prompts/PromptBuilder";
 import { TaskClassifier } from "../../src/agents/TaskClassifier";
 import { CanaryLogger, ConvMdStats } from "../../src/evaluation/CanaryLogger";
+import { IIdPortfolioAuditTrail } from "../../src/evaluation/IdPortfolioAuditTrail";
 
 function createTestDeps() {
   const fs = new InMemoryFileSystem();
@@ -576,6 +577,88 @@ describe("IdleHandler", () => {
       const record = JSON.parse(content.trim());
       expect(record.cycle).toBe(13);
       expect(record.convMdLines).toBeUndefined();
+    });
+  });
+
+  describe("portfolio audit trail", () => {
+    it("does not await a never-settling recorder or change PLAN output", async () => {
+      const neverSettles = new Promise<void>(() => undefined);
+      const auditTrail: IIdPortfolioAuditTrail = { record: jest.fn(() => neverSettles) };
+      const auditedHandler = new IdleHandler(
+        deps.id,
+        deps.superego,
+        deps.ego,
+        deps.clock,
+        logger,
+        undefined,
+        "codex",
+        undefined,
+        auditTrail,
+      );
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        portfolioNotes: "Complete portfolio",
+        goalCandidates: [{
+          title: "Goal A",
+          description: "Safe",
+          priority: "high",
+          confidence: 90,
+          portfolioSlot: "open_1",
+          objectDomain: "testing",
+          beneficiary: "maintainers",
+          workSurface: "source",
+          novelty: "new_trajectory",
+          challengesPremise: false,
+          grounding: "Exercises the observational seam.",
+        }],
+      }));
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        proposalEvaluations: [{ approved: true, reason: "Good" }],
+      }));
+
+      await expect(auditedHandler.handleIdle(undefined, 203)).resolves.toEqual({
+        action: "plan_created",
+        goalCount: 1,
+      });
+      const plan = await deps.fs.readFile("/substrate/PLAN.md");
+      expect(plan).toContain("Goal A");
+      expect(deps.launcher.getLaunches()).toHaveLength(2);
+      expect(deps.launcher.getLaunches().map((launch) => launch.options?.usageContext?.operation)).toEqual([
+        "generateDrives",
+        "evaluateProposals",
+      ]);
+      expect(auditTrail.record).toHaveBeenCalledTimes(1);
+      expect(auditTrail.record).toHaveBeenCalledWith(expect.objectContaining({
+        cycle: 203,
+        launcher: "codex",
+        portfolioNotesPresent: true,
+        planOutcome: "plan_written",
+      }));
+    });
+
+    it("fails open when the recorder rejects", async () => {
+      const auditTrail: IIdPortfolioAuditTrail = {
+        record: jest.fn().mockRejectedValue(new Error("telemetry unavailable")),
+      };
+      const auditedHandler = new IdleHandler(
+        deps.id,
+        deps.superego,
+        deps.ego,
+        deps.clock,
+        logger,
+        undefined,
+        "codex",
+        undefined,
+        auditTrail,
+      );
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        goalCandidates: [{ title: "Goal A", description: "Safe", priority: "high", confidence: 90 }],
+      }));
+      deps.launcher.enqueueSuccess(JSON.stringify({
+        proposalEvaluations: [{ approved: true, reason: "Good" }],
+      }));
+
+      await expect(auditedHandler.handleIdle()).resolves.toMatchObject({ action: "plan_created" });
+      expect(await deps.fs.readFile("/substrate/PLAN.md")).toContain("Goal A");
     });
   });
 });
