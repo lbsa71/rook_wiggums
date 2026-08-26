@@ -80,11 +80,6 @@ export interface IdPortfolioAuditRecord {
   candidates: IdPortfolioCandidateAudit[];
 }
 
-interface IdPortfolioAuditState {
-  version: 1;
-  records: IdPortfolioAuditRecord[];
-}
-
 export interface IIdPortfolioAuditTrail {
   record(input: IdPortfolioAuditInput): Promise<void>;
 }
@@ -254,7 +249,7 @@ export class IdPortfolioAuditTrail implements IIdPortfolioAuditTrail {
   constructor(
     private readonly fs: IFileSystem,
     private readonly filePath: string,
-    private readonly maxRecords = 200,
+    private readonly maxRecords = 20,
   ) {}
 
   record(input: IdPortfolioAuditInput): Promise<void> {
@@ -266,17 +261,14 @@ export class IdPortfolioAuditTrail implements IIdPortfolioAuditTrail {
 
   private async persist(record: IdPortfolioAuditRecord): Promise<void> {
     await this.fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    let state: IdPortfolioAuditState = { version: 1, records: [] };
+    let recordCount = 0;
     if (await this.fs.exists(this.filePath)) {
-      const parsed = JSON.parse(await this.fs.readFile(this.filePath)) as IdPortfolioAuditState;
-      if (parsed.version !== 1 || !Array.isArray(parsed.records)) {
-        throw new Error("Id portfolio audit state has an unsupported shape");
-      }
-      state = parsed;
+      recordCount = (await this.fs.readFile(this.filePath))
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .length;
     }
-    state.records = [...state.records, record].slice(-this.maxRecords);
-    const tempPath = `${this.filePath}.tmp`;
-    await this.fs.writeFile(tempPath, JSON.stringify(state, null, 2));
-    await this.fs.rename(tempPath, this.filePath);
+    if (recordCount >= this.maxRecords) return;
+    await this.fs.appendFile(this.filePath, `${JSON.stringify(record)}\n`);
   }
 }

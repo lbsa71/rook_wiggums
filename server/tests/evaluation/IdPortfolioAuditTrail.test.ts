@@ -88,29 +88,30 @@ describe("IdPortfolioAuditTrail", () => {
     expect(record.candidates[4].schemaErrors).toContain("work_surface_invalid");
   });
 
-  it("persists a bounded atomic record set without titles, descriptions, prompts, or evaluation reasons", async () => {
+  it("persists a bounded append-only record set without titles, descriptions, prompts, or evaluation reasons", async () => {
     const fs = new InMemoryFileSystem();
-    const trail = new IdPortfolioAuditTrail(fs, "/data/id-portfolio-audit.json", 2);
+    const trail = new IdPortfolioAuditTrail(fs, "/data/id-portfolio-audit.jsonl", 2);
     await trail.record(input({ runId: "run-1" }));
     await trail.record(input({ runId: "run-2" }));
     await trail.record(input({ runId: "run-3" }));
 
-    const raw = await fs.readFile("/data/id-portfolio-audit.json");
-    const stored = JSON.parse(raw) as { records: Array<{ runId: string }> };
-    expect(stored.records.map((record) => record.runId)).toEqual(["run-2", "run-3"]);
+    const raw = await fs.readFile("/data/id-portfolio-audit.jsonl");
+    const stored = raw.trim().split("\n").map((line) => JSON.parse(line) as { runId: string });
+    expect(stored.map((record) => record.runId)).toEqual(["run-1", "run-2"]);
     expect(raw).not.toContain("Private candidate");
     expect(raw).not.toContain("Private description");
     expect(raw).not.toContain("not persisted");
-    expect(await fs.exists("/data/id-portfolio-audit.json.tmp")).toBe(false);
   });
 
-  it("does not overwrite corrupt prior evidence", async () => {
+  it("preserves corrupt prior evidence so the experiment fails closed", async () => {
     const fs = new InMemoryFileSystem();
     await fs.mkdir("/data", { recursive: true });
-    await fs.writeFile("/data/id-portfolio-audit.json", "corrupt");
-    const trail = new IdPortfolioAuditTrail(fs, "/data/id-portfolio-audit.json");
+    await fs.writeFile("/data/id-portfolio-audit.jsonl", "corrupt\n");
+    const trail = new IdPortfolioAuditTrail(fs, "/data/id-portfolio-audit.jsonl", 2);
 
-    await expect(trail.record(input())).rejects.toThrow();
-    expect(await fs.readFile("/data/id-portfolio-audit.json")).toBe("corrupt");
+    await trail.record(input());
+    const raw = await fs.readFile("/data/id-portfolio-audit.jsonl");
+    expect(raw.startsWith("corrupt\n")).toBe(true);
+    expect(raw.trim().split("\n")).toHaveLength(2);
   });
 });

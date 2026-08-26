@@ -188,7 +188,7 @@ export async function createLoopLayer(
 
   const convMdPath = path.join(config.substratePath, "CONVERSATION.md");
   const convMdReader = () => readConvMdStats(fs, convMdPath);
-  const portfolioAuditPath = path.resolve(config.substratePath, "..", "data", "id-portfolio-audit.json");
+  const portfolioAuditPath = path.resolve(config.substratePath, "..", "data", "id-portfolio-audit.jsonl");
   const portfolioAuditTrail = new IdPortfolioAuditTrail(fs, portfolioAuditPath);
 
   const idleHandler = new IdleHandler(
