@@ -7,6 +7,7 @@ import type {
 import type { IClock } from "../substrate/abstractions/IClock";
 import type { IMetricsService } from "./IMetricsService";
 import { BudgetGuard } from "../budget/BudgetGuard";
+import type { ILogger } from "../logging";
 
 export class MeteredSessionLauncher implements ISessionLauncher {
   constructor(
@@ -16,6 +17,7 @@ export class MeteredSessionLauncher implements ISessionLauncher {
     private readonly budgetGuard?: BudgetGuard,
     private readonly defaultProvider?: ClaudeSessionResult["usage"]["provider"],
     private readonly defaultModel?: string,
+    private readonly logger?: ILogger,
   ) {}
 
   async launch(request: ClaudeSessionRequest, options?: LaunchOptions): Promise<ClaudeSessionResult> {
@@ -31,39 +33,50 @@ export class MeteredSessionLauncher implements ISessionLauncher {
     });
     const result = await this.inner.launch(request, options);
     const completed = new Date(started.getTime() + result.durationMs);
-    await this.budgetGuard?.recordPostCall({
-      provider: result.usage?.provider ?? this.defaultProvider ?? "deterministic",
-      model: result.usage?.model ?? options?.model ?? this.defaultModel,
-      role,
-      operation,
-      startedAt: started.toISOString(),
-      completedAt: completed.toISOString(),
-      success: result.success,
-      durationMs: result.durationMs,
-      usage: result.usage,
-    });
-    if (result.usage) {
-      await this.metrics.recordLlmSession({
-        startedAt: started.toISOString(),
-        completedAt: completed.toISOString(),
+    try {
+      await this.budgetGuard?.recordPostCall({
+        provider: result.usage?.provider ?? this.defaultProvider ?? "deterministic",
+        model: result.usage?.model ?? options?.model ?? this.defaultModel,
         role,
         operation,
-        provider: result.usage.provider,
-        model: result.usage.model,
-        promptTokens: result.usage.promptTokens,
-        cachedInputTokens: result.usage.cachedInputTokens,
-        nonCachedInputTokens: result.usage.nonCachedInputTokens,
-        completionTokens: result.usage.completionTokens,
-        reasoningOutputTokens: result.usage.reasoningOutputTokens,
-        totalTokens: result.usage.totalTokens,
-        costUsd: result.usage.costUsd,
-        costKnown: result.usage.costKnown,
-        costEstimate: result.usage.costEstimate,
-        billingSource: result.usage.billingSource,
-        telemetrySource: result.usage.telemetrySource,
+        startedAt: started.toISOString(),
+        completedAt: completed.toISOString(),
         success: result.success,
         durationMs: result.durationMs,
+        usage: result.usage,
       });
+    } catch (err) {
+      // The inference has already completed and may have performed external
+      // actions. Propagating an observability failure would make callers treat
+      // the task as failed and potentially replay those actions.
+      this.logger?.warn(`metered-launcher: failed to record post-call budget usage — ${errorMessage(err)}`);
+    }
+    if (result.usage) {
+      try {
+        await this.metrics.recordLlmSession({
+          startedAt: started.toISOString(),
+          completedAt: completed.toISOString(),
+          role,
+          operation,
+          provider: result.usage.provider,
+          model: result.usage.model,
+          promptTokens: result.usage.promptTokens,
+          cachedInputTokens: result.usage.cachedInputTokens,
+          nonCachedInputTokens: result.usage.nonCachedInputTokens,
+          completionTokens: result.usage.completionTokens,
+          reasoningOutputTokens: result.usage.reasoningOutputTokens,
+          totalTokens: result.usage.totalTokens,
+          costUsd: result.usage.costUsd,
+          costKnown: result.usage.costKnown,
+          costEstimate: result.usage.costEstimate,
+          billingSource: result.usage.billingSource,
+          telemetrySource: result.usage.telemetrySource,
+          success: result.success,
+          durationMs: result.durationMs,
+        });
+      } catch (err) {
+        this.logger?.warn(`metered-launcher: failed to record LLM metrics — ${errorMessage(err)}`);
+      }
     }
     return result;
   }
@@ -71,4 +84,8 @@ export class MeteredSessionLauncher implements ISessionLauncher {
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

@@ -5,6 +5,7 @@ import type { IMetricsService, LlmSessionMetric, MetricsQuery, UsageSummary } fr
 import { BudgetGuard, SpendLedger } from "../../src/budget/BudgetGuard";
 import { InMemoryFileSystem } from "../../src/substrate/abstractions/InMemoryFileSystem";
 import { SurvivalModelPolicyLauncher } from "../../src/agents/SurvivalModelPolicyLauncher";
+import { InMemoryLogger } from "../../src/logging";
 
 class RecordingMetricsService implements IMetricsService {
   readonly recorded: LlmSessionMetric[] = [];
@@ -32,6 +33,12 @@ class RecordingMetricsService implements IMetricsService {
       knownCostUsd: 0,
       unknownCostSessions: 0,
     };
+  }
+}
+
+class ThrowingMetricsService extends RecordingMetricsService {
+  override async recordLlmSession(_metric: LlmSessionMetric): Promise<void> {
+    throw new Error("metrics database unavailable");
   }
 }
 
@@ -82,6 +89,67 @@ describe("MeteredSessionLauncher", () => {
         durationMs: 250,
       }),
     ]);
+  });
+
+  it("does not turn a completed inference into a failed task when metrics persistence fails", async () => {
+    const inner = new InMemorySessionLauncher();
+    const metrics = new ThrowingMetricsService();
+    const logger = new InMemoryLogger();
+    const clock = new FixedClock(new Date("2026-05-01T12:00:00.000Z"));
+    const launcher = new MeteredSessionLauncher(
+      inner,
+      metrics,
+      clock,
+      undefined,
+      "codex",
+      "gpt-5.4-mini",
+      logger,
+    );
+    inner.enqueue({
+      rawOutput: "completed action",
+      exitCode: 0,
+      durationMs: 250,
+      success: true,
+      usage: {
+        provider: "codex",
+        model: "gpt-5.4-mini",
+        costKnown: false,
+        costEstimate: true,
+        billingSource: "static_estimate",
+        telemetrySource: "codex-exec-json",
+      },
+    });
+
+    await expect(launcher.launch({ systemPrompt: "", message: "hello" }))
+      .resolves.toEqual(expect.objectContaining({ success: true, rawOutput: "completed action" }));
+    expect(logger.getWarnEntries()).toContainEqual(expect.stringContaining("failed to record LLM metrics"));
+  });
+
+  it("does not replay a completed inference when post-call budget persistence fails", async () => {
+    const inner = new InMemorySessionLauncher();
+    const metrics = new RecordingMetricsService();
+    const logger = new InMemoryLogger();
+    const clock = new FixedClock(new Date("2026-05-01T12:00:00.000Z"));
+    const budgetGuard = {
+      async preflight() {},
+      async recordPostCall() {
+        throw new Error("spend ledger unavailable");
+      },
+    } as unknown as BudgetGuard;
+    const launcher = new MeteredSessionLauncher(
+      inner,
+      metrics,
+      clock,
+      budgetGuard,
+      "codex",
+      "gpt-5.4-mini",
+      logger,
+    );
+    inner.enqueueSuccess("completed action");
+
+    await expect(launcher.launch({ systemPrompt: "", message: "hello" }))
+      .resolves.toEqual(expect.objectContaining({ success: true, rawOutput: "completed action" }));
+    expect(logger.getWarnEntries()).toContainEqual(expect.stringContaining("failed to record post-call budget usage"));
   });
 
   it("does not record sessions when the provider reports no usage", async () => {

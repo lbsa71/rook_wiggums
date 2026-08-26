@@ -71,6 +71,17 @@ export class ProviderFallbackLauncher implements ISessionLauncher {
         this.livenessTracker?.recordSuccess();
         return fallback;
       }
+
+      // Every failed hop needs the same replay-safety check as the primary.
+      // A degraded provider may have performed a tool side effect before its
+      // stream failed; continuing to another route would execute the task a
+      // second time.
+      const fallbackClassification = classifyProviderFailure(fallback);
+      if (!fallbackClassification.degradedRouteAllowed) {
+        this.logger?.warn(`provider-fallback: stopping after ${route.provider}/${route.model ?? "default"} ${fallbackClassification.kind} failure: ${fallbackClassification.reason}`);
+        this.livenessTracker?.recordFailure(fallbackClassification.reason);
+        return fallback;
+      }
     }
 
     const errorReason = primary.error ?? "primary provider failed";
@@ -103,6 +114,12 @@ export function classifyProviderFailure(result: ClaudeSessionResult | Error | st
   const text = providerFailureText(result);
   const lower = text.toLowerCase();
 
+  // Tool evidence takes precedence over provider/auth/model keywords because
+  // the tool may already have produced an external side effect. A compound
+  // error such as "MCP tool failed: permission denied" must not be replayed.
+  if (/(tool_use|tool_result|mcp|tool call|tool failed|no such tool|tool error)/.test(lower)) {
+    return classification("tool", false, false, text);
+  }
   if (/(unauthorized|forbidden|invalid api key|api key not configured|access token not configured|authentication|permission denied|401|403)/.test(lower)) {
     return classification("auth", false, true, text);
   }
@@ -111,9 +128,6 @@ export function classifyProviderFailure(result: ClaudeSessionResult | Error | st
   }
   if (/(model .*not found|model not found|invalid model|unsupported model|unknown model|404)/.test(lower)) {
     return classification("model", false, true, text);
-  }
-  if (/(tool_use|tool_result|mcp|tool call|tool failed|no such tool|tool error)/.test(lower)) {
-    return classification("tool", false, true, text);
   }
   if (/(fetch failed|econnrefused|network|timeout|timed out|service unavailable|bad gateway|gateway timeout|503|502|504|provider|cannot reach)/.test(lower)) {
     return classification("provider", true, true, text);
@@ -166,5 +180,8 @@ function classification(
 function providerFailureText(result: ClaudeSessionResult | Error | string): string {
   if (typeof result === "string") return result;
   if (result instanceof Error) return result.message;
-  return result.error || result.rawOutput || `exitCode=${result.exitCode}`;
+  // Keep both channels: launchers often put the terminal failure in `error`
+  // while `rawOutput` retains earlier tool activity. Dropping rawOutput can
+  // erase the only evidence that replaying the request is unsafe.
+  return [result.error, result.rawOutput].filter(Boolean).join("\n") || `exitCode=${result.exitCode}`;
 }

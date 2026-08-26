@@ -167,7 +167,7 @@ export async function createAgentLayer(
     provider: ProviderName,
     defaultModel?: string,
   ): ISessionLauncher => new SurvivalModelPolicyLauncher(
-    new MeteredSessionLauncher(inner, metricsService, clock, budgetGuard, provider, defaultModel),
+    new MeteredSessionLauncher(inner, metricsService, clock, budgetGuard, provider, defaultModel, logger),
     {
       provider,
       defaultModel,
