@@ -99,6 +99,17 @@ export interface LoopMetrics {
   consecutiveIdleCycles: number;
   superegoAudits: number;
   consecutiveAuditFailures: number;
+  /** Deterministic file-fingerprint comparisons performed for persisted event gates. */
+  eventGateChecks: number;
+  eventGatesArmed: number;
+  eventGatesReleased: number;
+  eventGateSuppressedDispatches: number;
+  /** One Subconscious inference is avoided for each suppressed dispatch. */
+  eventGateInferenceCallsAvoided: number;
+  /** Estimate based on the measured latency of the dispatch that armed each gate. */
+  eventGateEstimatedLatencyMsAvoided: number;
+  /** Estimate based on the establishing dispatch's one durable status payload. */
+  eventGateEstimatedStatusBytesAvoided: number;
 }
 
 export function createInitialMetrics(): LoopMetrics {
@@ -111,6 +122,13 @@ export function createInitialMetrics(): LoopMetrics {
     consecutiveIdleCycles: 0,
     superegoAudits: 0,
     consecutiveAuditFailures: 0,
+    eventGateChecks: 0,
+    eventGatesArmed: 0,
+    eventGatesReleased: 0,
+    eventGateSuppressedDispatches: 0,
+    eventGateInferenceCallsAvoided: 0,
+    eventGateEstimatedLatencyMsAvoided: 0,
+    eventGateEstimatedStatusBytesAvoided: 0,
   };
 }
 

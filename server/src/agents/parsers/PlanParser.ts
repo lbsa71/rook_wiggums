@@ -41,8 +41,14 @@ export class PlanParser {
     return this.buildTree(taskLines, null, 0, taskLines.length, -1);
   }
 
-  static async findNextActionable(tasks: PlanTask[], evaluator?: TriggerEvaluator, now?: Date): Promise<PlanTask | null> {
+  static async findNextActionable(
+    tasks: PlanTask[],
+    evaluator?: TriggerEvaluator,
+    now?: Date,
+    excludedTaskIds: ReadonlySet<string> = new Set(),
+  ): Promise<PlanTask | null> {
     for (const task of tasks) {
+      if (excludedTaskIds.has(task.id)) continue;
       if (task.status === TaskStatus.COMPLETE) continue;
       if (task.status === TaskStatus.BLOCKED) continue;
       if (now && task.blockedUntil && now < task.blockedUntil) continue;
@@ -52,7 +58,7 @@ export class PlanParser {
         if (!triggered) continue;
       }
       if (task.children.length > 0) {
-        const child = await this.findNextActionable(task.children, evaluator, now);
+        const child = await this.findNextActionable(task.children, evaluator, now, excludedTaskIds);
         if (child) return child;
       } else {
         return task;

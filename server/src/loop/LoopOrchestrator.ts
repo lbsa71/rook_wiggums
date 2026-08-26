@@ -49,6 +49,7 @@ import type { INSHook } from "./ins/INSHook";
 import type { ISleepWakeTimer } from "./SleepWakeTimer";
 import type { IShellIndependenceService } from "../shell/ShellIndependenceService";
 import { PendingProposalStore } from "./PendingProposalStore";
+import { EventGateStore } from "./EventGateStore";
 
 /** Maximum rate-limit backoff duration (2 hours). Any parsed reset time beyond this
  *  is capped to prevent multi-day sleeps from poisoning the restart loop. */
@@ -123,6 +124,7 @@ export class LoopOrchestrator implements IMessageInjector {
   // Deferred work queue — overlaps post-execution work with next cycle dispatch
   private readonly deferredWork: DeferredWorkQueue;
   private readonly pendingProposalStore: PendingProposalStore | null;
+  private readonly eventGateStore: EventGateStore | null;
 
   // Endorsement interceptor — compliance circuit-breaker
   private endorsementInterceptor: EndorsementInterceptor | null = null;
@@ -188,6 +190,7 @@ export class LoopOrchestrator implements IMessageInjector {
     substratePath?: string,
     private readonly fileSystem?: IFileSystem,
     private readonly iterationPlanner?: IterationPlanner,
+    eventGateRoots?: string[],
   ) {
     this.substratePath = substratePath ?? "";
     this.conversationIdleTimeoutMs = conversationIdleTimeoutMs ?? 20_000; // Default 20s
@@ -201,6 +204,14 @@ export class LoopOrchestrator implements IMessageInjector {
       ? new PendingProposalStore(
           this.fileSystem,
           path.resolve(this.substratePath, "..", "data", "pending_proposals.json"),
+          (message) => this.logger.warn(message),
+        )
+      : null;
+    this.eventGateStore = this.fileSystem && this.substratePath
+      ? new EventGateStore(
+          this.fileSystem,
+          path.resolve(this.substratePath, "..", "data", "event_gates.json"),
+          eventGateRoots ?? [this.substratePath, path.resolve(this.substratePath, "..")],
           (message) => this.logger.warn(message),
         )
       : null;
@@ -544,7 +555,42 @@ export class LoopOrchestrator implements IMessageInjector {
     const r2Halt = this.checkR2Ceiling();
     if (r2Halt) return r2Halt;
 
-    const { dispatch: rawDispatch, blockedTaskIds, timeBlockedTasks, taskCount, planComplete, snapshot } = await this.ego.dispatchNext();
+    const eventGatedTaskIds = new Set<string>();
+    let dispatchSelection = await this.ego.dispatchNext(eventGatedTaskIds);
+    while (dispatchSelection.dispatch && this.eventGateStore) {
+      this.metrics.eventGateChecks++;
+      const candidate = dispatchSelection.dispatch;
+      const eligibility = await this.eventGateStore.evaluate(candidate.taskId, candidate.description);
+      if (eligibility.eligible) {
+        if (eligibility.reason === "dependency_changed") {
+          this.metrics.eventGatesReleased++;
+          this.logger.debug(`[EVENT_GATE_RELEASED] task "${candidate.taskId}" — dependency fingerprint changed`);
+        } else if (eligibility.reason === "task_changed") {
+          this.logger.warn(`[EVENT_GATE_RELEASED] task "${candidate.taskId}" — task description changed; stale gate cleared`);
+        } else if (eligibility.reason === "status_unconfirmed") {
+          this.logger.warn(`[EVENT_GATE_RELEASED] task "${candidate.taskId}" — prior status write was not confirmed; failing open`);
+        }
+        break;
+      }
+
+      eventGatedTaskIds.add(candidate.taskId);
+      this.metrics.eventGateSuppressedDispatches++;
+      this.metrics.eventGateInferenceCallsAvoided++;
+      this.metrics.eventGateEstimatedLatencyMsAvoided += eligibility.record.baselineDispatchLatencyMs;
+      this.metrics.eventGateEstimatedStatusBytesAvoided += eligibility.record.baselineStatusBytes;
+      this.logger.debug(`[EVENT_GATE_UNCHANGED] task "${candidate.taskId}" skipped — dependency fingerprint unchanged`);
+      dispatchSelection = await this.ego.dispatchNext(eventGatedTaskIds);
+    }
+
+    const {
+      dispatch: rawDispatch,
+      blockedTaskIds: parserBlockedTaskIds,
+      timeBlockedTasks,
+      taskCount,
+      planComplete,
+      snapshot,
+    } = dispatchSelection;
+    const blockedTaskIds = [...new Set([...parserBlockedTaskIds, ...eventGatedTaskIds])];
     const nextTimeBlockedUntil = this.nextTimeBlockedUntil(timeBlockedTasks);
 
     for (const { taskId, blockedUntil } of timeBlockedTasks) {
@@ -673,6 +719,28 @@ export class LoopOrchestrator implements IMessageInjector {
       const success = taskResult.result === "success";
       const inferredBlockedUntil = success ? null : this.inferTaskBlockedUntil(dispatch.description, taskResult.summary);
       const blocked = taskResult.result === "blocked" || inferredBlockedUntil !== null;
+      const eventGateStatus = taskResult.operatingContextEntry?.trim() || taskResult.summary.trim();
+      const eventGateStatusEntry = `[EVENT-GATED task=${dispatch.taskId}] ${eventGateStatus}`;
+      let eventGatePrepared = false;
+      let eventGateArmed = false;
+
+      if (blocked && taskResult.eventGate && !taskResult.retryAfter && !inferredBlockedUntil && this.eventGateStore) {
+        try {
+          await this.eventGateStore.arm(
+            dispatch.taskId,
+            dispatch.description,
+            taskResult.eventGate,
+            this.clock.now().toISOString(),
+            apiCallDurationMs,
+            Buffer.byteLength(eventGateStatusEntry, "utf8") + 1,
+          );
+          eventGatePrepared = true;
+        } catch (error) {
+          this.logger.warn(`[EVENT_GATE_REJECTED] task "${dispatch.taskId}" — ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } else if (taskResult.eventGate && (taskResult.retryAfter || inferredBlockedUntil)) {
+        this.logger.warn(`[EVENT_GATE_REJECTED] task "${dispatch.taskId}" — time-based retry and event gate cannot be combined`);
+      }
 
       // Store for INS consecutive-partial detection
       this.lastTaskResult = {
@@ -696,7 +764,16 @@ export class LoopOrchestrator implements IMessageInjector {
         this.logger.debug(`cycle ${this.cycleNumber}: task "${dispatch.taskId}" ${success ? "succeeded" : "failed"} — ${taskResult.summary}`);
       }
 
-      if (taskResult.operatingContextEntry) {
+      if (eventGatePrepared && this.eventGateStore) {
+        // Exactly one durable human-readable status entry is written when the
+        // gate is established. The confirmation bit makes a crash before this
+        // write fail open on the next cycle. Unchanged checks write none.
+        await this.subconscious.logOperatingContext(eventGateStatusEntry);
+        await this.eventGateStore.confirmStatusWritten(dispatch.taskId);
+        eventGateArmed = true;
+        this.metrics.eventGatesArmed++;
+        this.logger.debug(`[EVENT_GATE_ARMED] task "${dispatch.taskId}" — future dispatch waits for dependency fingerprint change`);
+      } else if (taskResult.operatingContextEntry) {
         await this.subconscious.logOperatingContext(taskResult.operatingContextEntry);
       }
 
@@ -711,7 +788,7 @@ export class LoopOrchestrator implements IMessageInjector {
           await this.subconscious.logProgress(taskResult.progressEntry);
         }
 
-        if (taskResult.summary) {
+        if (taskResult.summary && !eventGateArmed) {
           await this.subconscious.logConversation(taskResult.summary);
         }
       } else if (blocked) {
@@ -721,7 +798,7 @@ export class LoopOrchestrator implements IMessageInjector {
           await this.subconscious.markTaskBlockedUntil(dispatch.taskId, inferredBlockedUntil);
         }
 
-        if (taskResult.summary) {
+        if (taskResult.summary && !eventGateArmed) {
           await this.subconscious.logConversation(taskResult.summary);
         }
       } else {
@@ -1769,6 +1846,9 @@ export class LoopOrchestrator implements IMessageInjector {
     const blockedReasons = taskResults
       .map((entry) => entry.blockedReason)
       .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+    const eventGates = taskResults
+      .map((entry) => entry.eventGate)
+      .filter((entry): entry is NonNullable<TaskResult["eventGate"]> => entry !== undefined);
 
     const droppedProposalNote = [
       skillUpdates.length > 1 ? "multiple SKILLS replacements were omitted from deterministic aggregation" : "",
@@ -1791,6 +1871,7 @@ export class LoopOrchestrator implements IMessageInjector {
       blockedReason: blockedReasons.length > 0 ? blockedReasons.join("; ") : undefined,
       insAcknowledgments: taskResults.flatMap((entry) => entry.insAcknowledgments ?? []),
       retryAfter: this.earliestRetryAfter(taskResults),
+      eventGate: result === "blocked" && eventGates.length === 1 ? eventGates[0] : undefined,
     };
   }
 

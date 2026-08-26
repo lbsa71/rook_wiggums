@@ -127,7 +127,91 @@ function partialResult() {
   });
 }
 
+function eventGatedResult(dependencyPath: string) {
+  return JSON.stringify({
+    result: "blocked",
+    summary: "Waiting for the deployment artifact to change",
+    progressEntry: "",
+    skillUpdates: null,
+    memoryUpdates: null,
+    operatingContextEntry: "Deployment check is event-gated on the version artifact.",
+    proposals: [],
+    agoraReplies: [],
+    blockedReason: "Waiting for a natural rebuild",
+    eventGate: {
+      releaseCondition: {
+        type: "dependency_fingerprint_changed",
+        dependencies: [{ path: dependencyPath, observation: "content" }],
+      },
+    },
+  });
+}
+
 describe("LoopOrchestrator: blocked task scheduling", () => {
+  it("persists an event gate, skips unchanged redispatch, and releases on state change", async () => {
+    const deps = createDeps();
+    await setupActiveTaskSubstrate(deps.fs);
+    const initialPlan = "# Plan\n\n## Current Goal\nTest\n\n## Tasks\n- [ ] Verify natural rebuild\n- [ ] Independent work";
+    await deps.fs.writeFile("/substrate/PLAN.md", initialPlan);
+    await deps.fs.mkdir("/source/dist", { recursive: true });
+    await deps.fs.writeFile("/source/dist/version.json", '{"gitHash":"old"}');
+
+    const logger = new InMemoryLogger();
+    const eventSink = new InMemoryEventSink();
+    const orchestrator = new LoopOrchestrator(
+      deps.ego, deps.subconscious, deps.superego, deps.id,
+      deps.appendWriter, deps.clock, new ClockAdvancingTimer(deps.clock), eventSink,
+      defaultLoopConfig(), logger,
+      undefined, undefined, undefined, undefined, undefined,
+      "/substrate", deps.fs, undefined, ["/substrate", "/source"],
+    );
+
+    deps.launcher.enqueueSuccess(eventGatedResult("/source/dist/version.json"));
+    deps.launcher.enqueueSuccess(successResult());
+
+    const first = await orchestrator.runOneCycle();
+    expect(first).toMatchObject({ action: "dispatch", taskId: "task-1", blocked: true });
+    await expect(deps.fs.exists("/data/event_gates.json")).resolves.toBe(true);
+    // FixedClock makes the canned launch instantaneous; inject a measured
+    // baseline to exercise latency-savings aggregation on suppressed checks.
+    const gateState = JSON.parse(await deps.fs.readFile("/data/event_gates.json"));
+    gateState.gates[0].baselineDispatchLatencyMs = 2_500;
+    await deps.fs.writeFile("/data/event_gates.json", JSON.stringify(gateState));
+
+    // The next cycle deterministically skips task-1 and still dispatches task-2.
+    const second = await orchestrator.runOneCycle();
+    expect(second).toMatchObject({ action: "dispatch", taskId: "task-2", success: true });
+
+    // With no other actionable work, another unchanged check is idle and makes no LLM call.
+    const launchesBeforeIdle = deps.launcher.getLaunches().length;
+    const third = await orchestrator.runOneCycle();
+    expect(third).toMatchObject({ action: "idle", idleReason: "all_blocked" });
+    expect(deps.launcher.getLaunches()).toHaveLength(launchesBeforeIdle);
+
+    const metrics = orchestrator.getMetrics();
+    expect(metrics.eventGatesArmed).toBe(1);
+    expect(metrics.eventGateSuppressedDispatches).toBe(2);
+    expect(metrics.eventGateInferenceCallsAvoided).toBe(2);
+    expect(metrics.eventGateEstimatedLatencyMsAvoided).toBe(5_000);
+    expect(metrics.eventGateEstimatedStatusBytesAvoided).toBeGreaterThan(0);
+
+    const operatingContext = await deps.fs.readFile("/substrate/OPERATING_CONTEXT.md");
+    expect(operatingContext.match(/\[EVENT-GATED task=task-1\]/g)).toHaveLength(1);
+    expect(await deps.fs.readFile("/substrate/CONVERSATION.md"))
+      .not.toContain("Waiting for the deployment artifact to change");
+    const planBeforeRelease = await deps.fs.readFile("/substrate/PLAN.md");
+    expect(planBeforeRelease).toContain("- [ ] Verify natural rebuild");
+    expect(Buffer.byteLength(planBeforeRelease)).toBe(Buffer.byteLength(initialPlan));
+
+    // A changed dependency releases the gate and allows exactly one new inference.
+    await deps.fs.writeFile("/source/dist/version.json", '{"gitHash":"new"}');
+    deps.launcher.enqueueSuccess(successResult());
+    const fourth = await orchestrator.runOneCycle();
+    expect(fourth).toMatchObject({ action: "dispatch", taskId: "task-1", success: true });
+    expect(orchestrator.getMetrics().eventGatesReleased).toBe(1);
+    await expect(deps.fs.exists("/data/event_gates.json")).resolves.toBe(false);
+  });
+
   it("[BLOCKED] log is emitted when a task returns result=blocked", async () => {
     const deps = createDeps();
     await setupActiveTaskSubstrate(deps.fs);

@@ -589,5 +589,50 @@ describe("Subconscious agent", () => {
       expect(errors).toContain("agoraReplies[0].text: must be a non-empty string");
       expect(errors).toContain("agoraReplies[0].inReplyTo: must be a string when present");
     });
+
+    it("accepts a valid deterministic event gate", () => {
+      const errors = validateTaskResult({
+        result: "blocked",
+        summary: "Waiting for a natural rebuild",
+        progressEntry: "",
+        skillUpdates: null,
+        memoryUpdates: null,
+        proposals: [],
+        agoraReplies: [],
+        eventGate: {
+          releaseCondition: {
+            type: "dependency_fingerprint_changed",
+            dependencies: [
+              { path: "/source/dist/version.json", observation: "content" },
+              { path: "/source/stopped-by-user", observation: "existence" },
+            ],
+          },
+        },
+      });
+
+      expect(errors).toHaveLength(0);
+    });
+
+    it("rejects malformed event-gate conditions before scheduling", () => {
+      const errors = validateTaskResult({
+        result: "blocked",
+        summary: "Waiting",
+        progressEntry: "",
+        skillUpdates: null,
+        memoryUpdates: null,
+        proposals: [],
+        agoraReplies: [],
+        eventGate: {
+          releaseCondition: {
+            type: "human_approval",
+            dependencies: [{ path: "", observation: "network" }],
+          },
+        },
+      });
+
+      expect(errors).toContain("eventGate.releaseCondition.type: must be dependency_fingerprint_changed");
+      expect(errors).toContain("eventGate.releaseCondition.dependencies[0].path: must be a non-empty string");
+      expect(errors).toContain("eventGate.releaseCondition.dependencies[0].observation: must be existence, metadata, or content");
+    });
   });
 });

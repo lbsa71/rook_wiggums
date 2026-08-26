@@ -201,6 +201,8 @@ export async function createLoopLayer(
     config.substratePath,
     fs,
     iterationPlanner,
+    [config.substratePath, path.resolve(config.substratePath, ".."), config.sourceCodePath]
+      .filter((root): root is string => typeof root === "string" && root.length > 0),
   );
   const outputQualityMonitor = new OutputQualityMonitor(clock);
   orchestrator.setOutputQualityMonitor(outputQualityMonitor);

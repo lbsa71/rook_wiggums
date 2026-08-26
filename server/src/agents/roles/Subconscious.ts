@@ -14,6 +14,7 @@ import { TaskClassifier } from "../TaskClassifier";
 import { ConversationManager } from "../../conversation/ConversationManager";
 import { ICycleLogWriter } from "../../substrate/io/ICycleLogWriter";
 import { SameModelBiasEvaluator } from "../../evaluation/SameModelBiasEvaluator";
+import type { EventGateRequest } from "../../loop/EventGateStore";
 
 export interface SubconsciousProposal {
   target: string;
@@ -52,6 +53,12 @@ export interface TaskResult {
    * Orchestrator uses this to schedule the next attempt rather than immediately re-queuing.
    */
   retryAfter?: string;
+  /**
+   * Deterministic state-change gate for blocks that have no meaningful retry
+   * time. The scheduler fingerprints these files and suppresses redispatch
+   * until their observed state changes.
+   */
+  eventGate?: EventGateRequest;
 }
 
 /**
@@ -105,6 +112,32 @@ export const TASK_RESULT_SCHEMA = {
     },
     blockedReason: { type: ["string", "null"] },
     retryAfter: { type: ["string", "null"] },
+    eventGate: {
+      type: ["object", "null"],
+      properties: {
+        releaseCondition: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["dependency_fingerprint_changed"] },
+            dependencies: {
+              type: "array",
+              minItems: 1,
+              maxItems: 8,
+              items: {
+                type: "object",
+                properties: {
+                  path: { type: "string" },
+                  observation: { type: "string", enum: ["existence", "metadata", "content"] },
+                },
+                required: ["path", "observation"],
+              },
+            },
+          },
+          required: ["type", "dependencies"],
+        },
+      },
+      required: ["releaseCondition"],
+    },
   },
   required: ["result", "summary", "progressEntry", "skillUpdates", "memoryUpdates", "proposals", "agoraReplies"],
 } as const;
@@ -169,6 +202,31 @@ export function validateTaskResult(parsed: Record<string, unknown>): string[] {
       }
     });
   }
+  if (parsed.eventGate !== undefined && parsed.eventGate !== null) {
+    const gate = parsed.eventGate as Record<string, unknown>;
+    const releaseCondition = gate.releaseCondition as Record<string, unknown> | undefined;
+    const dependencies = releaseCondition?.dependencies;
+    if (releaseCondition?.type !== "dependency_fingerprint_changed") {
+      errors.push("eventGate.releaseCondition.type: must be dependency_fingerprint_changed");
+    }
+    if (!Array.isArray(dependencies) || dependencies.length < 1 || dependencies.length > 8) {
+      errors.push("eventGate.releaseCondition.dependencies: must contain 1-8 items");
+    } else {
+      dependencies.forEach((dependency, index) => {
+        if (!dependency || typeof dependency !== "object") {
+          errors.push(`eventGate.releaseCondition.dependencies[${index}]: must be an object`);
+          return;
+        }
+        const candidate = dependency as Record<string, unknown>;
+        if (typeof candidate.path !== "string" || candidate.path.trim() === "") {
+          errors.push(`eventGate.releaseCondition.dependencies[${index}].path: must be a non-empty string`);
+        }
+        if (!["existence", "metadata", "content"].includes(candidate.observation as string)) {
+          errors.push(`eventGate.releaseCondition.dependencies[${index}].observation: must be existence, metadata, or content`);
+        }
+      });
+    }
+  }
   return errors;
 }
 
@@ -180,6 +238,7 @@ export function normalizeTaskResult(parsed: Record<string, unknown>): Record<str
     operatingContextEntry: parsed.operatingContextEntry ?? null,
     proposals: parsed.proposals ?? [],
     agoraReplies: parsed.agoraReplies ?? [],
+    eventGate: parsed.eventGate ?? null,
   };
 }
 
@@ -311,6 +370,7 @@ export class Subconscious {
         blockedReason: (parsed.blockedReason as string | undefined) ?? undefined,
         insAcknowledgments: (parsed.insAcknowledgments as import("../../loop/ins/types").InsAcknowledgment[] | undefined) ?? undefined,
         retryAfter: (parsed.retryAfter as string | undefined) ?? undefined,
+        eventGate: (parsed.eventGate as EventGateRequest | null | undefined) ?? undefined,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

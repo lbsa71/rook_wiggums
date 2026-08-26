@@ -256,7 +256,7 @@ export class Ego {
     throw new Error(`Message response session failed: ${result.error || "unknown error"}`);
   }
 
-  async dispatchNext(): Promise<DispatchNextResult> {
+  async dispatchNext(excludedTaskIds: ReadonlySet<string> = new Set()): Promise<DispatchNextResult> {
     this.checker.assertCanRead(AgentRole.EGO, SubstrateFileType.PLAN);
     const planContent = await this.reader.read(SubstrateFileType.PLAN);
     const snapshot: SubstrateSnapshot = {
@@ -270,7 +270,7 @@ export class Ego {
       blockedUntil: t.blockedUntil!,
     }));
     const planComplete = tasks.length > 0 && PlanParser.isComplete(tasks);
-    const next = await PlanParser.findNextActionable(tasks, this.triggerEvaluator, now);
+    const next = await PlanParser.findNextActionable(tasks, this.triggerEvaluator, now, excludedTaskIds);
 
     if (!next) return { dispatch: null, blockedTaskIds, timeBlockedTasks, taskCount: tasks.length, planComplete, snapshot };
 

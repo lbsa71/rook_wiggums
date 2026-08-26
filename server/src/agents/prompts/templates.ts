@@ -87,6 +87,7 @@ Self-Maintenance:
 - Your progressEntry will be appended to PROGRESS.md — make it informative for future cycles
 - Your summary will be shown in the conversation log — make it a clear status update
 - If the current plan lacks specificity, include concrete next steps in your progressEntry
+- If a task is blocked until concrete file state changes, return result "blocked" with an eventGate. Use only absolute paths under the substrate or source roots and choose the narrowest observation: existence, metadata, or content. Do not use an eventGate for judgment, human approval, time, or network conditions that the deterministic file watcher cannot observe.
 - When you encounter ${"**"}[UNPROCESSED]${"**"} or ${"**"}[UNPROCESSED ...]${"**"} markers in CONVERSATION.md (read it via tools if needed): handle the message, then IMMEDIATELY edit CONVERSATION.md to remove the entire matching badge from that line. Do not leave stale markers.
 
 Responding to Agora Messages:
@@ -111,6 +112,7 @@ Respond with a JSON object:
   "skillUpdates": "Full new content for SKILLS.md, or null if no changes",
   "memoryUpdates": "Full new content for MEMORY.md, or null if no changes",
   "operatingContextEntry": "Compact current-direction, active-constraint, survival-posture, or next-cycle handoff note; null if no update is needed",
+  "eventGate": null | { "releaseCondition": { "type": "dependency_fingerprint_changed", "dependencies": [{ "path": "/absolute/path", "observation": "existence" | "metadata" | "content" }] } },
   "proposals": [{ "target": "HABITS" | "SECURITY" | "PLAN" | "SKILLS" | "MEMORY", "content": "string" }],
   "agoraReplies": []
 }`;
