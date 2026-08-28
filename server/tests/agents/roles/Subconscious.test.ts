@@ -235,7 +235,7 @@ describe("Subconscious agent", () => {
       expect(result.agoraReplies).toEqual([]);
     });
 
-    it("uses snapshot content for PLAN instead of re-reading from disk", async () => {
+    it("keeps snapshot content out of the prompt while retaining the required PLAN reference", async () => {
       launcher.enqueueSuccess(JSON.stringify({
         result: "success", summary: "Done", progressEntry: "", skillUpdates: null, memoryUpdates: null, proposals: [], agoraReplies: [],
       }));
@@ -248,18 +248,17 @@ describe("Subconscious agent", () => {
       await subconscious.execute({ taskId: "task-1", description: "Do it" }, undefined, undefined, snapshot);
 
       const launches = launcher.getLaunches();
-      // The message sent to Claude should contain the snapshot's PLAN content,
-      // not the on-disk PLAN.md content (which begins "# Plan\n\n## Current Goal")
-      expect(launches[0].request.message).toContain("from snapshot");
+      expect(launches[0].request.message).toContain("/substrate/PLAN.md — required before reasoning");
+      expect(launches[0].request.message).not.toContain("from snapshot");
       expect(launches[0].request.message).not.toContain("Current Goal");
     });
 
-    it("falls back to disk read for files not present in the snapshot", async () => {
+    it("keeps non-snapshot eager file content out of the prompt", async () => {
       launcher.enqueueSuccess(JSON.stringify({
         result: "success", summary: "Done", progressEntry: "", skillUpdates: null, memoryUpdates: null, proposals: [], agoraReplies: [],
       }));
 
-      // Snapshot only contains PLAN — VALUES should still be read from disk
+      // Snapshot only contains PLAN; both files remain explicit references for the session.
       const snapshot: SubstrateSnapshot = {
         files: { [SubstrateFileType.PLAN]: "# Snapshot Plan" },
       };
@@ -267,8 +266,8 @@ describe("Subconscious agent", () => {
       await subconscious.execute({ taskId: "task-1", description: "Do it" }, undefined, undefined, snapshot);
 
       const launches = launcher.getLaunches();
-      // VALUES.md is an eager file for Subconscious and should appear (read from disk)
-      expect(launches[0].request.message).toContain("Be good");
+      expect(launches[0].request.message).toContain("/substrate/VALUES.md — required before reasoning");
+      expect(launches[0].request.message).not.toContain("Be good");
     });
 
     it("includes proposals in the result", async () => {

@@ -249,250 +249,56 @@ describe("PromptBuilder", () => {
   });
 
   describe("getEagerReferences", () => {
-    it("inlines content for eager files (not @ references)", async () => {
+    it("lists required eager files without inlining their contents", async () => {
       const refs = await builder.getEagerReferences(AgentRole.SUBCONSCIOUS);
-      // Eager files should be inlined with their content
-      expect(refs).toContain("/substrate/PLAN.md:");
-      expect(refs).toContain("# Plan");
-      expect(refs).toContain("/substrate/VALUES.md:");
-      expect(refs).toContain("# Values");
-      // Non-eager files should not appear at all
+      expect(refs).toContain("/substrate/PLAN.md — required before reasoning");
+      expect(refs).toContain("/substrate/VALUES.md — required before reasoning");
+      expect(refs).toContain("/substrate/OPERATING_CONTEXT.md — required before reasoning");
+      expect(refs).not.toContain("# Plan");
+      expect(refs).not.toContain("# Values");
       expect(refs).not.toContain("MEMORY.md");
       expect(refs).not.toContain("PROGRESS.md");
     });
 
-    it("ID has 4 eager files inlined", async () => {
+    it("lists every eager file for the role", async () => {
       const refs = await builder.getEagerReferences(AgentRole.ID);
-      // Should contain inlined content, not @ references
-      expect(refs).toContain("/substrate/ID.md:");
-      expect(refs).toContain("# Id");
-      expect(refs).toContain("/substrate/VALUES.md:");
-      expect(refs).toContain("/substrate/PLAN.md:");
-      expect(refs).toContain("/substrate/OPERATING_CONTEXT.md:");
-      // No @ references when files are readable
-      expect(refs).not.toContain("@/substrate/ID.md");
-      expect(refs).not.toContain("@/substrate/VALUES.md");
-      expect(refs).not.toContain("@/substrate/PLAN.md");
-      expect(refs).not.toContain("@/substrate/OPERATING_CONTEXT.md");
+      expect(refs).toContain("/substrate/ID.md — required before reasoning");
+      expect(refs).toContain("/substrate/VALUES.md — required before reasoning");
+      expect(refs).toContain("/substrate/PLAN.md — required before reasoning");
+      expect(refs).toContain("/substrate/OPERATING_CONTEXT.md — required before reasoning");
+      expect(refs).not.toContain("Core identity");
     });
 
-    it("Superego eager loads all readable files inlined", async () => {
+    it("does not read files while building the required file list", async () => {
+      const readSpy = jest.spyOn(reader, "read");
       const refs = await builder.getEagerReferences(AgentRole.SUPEREGO);
-      // Readable files should be inlined (not @ references)
-      expect(refs).toContain("/substrate/PLAN.md:");
-      expect(refs).toContain("# Plan");
-      expect(refs).toContain("/substrate/VALUES.md:");
-      expect(refs).toContain("# Values");
-      expect(refs).not.toContain("@/substrate/PLAN.md");
-      expect(refs).not.toContain("@/substrate/VALUES.md");
-      // Unreadable files (not in InMemoryFileSystem) fall back to @ references
-      const atRefs = refs.split("\n").filter((l) => l.startsWith("@"));
-      expect(atRefs.length).toBeGreaterThan(0); // Some files don't exist in test fs
+
+      expect(readSpy).not.toHaveBeenCalled();
+      expect(refs).toContain("/substrate/PLAN.md — required before reasoning");
+      expect(refs).toContain("/substrate/SECURITY.md — required before reasoning");
+      expect(refs).not.toContain("# Plan");
+      expect(refs).not.toContain("# Security");
     });
 
-    it("inlines last N lines when maxLines is set for a file", async () => {
-      await fs.writeFile(
-        "/substrate/PROGRESS.md",
-        "# Progress\n\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5"
-      );
-      const refs = await builder.getEagerReferences(AgentRole.SUPEREGO, {
-        maxLines: { [SubstrateFileType.PROGRESS]: 2 },
-      });
-      expect(refs).not.toContain("@/substrate/PROGRESS.md");
-      expect(refs).toContain("/substrate/PROGRESS.md (last 2 lines):");
-      expect(refs).toContain("Line 4");
-      expect(refs).toContain("Line 5");
-      expect(refs).not.toContain("Line 1");
-    });
-
-    it("inlines files without maxLines cap and truncates files with maxLines", async () => {
-      const refs = await builder.getEagerReferences(AgentRole.SUPEREGO, {
-        maxLines: { [SubstrateFileType.PROGRESS]: 200 },
-      });
-      // Files without maxLines should be inlined (not @ references)
-      expect(refs).toContain("/substrate/PLAN.md:");
-      expect(refs).toContain("# Plan");
-      expect(refs).toContain("/substrate/MEMORY.md:");
-      expect(refs).toContain("# Memory");
-      expect(refs).not.toContain("@/substrate/PLAN.md");
-      expect(refs).not.toContain("@/substrate/MEMORY.md");
-      // File with maxLines should use the truncated format
-      expect(refs).toContain("/substrate/PROGRESS.md (last 200 lines):");
-    });
-
-    it("falls back to @ reference when maxLines file cannot be read", async () => {
-      // PEERS is an optional file that does not exist
-      const refs = await builder.getEagerReferences(AgentRole.SUPEREGO, {
-        maxLines: { [SubstrateFileType.PEERS]: 50 },
-      });
-      expect(refs).toContain("@/substrate/PEERS.md");
-    });
-
-    it("falls back to @ reference when eager file cannot be read", async () => {
-      // Create a builder with a path that has no files
+    it("is stable for missing files because references do not require a pre-read", async () => {
       const emptyFs = new InMemoryFileSystem();
-      const emptyConfig = new SubstrateConfig("/empty");
-      const emptyReader = new SubstrateFileReader(emptyFs, emptyConfig);
-      const emptyBuilder = new PromptBuilder(emptyReader, checker, {
-        substratePath: "/empty",
-        sourceCodePath: "/home/user/substrate",
-      });
+      const emptyReader = new SubstrateFileReader(emptyFs, new SubstrateConfig("/empty"));
+      const emptyBuilder = new PromptBuilder(emptyReader, checker, { substratePath: "/empty" });
       const refs = await emptyBuilder.getEagerReferences(AgentRole.ID);
-      // Unreadable files should fall back to @ references
-      expect(refs).toContain("@/empty/ID.md");
-      expect(refs).toContain("@/empty/VALUES.md");
-      expect(refs).toContain("@/empty/PLAN.md");
-      expect(refs).toContain("@/empty/OPERATING_CONTEXT.md");
+
+      expect(refs).toContain("/empty/ID.md — required before reasoning");
+      expect(refs).toContain("/empty/VALUES.md — required before reasoning");
+      expect(refs).toContain("/empty/PLAN.md — required before reasoning");
+      expect(refs).toContain("/empty/OPERATING_CONTEXT.md — required before reasoning");
     });
 
-    describe("context budget (provider-aware filtering)", () => {
-      it("groq launcher applies 2000-line default budget — files over budget get truncation note", async () => {
-        // Write a large ID.md (first eager file for ID role) that exhausts the groq budget
-        const bigContent = Array.from({ length: 2100 }, (_, i) => `line ${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/ID.md", bigContent);
+    it("does not inline large eager files regardless of legacy line-cap options", async () => {
+      const bigContent = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n");
+      await fs.writeFile("/substrate/PLAN.md", bigContent);
 
-        const groqBuilder = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "groq",
-        });
-        const refs = await groqBuilder.getEagerReferences(AgentRole.ID);
-        // ID.md is truncated to fit within the 2000-line budget
-        expect(refs).toContain("truncated — context budget for groq launcher");
-        // Subsequent eager files (VALUES, PLAN) exceed remaining budget — dropped with note
-        expect(refs).toContain("[TRUNCATED:");
-        expect(refs).toContain("exceeds context budget for groq launcher");
-      });
-
-      it("ollama launcher applies 2000-line default budget — files over budget dropped with note", async () => {
-        const bigContent = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/ID.md", bigContent);
-
-        const ollamaBuilder = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "ollama",
-        });
-        const refs = await ollamaBuilder.getEagerReferences(AgentRole.ID);
-        expect(refs).toContain("context budget for ollama launcher");
-      });
-
-      it("claude launcher has no default budget — all files inlined regardless of size", async () => {
-        const bigContent = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/PLAN.md", bigContent);
-
-        const claudeBuilder = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "claude",
-        });
-        const refs = await claudeBuilder.getEagerReferences(AgentRole.ID);
-        expect(refs).not.toContain("[TRUNCATED:");
-        expect(refs).not.toContain("context budget");
-        expect(refs).toContain("line 5000");
-      });
-
-      it("contextBudgetLines override disables budget when set to 0", async () => {
-        const bigContent = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/PLAN.md", bigContent);
-
-        const groqBuilderUnlimited = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "groq",
-          contextBudgetLines: 0,
-        });
-        const refs = await groqBuilderUnlimited.getEagerReferences(AgentRole.ID);
-        expect(refs).not.toContain("[TRUNCATED:");
-        expect(refs).not.toContain("context budget");
-        expect(refs).toContain("line 5000");
-      });
-
-      it("contextBudgetLines override applies custom budget for any launcher", async () => {
-        const bigContent = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/ID.md", bigContent);
-
-        const tightBudgetBuilder = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "claude",
-          contextBudgetLines: 10,
-        });
-        const refs = await tightBudgetBuilder.getEagerReferences(AgentRole.ID);
-        expect(refs).toContain("truncated — context budget for claude launcher");
-      });
-
-      it("files that fit within budget are inlined fully; only overflow files get truncation note", async () => {
-        // ID role has eager files: ID, VALUES, PLAN, OPERATING_CONTEXT
-        // Write a large ID.md (2100 lines) — it alone exceeds 2000-line groq budget
-        const bigId = Array.from({ length: 2100 }, (_, i) => `id-line-${i + 1}`).join("\n");
-        await fs.writeFile("/substrate/ID.md", bigId);
-        await fs.writeFile("/substrate/VALUES.md", "# Values\n\nBe good");
-        await fs.writeFile("/substrate/PLAN.md", "# Plan\n\nDo stuff");
-
-        const groqBuilder = new PromptBuilder(reader, checker, {
-          substratePath: "/substrate",
-          launcherType: "groq",
-        });
-        const refs = await groqBuilder.getEagerReferences(AgentRole.ID);
-        // ID.md (2100 lines) is truncated to fit within 2000-line budget
-        expect(refs).toContain("truncated — context budget for groq launcher");
-        // VALUES.md and PLAN.md exceed remaining budget — dropped with note
-        expect(refs).toContain("[TRUNCATED: VALUES.md exceeds context budget for groq launcher]");
-        expect(refs).toContain("[TRUNCATED: PLAN.md exceeds context budget for groq launcher]");
-        expect(refs).toContain("[TRUNCATED: OPERATING_CONTEXT.md exceeds context budget for groq launcher]");
-      });
-    });
-
-    it("applies conversationPromptWindowLines cap when CONVERSATION.md exceeds the limit", async () => {
-      // Write 300 lines to CONVERSATION.md
-      const lines = Array.from({ length: 300 }, (_, i) => `Line ${i + 1}`);
-      await fs.writeFile("/substrate/CONVERSATION.md", lines.join("\n"));
-
-      const cappedBuilder = new PromptBuilder(reader, checker, {
-        substratePath: "/substrate",
-        sourceCodePath: "/home/user/substrate",
-        conversationPromptWindowLines: 200,
-      });
-
-      const refs = await cappedBuilder.getEagerReferences(AgentRole.EGO);
-      // Should show last 200 lines (lines 101-300)
-      expect(refs).toContain("/substrate/CONVERSATION.md (last 200 lines):");
-      expect(refs).toContain("Line 300");
-      expect(refs).toContain("Line 101");
-      expect(refs).not.toContain("Line 100");
-    });
-
-    it("includes full CONVERSATION.md when shorter than the window cap", async () => {
-      // Write 100 lines to CONVERSATION.md
-      const lines = Array.from({ length: 100 }, (_, i) => `Line ${i + 1}`);
-      await fs.writeFile("/substrate/CONVERSATION.md", lines.join("\n"));
-
-      const cappedBuilder = new PromptBuilder(reader, checker, {
-        substratePath: "/substrate",
-        sourceCodePath: "/home/user/substrate",
-        conversationPromptWindowLines: 200,
-      });
-
-      const refs = await cappedBuilder.getEagerReferences(AgentRole.EGO);
-      // File is shorter than cap — use the "last N lines" path but all lines fit
-      expect(refs).toContain("/substrate/CONVERSATION.md (last 200 lines):");
-      expect(refs).toContain("Line 1");
-      expect(refs).toContain("Line 100");
-    });
-
-    it("explicit maxLines overrides conversationPromptWindowLines for CONVERSATION", async () => {
-      const lines = Array.from({ length: 300 }, (_, i) => `Line ${i + 1}`);
-      await fs.writeFile("/substrate/CONVERSATION.md", lines.join("\n"));
-
-      const cappedBuilder = new PromptBuilder(reader, checker, {
-        substratePath: "/substrate",
-        sourceCodePath: "/home/user/substrate",
-        conversationPromptWindowLines: 200,
-      });
-
-      // Explicit maxLines of 50 should take precedence over the 200-line window cap
-      const refs = await cappedBuilder.getEagerReferences(AgentRole.SUPEREGO, {
-        maxLines: { [SubstrateFileType.CONVERSATION]: 50 },
-      });
-      expect(refs).toContain("/substrate/CONVERSATION.md (last 50 lines):");
-      expect(refs).toContain("Line 300");
-      expect(refs).not.toContain("Line 250");
+      const refs = await builder.getEagerReferences(AgentRole.SUPEREGO);
+      expect(refs).toContain("/substrate/PLAN.md — required before reasoning");
+      expect(refs).not.toContain("line 5000");
     });
   });
 
@@ -520,28 +326,28 @@ describe("PromptBuilder", () => {
   });
 
   describe("buildAgentMessage", () => {
-    it("prefixes eager refs with [CONTEXT] header", () => {
-      const msg = builder.buildAgentMessage("@/substrate/PLAN.md", "", "Do the thing.");
-      expect(msg).toContain("[CONTEXT]\n@/substrate/PLAN.md");
+    it("prefixes eager refs with the required-files header", () => {
+      const msg = builder.buildAgentMessage("- /substrate/PLAN.md — required before reasoning", "", "Do the thing.");
+      expect(msg).toContain("[REQUIRED FILES — read before reasoning]\n- /substrate/PLAN.md");
       expect(msg).toContain("Do the thing.");
     });
 
     it("prefixes lazy refs with [FILES — read on demand] header", () => {
       const msg = builder.buildAgentMessage("", "- /substrate/MEMORY.md — notes", "Do the thing.");
       expect(msg).toContain("[FILES — read on demand]\n- /substrate/MEMORY.md — notes");
-      expect(msg).not.toContain("[CONTEXT]");
+      expect(msg).not.toContain("[REQUIRED FILES — read before reasoning]");
     });
 
     it("includes both sections when both refs are provided", () => {
       const msg = builder.buildAgentMessage("@/substrate/PLAN.md", "- /substrate/MEMORY.md — notes", "Execute.");
-      expect(msg).toContain("[CONTEXT]\n@/substrate/PLAN.md");
+      expect(msg).toContain("[REQUIRED FILES — read before reasoning]\n@/substrate/PLAN.md");
       expect(msg).toContain("[FILES — read on demand]\n- /substrate/MEMORY.md — notes");
       expect(msg.endsWith("Execute.")).toBe(true);
     });
 
     it("omits context section when eagerRefs is empty", () => {
       const msg = builder.buildAgentMessage("", "- /substrate/MEMORY.md — notes", "Go.");
-      expect(msg).not.toContain("[CONTEXT]");
+      expect(msg).not.toContain("[REQUIRED FILES — read before reasoning]");
       expect(msg).toContain("[FILES — read on demand]");
     });
 
