@@ -6,6 +6,8 @@ import { SubstrateFileType } from "../../../src/substrate/types";
 import { SubstrateFileReader } from "../../../src/substrate/io/FileReader";
 import { SubstrateConfig } from "../../../src/substrate/config";
 import { InMemoryFileSystem } from "../../../src/substrate/abstractions/InMemoryFileSystem";
+import { createHash } from "node:crypto";
+import { PromptTokenProfiler } from "../../../src/agents/prompts/PromptTokenProfiler";
 
 describe("PromptBuilder", () => {
   let fs: InMemoryFileSystem;
@@ -68,6 +70,60 @@ describe("PromptBuilder", () => {
   });
 
   describe("buildSystemPrompt", () => {
+    it("matches the frozen pre-profiler prompt-byte baseline for every role", async () => {
+      const baselineBuilder = new PromptBuilder(reader, checker, {
+        substratePath: "/substrate",
+        sourceCodePath: "/source",
+        launcherType: "codex",
+        httpPort: 3000,
+      });
+      const expected = {
+        [AgentRole.EGO]: {
+          system: "cf8604a6899f5ad59273de66e72102b21f779411359f68ebb119136e3aa4a1f4",
+          message: "0355bc66cc851ba7bbff314efa0de9f831297357ae911fa3d4c78ff4fc074e2b",
+          tokens: [42, 199, 27, 172, 188, 897],
+          duplicateTokens: 73,
+        },
+        [AgentRole.SUBCONSCIOUS]: {
+          system: "f1fadc04b4530272558a98dca3df00b25a7a7c31c261a8b902c32605782c5554",
+          message: "451cf8a522d52b5a3158797ff4ec790778df5d0f2bbf4a45fe815dcd9a1b2c77",
+          tokens: [30, 242, 157, 286, 188, 1086],
+          duplicateTokens: 60,
+        },
+        [AgentRole.SUPEREGO]: {
+          system: "5a603b28854a07c31e161433cf4ceb4ee4cbb8c37a27214694ba0baf69594b04",
+          message: "4d14229bc461714a965ea5f04188f51af8f544082c5b7ae011cb376346dabd02",
+          tokens: [132, 22, 22, 236, 188, 1008],
+          duplicateTokens: 159,
+        },
+        [AgentRole.ID]: {
+          system: "332a5e17564002b481e12d4329abad61193cec1816081a1c0e742dfce6bcf6f8",
+          message: "8e8e3c4fcbbce32dc695608ad231d8e536804f1c8d73c68734fe6809843718f9",
+          tokens: [105, 40, 86, 277, 188, 1326],
+          duplicateTokens: 44,
+        },
+      };
+      const profiler = new PromptTokenProfiler();
+
+      for (const role of Object.values(AgentRole)) {
+        const systemPrompt = baselineBuilder.buildSystemPrompt(role);
+        const message = baselineBuilder.buildAgentMessage(
+          await baselineBuilder.getEagerReferences(role),
+          baselineBuilder.getLazyReferences(role),
+          "Execute representative task.",
+          "Status: baseline",
+        );
+        const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+        expect(hash(systemPrompt)).toBe(expected[role].system);
+        expect(hash(message)).toBe(expected[role].message);
+        const profile = profiler.profile({ systemPrompt, message });
+        expect(Object.values(profile.categories).map((category) => category.estimatedTokens))
+          .toEqual(expected[role].tokens);
+        expect(profile.duplicateContent.duplicateEstimatedTokens)
+          .toBe(expected[role].duplicateTokens);
+      }
+    });
+
     it("includes the role template", () => {
       const prompt = builder.buildSystemPrompt(AgentRole.EGO);
       expect(prompt).toContain(ROLE_PROMPTS[AgentRole.EGO]);

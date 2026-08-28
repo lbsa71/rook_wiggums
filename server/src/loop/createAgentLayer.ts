@@ -1,6 +1,7 @@
 import * as path from "path";
 import { PermissionChecker } from "../agents/permissions";
 import { PromptBuilder } from "../agents/prompts/PromptBuilder";
+import { PromptProfilingSessionLauncher } from "../agents/prompts/PromptProfilingSessionLauncher";
 import { AgentSdkLauncher, SdkQueryFn } from "../agents/claude/AgentSdkLauncher";
 import { FetchHttpClient } from "../agents/ollama/FetchHttpClient";
 import { VertexSessionLauncher } from "../agents/vertex/VertexSessionLauncher";
@@ -379,6 +380,11 @@ export async function createAgentLayer(
     gatedLauncher = new SemaphoreSessionLauncher(launcher, apiSemaphore);
   }
 
+  // Observe the exact final request at the shared launch boundary. The decorator
+  // forwards request/options by identity and fails open, so prompt bytes and routing
+  // remain independent of profiling.
+  gatedLauncher = new PromptProfilingSessionLauncher(gatedLauncher, logger);
+
   // Metrics collection components
   const taskMetrics = new TaskClassificationMetrics(fs, clock, config.substratePath);
   const sizeTracker = new SubstrateSizeTracker(fs, clock, config.substratePath);
@@ -625,6 +631,10 @@ export async function createAgentLayer(
         logger,
       );
     }
+  }
+
+  if (idGatedLauncher !== gatedLauncher) {
+    idGatedLauncher = new PromptProfilingSessionLauncher(idGatedLauncher, logger);
   }
 
   const id = new Id(reader, checker, promptBuilder, idGatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.ID), driveQualityTracker, logger);
