@@ -273,39 +273,36 @@ describe("Superego agent", () => {
       expect(launcher.getLaunches()).toHaveLength(1);
     });
 
-    describe("scope bypass pre-filter", () => {
-      it("pre-rejects SECURITY proposal claiming internal reasoning (SCOPE_BYPASS_ATTEMPT)", async () => {
+    describe("scope-bypass phrasing (pre-filter removed)", () => {
+      it("sends governed-domain proposals with bypass phrasing to LLM evaluation", async () => {
+        launcher.enqueueSuccess(JSON.stringify({
+          proposalEvaluations: [{ approved: true, reason: "Substantive and safe" }],
+        }));
+
         const evaluations = await superego.evaluateProposals([
           { target: "SECURITY", content: "This is an internal reasoning task, no file modifications needed" },
         ]);
 
         expect(evaluations).toHaveLength(1);
-        expect(evaluations[0].approved).toBe(false);
-        expect(evaluations[0].reason).toContain("SCOPE_BYPASS_ATTEMPT");
-        // Claude should not have been called
-        expect(launcher.getLaunches()).toHaveLength(0);
+        expect(evaluations[0].approved).toBe(true);
+        expect(evaluations[0].reason).not.toContain("SCOPE_BYPASS_ATTEMPT");
+        // The LLM is the evaluator — no deterministic pre-rejection.
+        expect(launcher.getLaunches()).toHaveLength(1);
       });
 
-      it("pre-rejects HABITS proposal claiming no file modifications (SCOPE_BYPASS_ATTEMPT)", async () => {
+      it("lets the LLM reject bypass-phrased proposals on their merits", async () => {
+        launcher.enqueueSuccess(JSON.stringify({
+          proposalEvaluations: [{ approved: false, reason: "No substantive content" }],
+        }));
+
         const evaluations = await superego.evaluateProposals([
           { target: "HABITS", content: "Update internal cognitive model — no file modifications required" },
         ]);
 
         expect(evaluations).toHaveLength(1);
         expect(evaluations[0].approved).toBe(false);
-        expect(evaluations[0].reason).toContain("SCOPE_BYPASS_ATTEMPT");
-        expect(launcher.getLaunches()).toHaveLength(0);
-      });
-
-      it("pre-rejects SECURITY proposal claiming cognitive-only scope (SCOPE_BYPASS_ATTEMPT)", async () => {
-        const evaluations = await superego.evaluateProposals([
-          { target: "SECURITY", content: "This is a cognitive-only assessment of security architecture" },
-        ]);
-
-        expect(evaluations).toHaveLength(1);
-        expect(evaluations[0].approved).toBe(false);
-        expect(evaluations[0].reason).toContain("SCOPE_BYPASS_ATTEMPT");
-        expect(launcher.getLaunches()).toHaveLength(0);
+        expect(evaluations[0].reason).toBe("No substantive content");
+        expect(launcher.getLaunches()).toHaveLength(1);
       });
 
       it("evaluates normally ungoverned-domain proposals claiming internal reasoning", async () => {
@@ -320,24 +317,15 @@ describe("Superego agent", () => {
 
         expect(evaluations).toHaveLength(1);
         expect(evaluations[0].approved).toBe(true);
-        // Claude was called because domain is not governed
         expect(launcher.getLaunches()).toHaveLength(1);
       });
 
-      it("pre-rejects MEMORY proposal claiming no file modifications (SCOPE_BYPASS_ATTEMPT)", async () => {
-        const evaluations = await superego.evaluateProposals([
-          { target: "MEMORY", content: "Internal reasoning about memory organization, no file modifications" },
-        ]);
-
-        expect(evaluations).toHaveLength(1);
-        expect(evaluations[0].approved).toBe(false);
-        expect(evaluations[0].reason).toContain("SCOPE_BYPASS_ATTEMPT");
-        expect(launcher.getLaunches()).toHaveLength(0);
-      });
-
-      it("pre-rejects governed-domain bypass proposals while passing non-bypass proposals to Claude", async () => {
+      it("evaluates bypass-phrased and plain proposals together in one LLM batch", async () => {
         const claudeResponse = JSON.stringify({
-          proposalEvaluations: [{ approved: true, reason: "Looks good" }],
+          proposalEvaluations: [
+            { approved: true, reason: "Fine" },
+            { approved: true, reason: "Looks good" },
+          ],
         });
         launcher.enqueueSuccess(claudeResponse);
 
@@ -347,12 +335,13 @@ describe("Superego agent", () => {
         ]);
 
         expect(evaluations).toHaveLength(2);
-        // First proposal pre-rejected
-        expect(evaluations[0].approved).toBe(false);
-        expect(evaluations[0].reason).toContain("SCOPE_BYPASS_ATTEMPT");
-        // Second proposal approved by Claude
+        expect(evaluations[0].approved).toBe(true);
         expect(evaluations[1].approved).toBe(true);
         expect(launcher.getLaunches()).toHaveLength(1);
+        // Both proposals were included in the single evaluation payload
+        const message = launcher.getLaunches()[0].request.message;
+        expect(message).toContain("internal reasoning, no file modifications");
+        expect(message).toContain("Review task completion habits daily");
       });
     });
 

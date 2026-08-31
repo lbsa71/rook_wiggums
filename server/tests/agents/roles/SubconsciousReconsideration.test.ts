@@ -94,7 +94,41 @@ describe("Subconscious reconsideration", () => {
       const launches = launcher.getLaunches();
       expect(launches[0].options?.outputSchema).toBeDefined();
       expect((launches[0].options?.outputSchema?.required as string[] | undefined)).toContain("outcomeMatchesIntent");
-      expect(launches[0].options?.additionalDirs).toEqual(["/source/root"]);
+    });
+
+    it("launches a slim one-shot session with no substrate refs or session persistence", async () => {
+      const evaluation = JSON.stringify({
+        outcomeMatchesIntent: true,
+        qualityScore: 90,
+        issuesFound: [],
+        recommendedActions: [],
+        needsReassessment: false,
+      });
+      launcher.enqueueSuccess(evaluation);
+
+      const taskResult: TaskResult = {
+        result: "success",
+        summary: "Implemented feature successfully",
+        progressEntry: "Completed implementation with all tests passing",
+        skillUpdates: null,
+        memoryUpdates: null,
+        proposals: [],
+      };
+
+      await subconscious.evaluateOutcome(
+        { taskId: "task-slim-1", description: "Implement feature X" },
+        taskResult
+      );
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].request.systemPrompt).toBe(
+        "You are a task-outcome evaluator. Judge only from the task and result text provided."
+      );
+      expect(launches[0].request.message).not.toContain("[REQUIRED FILES");
+      expect(launches[0].request.message).not.toContain("[FILES — read on demand]");
+      expect(launches[0].options?.continueSession).toBe(false);
+      expect(launches[0].options?.persistSession).toBe(false);
+      expect(launches[0].options?.additionalDirs).toBeUndefined();
     });
 
     it("identifies quality issues in partial success", async () => {
@@ -245,10 +279,10 @@ describe("Subconscious reconsideration", () => {
       expect(launches[0].request.message).toContain("task-db-1");
       expect(launches[0].request.message).toContain("Migrate user table to new schema");
       expect(launches[0].request.message).toContain("Database migration completed");
-      expect(launches[0].request.message).toContain("Same-model bias check");
+      expect(launches[0].request.message).not.toContain("Same-model bias check");
     });
 
-    it("post-processes smooth same-model convergence as reassessment risk", async () => {
+    it("applies no same-model convergence post-processing (heuristic removed)", async () => {
       const evaluation = JSON.stringify({
         outcomeMatchesIntent: true,
         qualityScore: 95,
@@ -272,10 +306,11 @@ describe("Subconscious reconsideration", () => {
         taskResult
       );
 
-      expect(outcome.qualityScore).toBe(75);
-      expect(outcome.needsReassessment).toBe(true);
-      expect(outcome.issuesFound.join("\n")).toContain("Same-model bias risk");
-      expect(outcome.recommendedActions.join("\n")).toContain("Apply same-model mitigation");
+      // The model's verdict passes through untouched — no bias-risk score adjustment.
+      expect(outcome.qualityScore).toBe(95);
+      expect(outcome.needsReassessment).toBe(false);
+      expect(outcome.issuesFound).toEqual([]);
+      expect(outcome.recommendedActions).toEqual([]);
     });
 
     it("defaults missing fields to safe values", async () => {

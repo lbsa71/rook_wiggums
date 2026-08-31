@@ -18,8 +18,6 @@ ${SELF_BETTERMENT_DOCTRINE}
 - [ ] Set security policies in SECURITY.md
 - [ ] Explore own source code (see "My own source code" in environment) and document architecture in MEMORY.md
 - [ ] Identify improvements to own source code and add them as future tasks
-- [ ] Review shared/patterns/: read each pattern's "When this pattern matters" field; note which patterns apply to your current state
-- [ ] For each applicable pattern, write your own instantiation in your own voice in the relevant substrate file (ID.md, HABITS.md, etc.)
 `;
 
 export const MEMORY_TEMPLATE = `# Memory
@@ -284,7 +282,4 @@ A peer has sent a message. Check AGORA_INBOX.md and respond if appropriate.
 
 # 0 * * * * when: peer:alice.available
 Alice just came back online. Send a greeting via Agora.
-
-# when: loop_started
-Pattern review: check shared/patterns/ for entries newer than last review. For each new pattern, evaluate whether it applies to your current substrate state. Write your own instantiation if it does.
 `;

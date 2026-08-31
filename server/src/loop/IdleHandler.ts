@@ -29,10 +29,15 @@ export class IdleHandler {
   async handleIdle(
     createLogCallback?: (role: string) => (entry: ProcessLogEntry) => void,
     cycleNumber = 0,
+    options?: { forceIdle?: boolean; reason?: string },
   ): Promise<IdleHandlerResult> {
-    // Step 1: Confirm idle via Id
+    // Step 1: Confirm idle via Id. forceIdle covers the starved-queue case:
+    // tasks exist but every one is event-gated or blocked indefinitely, so the
+    // loop would otherwise spin without ever generating new work.
     this.logger.debug("IdleHandler: detecting idle state");
-    const detection = await this.id.detectIdle();
+    const detection = options?.forceIdle
+      ? { idle: true, reason: options.reason ?? "queue starved — no dispatchable task" }
+      : await this.id.detectIdle();
     if (!detection.idle) {
       this.logger.debug("IdleHandler: not idle, skipping");
       return { action: "not_idle" };

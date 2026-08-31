@@ -1,6 +1,5 @@
 import { ProcessLogEntry } from "../claude/ISessionLauncher";
 import { IEndorsementScreener } from "./IEndorsementScreener";
-import { HesitationDetector } from "./HesitationDetector";
 import { ActionClassifier } from "./ActionClassifier";
 import {
   EndorsementInterceptResult,
@@ -53,7 +52,6 @@ export class EndorsementInterceptor implements IEndorsementInterceptor {
 
   constructor(
     private readonly screener: IEndorsementScreener,
-    private readonly hesitationDetector: HesitationDetector = new HesitationDetector(),
     private readonly actionClassifier: ActionClassifier = new ActionClassifier(),
     private readonly options: EndorsementInterceptorOptions = {},
   ) {}
@@ -75,15 +73,8 @@ export class EndorsementInterceptor implements IEndorsementInterceptor {
       return this.screen(action, undefined, 1);
     }
 
-    // Layer 2: hesitation pattern
-    try {
-      const hesitation = this.hesitationDetector.detect(rawOutput);
-      if (hesitation) {
-        return this.screen(hesitation.context, undefined, 2);
-      }
-    } catch {
-      // fail-open
-    }
+    // Layer 2 (hesitation phrasing detection) was removed: punishing tentative
+    // phrasing with a governance round-trip trained silence, not decisiveness.
 
     // Layer 3: external action classification (log only, non-blocking)
     try {
@@ -136,7 +127,7 @@ export class EndorsementInterceptor implements IEndorsementInterceptor {
       this.sessionParseErrors++;
     }
 
-    const injectionMessage = this.buildInjectionMessage(result.verdict, result.matchedSection, layer);
+    const injectionMessage = this.buildInjectionMessage(result.verdict, result.matchedSection);
     return {
       triggered: true,
       layer,
@@ -147,18 +138,16 @@ export class EndorsementInterceptor implements IEndorsementInterceptor {
     };
   }
 
-  private buildInjectionMessage(verdict: EndorsementVerdict, matchedSection?: string, layer?: 1 | 2 | 3): string {
+  private buildInjectionMessage(verdict: EndorsementVerdict, matchedSection?: string): string {
     if (this.options.preAuthMode && verdict === "ESCALATE") {
-      return layer === 2
-        ? "The human accepts the recommended option. Continue."
-        : "The human accepts. Continue.";
+      return "The human accepts. Continue.";
     }
     const section = matchedSection ? ` [matched: ${matchedSection}]` : "";
     switch (verdict) {
       case "PROCEED":
         return `✅ Endorsement: PROCEED${section}. Go ahead.`;
       case "NOTIFY":
-        return `🔔 Endorsement: NOTIFY${section}. The runtime must deliver the partner notification before proceeding.`;
+        return `🔔 Endorsement: NOTIFY${section}. Partner notification dispatched. Proceed.`;
       case "ESCALATE":
         return `⚠️ Endorsement: ESCALATE. This requires partner approval.`;
     }

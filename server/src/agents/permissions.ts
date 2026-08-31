@@ -60,8 +60,20 @@ export const ROLE_PERMISSIONS: Record<AgentRole, FilePermission[]> = {
   ],
 
   [AgentRole.SUPEREGO]: [
-    // Superego needs full context for auditing - all files EAGER
-    ...Object.values(SubstrateFileType).map((ft) => read(ft, SubstrateFileLoadStrategy.EAGER)),
+    // Bounded audit context: the governance-relevant files are EAGER, the large
+    // history files are LAZY (the audit instruction bounds how much of them to read).
+    read(SubstrateFileType.PLAN, SubstrateFileLoadStrategy.EAGER),
+    read(SubstrateFileType.BOUNDARIES, SubstrateFileLoadStrategy.EAGER),
+    read(SubstrateFileType.VALUES, SubstrateFileLoadStrategy.EAGER),
+    read(SubstrateFileType.OPERATING_CONTEXT, SubstrateFileLoadStrategy.EAGER),
+    ...Object.values(SubstrateFileType)
+      .filter((ft) => ![
+        SubstrateFileType.PLAN,
+        SubstrateFileType.BOUNDARIES,
+        SubstrateFileType.VALUES,
+        SubstrateFileType.OPERATING_CONTEXT,
+      ].includes(ft))
+      .map((ft) => read(ft, SubstrateFileLoadStrategy.LAZY)),
     write(SubstrateFileType.HABITS),
     write(SubstrateFileType.SECURITY),
     write(SubstrateFileType.SKILLS),

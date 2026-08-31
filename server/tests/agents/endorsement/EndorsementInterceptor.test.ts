@@ -1,5 +1,4 @@
 import { EndorsementInterceptor } from "../../../src/agents/endorsement/EndorsementInterceptor";
-import { HesitationDetector } from "../../../src/agents/endorsement/HesitationDetector";
 import { IEndorsementScreener } from "../../../src/agents/endorsement/IEndorsementScreener";
 import { ScreenerInput, ScreenerResult } from "../../../src/agents/endorsement/types";
 import { ProcessLogEntry } from "../../../src/agents/claude/ISessionLauncher";
@@ -72,13 +71,14 @@ describe("EndorsementInterceptor", () => {
       expect(result.injectionMessage).toContain("Go ahead");
     });
 
-    it("generates NOTIFY injection message", async () => {
+    it("generates NOTIFY injection message that releases the action", async () => {
       stubScreener.enqueue(screenerResult("NOTIFY", "Service Tier"));
 
       const result = await interceptor.evaluateOutput("[ENDORSEMENT_CHECK: restart service]");
 
       expect(result.injectionMessage).toContain("🔔 Endorsement: NOTIFY");
-      expect(result.injectionMessage).toContain("deliver the partner notification before proceeding");
+      expect(result.injectionMessage).toContain("matched: Service Tier");
+      expect(result.injectionMessage).toContain("Partner notification dispatched. Proceed.");
     });
 
     it("generates ESCALATE injection message", async () => {
@@ -108,44 +108,23 @@ describe("EndorsementInterceptor", () => {
     });
   });
 
-  describe("Layer 2: hesitation pattern", () => {
-    it("triggers when hesitation pattern is detected in output", async () => {
-      stubScreener.enqueue(screenerResult("ESCALATE"));
-
+  describe("hesitation phrasing (former Layer 2, removed)", () => {
+    it("does not trigger screening on hesitation phrases", async () => {
       const result = await interceptor.evaluateOutput(
         "I need permission to send this email to the team."
-      );
-
-      expect(result.triggered).toBe(true);
-      expect(result.layer).toBe(2);
-    });
-
-    it("uses surrounding context as action description", async () => {
-      stubScreener.enqueue(screenerResult("ESCALATE"));
-
-      await interceptor.evaluateOutput("I need permission to send email.");
-
-      expect(stubScreener.calls[0].action).toContain("need permission");
-    });
-
-    it("does not trigger when no hesitation pattern present", async () => {
-      const result = await interceptor.evaluateOutput(
-        "Everything is in order. Proceeding with the task."
       );
 
       expect(result.triggered).toBe(false);
       expect(stubScreener.calls).toHaveLength(0);
     });
 
-    it("uses custom hesitation detector when provided", async () => {
-      const customDetector = new HesitationDetector([/please advise/i]);
-      interceptor = new EndorsementInterceptor(stubScreener, customDetector);
-      stubScreener.enqueue(screenerResult("PROCEED"));
+    it("does not trigger on other tentative phrasing", async () => {
+      const result = await interceptor.evaluateOutput(
+        "Should I proceed with this? Awaiting approval before continuing."
+      );
 
-      const result = await interceptor.evaluateOutput("Please advise on this matter.");
-
-      expect(result.triggered).toBe(true);
-      expect(result.layer).toBe(2);
+      expect(result.triggered).toBe(false);
+      expect(stubScreener.calls).toHaveLength(0);
     });
   });
 
@@ -189,8 +168,8 @@ describe("EndorsementInterceptor", () => {
     });
   });
 
-  describe("Layer priority: Layer 1 wins over Layer 2 and 3", () => {
-    it("Layer 1 takes priority over Layer 2", async () => {
+  describe("Layer priority: Layer 1 wins over Layer 3", () => {
+    it("Layer 1 takes priority over Layer 3", async () => {
       stubScreener.enqueue(screenerResult("PROCEED", "Safe Channels"));
       interceptor.onLogEntry(toolEntry("mcp__tinybus__send_message"));
 
@@ -201,15 +180,16 @@ describe("EndorsementInterceptor", () => {
       expect(result.layer).toBe(1);
     });
 
-    it("Layer 2 takes priority over Layer 3", async () => {
-      stubScreener.enqueue(screenerResult("ESCALATE"));
+    it("hesitation phrasing does not preempt Layer 3", async () => {
       interceptor.onLogEntry(toolEntry("mcp__tinybus__send_message"));
 
       const result = await interceptor.evaluateOutput(
         "I need permission to continue."
       );
 
-      expect(result.layer).toBe(2);
+      expect(result.triggered).toBe(true);
+      expect(result.layer).toBe(3);
+      expect(stubScreener.calls).toHaveLength(0);
     });
   });
 
@@ -253,7 +233,7 @@ describe("EndorsementInterceptor", () => {
       expect(s.placeholderActions).toBe(0);
     });
 
-    it("increments totalChecks on each Layer 1 or 2 check", async () => {
+    it("increments totalChecks on each Layer 1 check", async () => {
       stubScreener.enqueue(screenerResult("PROCEED"));
       stubScreener.enqueue(screenerResult("PROCEED"));
 
@@ -357,7 +337,7 @@ describe("EndorsementInterceptor", () => {
 
     beforeEach(() => {
       preAuthScreener = new StubScreener();
-      preAuthInterceptor = new EndorsementInterceptor(preAuthScreener, undefined, undefined, { preAuthMode: true });
+      preAuthInterceptor = new EndorsementInterceptor(preAuthScreener, undefined, { preAuthMode: true });
     });
 
     it("isPreAuthMode() returns true when configured", () => {
@@ -378,19 +358,6 @@ describe("EndorsementInterceptor", () => {
       expect(result.injectionMessage).toBe("The human accepts. Continue.");
     });
 
-    it("Layer 2 ESCALATE (hesitation) returns recommended-option accept message", async () => {
-      preAuthScreener.enqueue(screenerResult("ESCALATE"));
-
-      const result = await preAuthInterceptor.evaluateOutput(
-        "I need permission to send this email to the team."
-      );
-
-      expect(result.triggered).toBe(true);
-      expect(result.layer).toBe(2);
-      expect(result.verdict).toBe("ESCALATE");
-      expect(result.injectionMessage).toBe("The human accepts the recommended option. Continue.");
-    });
-
     it("Layer 1 PROCEED still returns normal proceed message in pre-auth mode", async () => {
       preAuthScreener.enqueue(screenerResult("PROCEED", "Safe Channels"));
 
@@ -405,6 +372,7 @@ describe("EndorsementInterceptor", () => {
       const result = await preAuthInterceptor.evaluateOutput("[ENDORSEMENT_CHECK: restart service]");
 
       expect(result.injectionMessage).toContain("🔔 Endorsement: NOTIFY");
+      expect(result.injectionMessage).toContain("Partner notification dispatched. Proceed.");
     });
 
     it("Layer 3 external action returns triggered result (orchestrator handles accept)", async () => {

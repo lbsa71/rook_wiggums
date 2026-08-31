@@ -114,6 +114,7 @@ export async function createLoopLayer(
     idleSleepEnabled: config.idleSleepConfig?.enabled ?? false,
     evaluateOutcomeEnabled: config.evaluateOutcome?.enabled ?? false,
     evaluateOutcomeQualityThreshold: config.evaluateOutcome?.qualityThreshold ?? 85,
+    maxSuccessfulCyclesPerWake: config.maxSuccessfulCyclesPerWake,
   });
 
   const httpServer = new LoopHttpServer(process.env.AGORA_WEBHOOK_TOKEN);
@@ -457,7 +458,7 @@ export async function createLoopLayer(
     ["pi", new PiCliBackend(codeDispatchRunner, clock, backendModel(config, "pi"))],
   ]);
   const defaultBackend = (config.defaultCodeBackend ?? "auto") as BackendType;
-  const codeDispatcher = new CodeDispatcher(fs, codeDispatchRunner, config.substratePath, codeBackends, clock, defaultBackend);
+  const codeDispatcher = new CodeDispatcher(fs, codeDispatchRunner, config.substratePath, codeBackends, clock, defaultBackend, config.allowCommercialImplicitDispatch ?? false);
   httpServer.setCodeDispatcher(codeDispatcher);
 
   if (agoraService && agoraMessageHandler) {
@@ -532,6 +533,7 @@ export async function createLoopLayer(
   {
     const boundariesPath = path.join(config.substratePath, "BOUNDARIES.md");
     const endorsementLogPath = path.join(config.substratePath, "..", "endorsement.log");
+    const preAuthMode = config.endorsement?.preAuthMode ?? false;
     const screener = new EndorsementScreener(
       fs,
       gatedLauncher,
@@ -540,13 +542,13 @@ export async function createLoopLayer(
         boundariesPath,
         logPath: endorsementLogPath,
         screenerModel: "haiku",
+        failVerdict: preAuthMode ? "PROCEED" : "NOTIFY",
       }
     );
-    const preAuthMode = config.endorsement?.preAuthMode ?? false;
     if (preAuthMode) {
       logger.debug("endorsement: pre-auth mode enabled — all ESCALATE verdicts auto-accepted");
     }
-    const interceptor = new EndorsementInterceptor(screener, undefined, undefined, { preAuthMode });
+    const interceptor = new EndorsementInterceptor(screener, undefined, { preAuthMode });
     orchestrator.setEndorsementInterceptor(interceptor);
   }
 

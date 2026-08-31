@@ -315,7 +315,7 @@ export class INSHook {
       actions.push({
         type: "compliance_flag",
         target: pattern.role,
-        detail: `Consecutive-partial pattern detected (${pattern.cyclesCount} cycles, ${pattern.role}). Stated precondition: "${pattern.patternText}". Not verified in PLAN.md or conversation history. Possible constructed constraint — examine whether this precondition is real.`,
+        detail: `Consecutive-partial pattern detected (${pattern.cyclesCount} cycles, ${pattern.role}). Stated precondition: "${pattern.patternText}". Not verified in PLAN.md or conversation history. This blocker is unverified: either verify it is real and record the evidence, or discard it and proceed with the work now.`,
         flaggedPattern: pattern.patternText,
         patternId: pattern.patternId,
         cyclesCount: pattern.cyclesCount,

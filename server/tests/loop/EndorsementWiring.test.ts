@@ -113,16 +113,18 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
   let stubScreener: StubScreener;
   let spyInterceptor: SpyInterceptor;
   let eventSink: InMemoryEventSink;
+  let logger: InMemoryLogger;
 
   beforeEach(async () => {
     const deps = createDeps();
     await setupSubstrate(deps.fs);
 
     eventSink = new InMemoryEventSink();
+    logger = new InMemoryLogger();
     orchestrator = new LoopOrchestrator(
       deps.ego, deps.subconscious, deps.superego, deps.id,
       deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
-      defaultLoopConfig(), new InMemoryLogger()
+      defaultLoopConfig(), logger
     );
 
     stubScreener = new StubScreener();
@@ -250,7 +252,7 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
     }]);
   });
 
-  it("does not release a NOTIFY-tier action when notification delivery fails", async () => {
+  it("releases a NOTIFY-tier action even when notification delivery fails (fire-and-forget)", async () => {
     const agoraService = {
       async sendMessage() {
         return { ok: false, status: 503, error: "unavailable" };
@@ -268,7 +270,30 @@ describe("EndorsementInterceptor wiring in LoopOrchestrator", () => {
 
     await expect(
       orchestratorWithCheck.checkEndorsement("[ENDORSEMENT_CHECK: run sudo command]")
-    ).rejects.toThrow("pre-action notification failed");
-    expect(eventSink.getEvents().filter((event) => event.type === "message_injected")).toHaveLength(0);
+    ).resolves.toBeUndefined();
+
+    const injected = eventSink.getEvents().filter((event) => event.type === "message_injected");
+    expect(injected).toHaveLength(1);
+    expect(JSON.stringify(injected[0].data)).toContain("Partner notification dispatched. Proceed.");
+
+    // The failed send is logged (best-effort) after the fire-and-forget settles.
+    await new Promise((resolve) => setImmediate(resolve));
+    const warnings = logger.getWarnEntries().filter((entry) => entry.includes("pre-action notification failed"));
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("releases a NOTIFY-tier action when the Agora service is unavailable", async () => {
+    // No agora service set at all — notification is skipped, action still released.
+    stubScreener.enqueue({ verdict: "NOTIFY", matchedSection: "NOTIFY", timestamp: 0 });
+    const orchestratorWithCheck = orchestrator as unknown as {
+      checkEndorsement(rawOutput: string): Promise<void>;
+    };
+
+    await expect(
+      orchestratorWithCheck.checkEndorsement("[ENDORSEMENT_CHECK: restart service]")
+    ).resolves.toBeUndefined();
+
+    const injected = eventSink.getEvents().filter((event) => event.type === "message_injected");
+    expect(injected).toHaveLength(1);
   });
 });

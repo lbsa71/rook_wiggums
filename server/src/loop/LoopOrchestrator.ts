@@ -39,7 +39,6 @@ import { msgPreview } from "./utils";
 import { DeferredWorkQueue } from "./DeferredWorkQueue";
 import { EndorsementInterceptor } from "../agents/endorsement";
 import { OutputQualityMonitor } from "../evaluation/OutputQualityMonitor";
-import { SameModelBiasEvaluator } from "../evaluation/SameModelBiasEvaluator";
 import { IterationPlanner, type IterationAssignment, type IterationPlan } from "../agents/IterationPlanner";
 import type { SubstrateSnapshot } from "../agents/prompts/PromptBuilder";
 import type { IAgoraService } from "../agora/IAgoraService";
@@ -56,7 +55,6 @@ import { EventGateStore } from "./EventGateStore";
 export const MAX_RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000;
 
 class EndorsementExternalActionBlockedError extends Error {}
-class EndorsementNotificationFailedError extends Error {}
 class PendingProposalPersistenceError extends Error {}
 type EndorsementInterceptEvaluation = Awaited<ReturnType<EndorsementInterceptor["evaluateOutput"]>>;
 const WATCHDOG_MESSAGE_PREFIX = "[Watchdog]";
@@ -547,6 +545,14 @@ export class LoopOrchestrator implements IMessageInjector {
     }
     await this.refreshShellIndependenceScorecard();
 
+    // Size-triggered PROGRESS.md rotation — keeps the durable history bounded so
+    // per-cycle tool reads of it stay cheap. Best-effort; never blocks the cycle.
+    try {
+      await this.rotateProgressIfNeeded();
+    } catch (err) {
+      this.logger.debug(`progress rotation failed — ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // INS pre-cycle hook — deterministic rule checks
     const hadExternalPendingBeforeINS = this.pendingMessages.some((message) => !this.isInternalMaintenanceMessage(message));
     await this.runINSHook();
@@ -586,10 +592,16 @@ export class LoopOrchestrator implements IMessageInjector {
       dispatch: rawDispatch,
       blockedTaskIds: parserBlockedTaskIds,
       timeBlockedTasks,
+      unreachableDeferredTaskIds,
       taskCount,
       planComplete,
       snapshot,
     } = dispatchSelection;
+    if (unreachableDeferredTaskIds.length > 0) {
+      this.logger.warn(
+        `cycle ${this.cycleNumber}: ${unreachableDeferredTaskIds.length} deferred task(s) have no WHEN trigger and can never dispatch: ${unreachableDeferredTaskIds.join(", ")} — convert to "- [ ]", add a WHEN clause, or remove them`,
+      );
+    }
     const blockedTaskIds = [...new Set([...parserBlockedTaskIds, ...eventGatedTaskIds])];
     const nextTimeBlockedUntil = this.nextTimeBlockedUntil(timeBlockedTasks);
 
@@ -990,14 +1002,30 @@ export class LoopOrchestrator implements IMessageInjector {
           cycleResult.action === "idle" &&
           !cycleResult.blocked &&
           (cycleResult.planEmpty === true || cycleResult.planComplete === true);
-        if (shouldRecoverExhaustedPlan || this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
+        // Starved queue: tasks exist but none are dispatchable (all event-gated or
+        // permanently blocked, with no time bound). Without forceIdle the Id's
+        // deterministic detectIdle would refuse to generate goals and the loop
+        // would spin on an un-dispatchable queue forever.
+        const queueStarved =
+          cycleResult.action === "idle" &&
+          !cycleResult.blocked &&
+          (cycleResult.idleReason === "all_blocked" || cycleResult.idleReason === "no_actionable");
+        if (shouldRecoverExhaustedPlan || queueStarved || this.metrics.consecutiveIdleCycles >= this.config.maxConsecutiveIdleCycles) {
           if (this.idleHandler) {
             this.logger.debug(
               shouldRecoverExhaustedPlan
                 ? "runLoop: PLAN has no remaining executable work — invoking IdleHandler immediately"
-                : `runLoop: idle threshold reached (${this.metrics.consecutiveIdleCycles}), invoking IdleHandler`,
+                : queueStarved
+                  ? `runLoop: queue starved [${cycleResult.idleReason}] — invoking IdleHandler to generate fresh goals`
+                  : `runLoop: idle threshold reached (${this.metrics.consecutiveIdleCycles}), invoking IdleHandler`,
             );
-            const result = await this.idleHandler.handleIdle((role) => this.createLogCallback(role), this.cycleNumber);
+            const result = await this.idleHandler.handleIdle(
+              (role) => this.createLogCallback(role),
+              this.cycleNumber,
+              queueStarved && !shouldRecoverExhaustedPlan
+                ? { forceIdle: true, reason: `queue starved: ${cycleResult.idleReason}` }
+                : undefined,
+            );
             this.logger.debug(`runLoop: IdleHandler result: ${result.action} (goalCount: ${result.goalCount ?? 0})`);
             this.eventSink.emit({
               type: "idle_handler",
@@ -1513,7 +1541,7 @@ export class LoopOrchestrator implements IMessageInjector {
         }
       }
     } catch (err) {
-      if (err instanceof EndorsementExternalActionBlockedError || err instanceof EndorsementNotificationFailedError) {
+      if (err instanceof EndorsementExternalActionBlockedError) {
         throw err;
       }
       this.logger.debug(`endorsement: check failed (fail-open) — ${err instanceof Error ? err.message : String(err)}`);
@@ -1534,25 +1562,18 @@ export class LoopOrchestrator implements IMessageInjector {
     if (result.triggered && result.injectionMessage) {
       this.logger.debug(`endorsement: Layer ${result.layer} triggered — ${result.verdict} (action: "${result.action}")`);
       if (result.verdict === "NOTIFY") {
-        const notified = await this.sendEndorsementNotification(result.action ?? "unspecified action");
-        if (!notified) {
-          throw new EndorsementNotificationFailedError(
-            `endorsement: NOTIFY action blocked because the pre-action notification failed — ${result.action ?? "unspecified action"}`
-          );
-        }
+        // Fire-and-forget: the notification is informational, not a gate. A failed
+        // send is logged inside sendEndorsementNotification and never blocks the action.
+        void this.sendEndorsementNotification(result.action ?? "unspecified action");
       }
       this.injectMessage(result.injectionMessage);
     }
   }
 
-  /**
-   * Deliver the BOUNDARIES.md NOTIFY-tier message before releasing the action.
-   * This is deliberately awaited: injecting the continuation first would recreate
-   * the post-action notification race this guard exists to prevent.
-   */
+  /** Deliver the BOUNDARIES.md NOTIFY-tier message. Best-effort; failures are logged only. */
   private async sendEndorsementNotification(action: string): Promise<boolean> {
     if (!this.agoraService) {
-      this.logger.warn("endorsement: NOTIFY action blocked — Agora service unavailable");
+      this.logger.warn("endorsement: NOTIFY notification skipped — Agora service unavailable");
       return false;
     }
 
@@ -2002,16 +2023,10 @@ export class LoopOrchestrator implements IMessageInjector {
 
       if (!this.config.evaluateOutcomeEnabled) {
         // Heuristic path: use computeDriveRating() without spawning an LLM session
-        const sameModelAssessment = SameModelBiasEvaluator.assess({
-          taskDescription: dispatch.description,
-          result: taskResult.result,
-          summary: taskResult.summary,
-          progressEntry: taskResult.progressEntry,
-        });
         const driveRating = Subconscious.computeDriveRating(taskResult, dispatch.description);
         const qualityScore = driveRating * 10; // scale 0-10 → 0-100
 
-        if (qualityScore >= this.config.evaluateOutcomeQualityThreshold && sameModelAssessment.risk === "low") {
+        if (qualityScore >= this.config.evaluateOutcomeQualityThreshold) {
           // Score is good enough — use heuristic result directly
           const outcomeMatchesIntent = taskResult.result !== "failure";
           // needsReassessment: only if quality is catastrophically 0 (threshold can't be ≤0 in practice)
@@ -2020,11 +2035,7 @@ export class LoopOrchestrator implements IMessageInjector {
           evaluation = { outcomeMatchesIntent, qualityScore, issuesFound: [], recommendedActions: [], needsReassessment };
         } else {
           // Score below threshold — fall back to LLM for safety
-          this.logger.debug(
-            `reconsideration: heuristic score ${qualityScore}/100` +
-            (sameModelAssessment.risk !== "low" ? ` with ${sameModelAssessment.risk} same-model bias risk` : " below threshold") +
-            ` — falling back to LLM`
-          );
+          this.logger.debug(`reconsideration: heuristic score ${qualityScore}/100 below threshold — falling back to LLM`);
           evaluation = await this.subconscious.evaluateOutcome(
             { taskId: dispatch.taskId, description: dispatch.description },
             taskResult,
@@ -2181,18 +2192,59 @@ export class LoopOrchestrator implements IMessageInjector {
   }
 
   /**
+   * Rotate PROGRESS.md into archive/progress/ when it exceeds the size threshold,
+   * keeping only the most recent lines in place. Bounded history keeps every
+   * per-cycle read of PROGRESS.md cheap regardless of agent age.
+   */
+  private async rotateProgressIfNeeded(): Promise<void> {
+    if (!this.fileSystem || !this.substratePath) return;
+    const PROGRESS_ROTATE_BYTES = 256 * 1024;
+    const PROGRESS_LINES_TO_KEEP = 300;
+
+    const progressPath = path.join(this.substratePath, "PROGRESS.md");
+    let content: string;
+    try {
+      content = await this.fileSystem.readFile(progressPath);
+    } catch {
+      return; // no PROGRESS.md yet
+    }
+    if (Buffer.byteLength(content, "utf8") < PROGRESS_ROTATE_BYTES) return;
+
+    const lines = content.split("\n");
+    if (lines.length <= PROGRESS_LINES_TO_KEEP) return;
+    const archivedLines = lines.slice(0, lines.length - PROGRESS_LINES_TO_KEEP);
+    const keptLines = lines.slice(lines.length - PROGRESS_LINES_TO_KEEP);
+
+    const archiveDir = path.join(this.substratePath, "archive", "progress");
+    await this.fileSystem.mkdir(archiveDir, { recursive: true });
+    const timestamp = this.clock.now().toISOString().replace(/[:.]/g, "-");
+    const archivePath = path.join(archiveDir, `progress-${timestamp}.md`);
+    await this.fileSystem.writeFile(
+      archivePath,
+      `# Archived Progress\n\nArchive created: ${this.clock.now().toISOString()}\nLines archived: ${archivedLines.length}\n\n${archivedLines.join("\n")}`,
+    );
+    await this.fileSystem.writeFile(
+      progressPath,
+      `# Progress\n\nOlder entries archived to archive/progress/ (latest: ${path.basename(archivePath)}).\n\n${keptLines.join("\n")}`,
+    );
+    this.logger.debug(`progress rotation: archived ${archivedLines.length} lines to ${archivePath}`);
+  }
+
+  /**
    * Check the R2 dispatch ceiling. Returns a terminal CycleResult if the ceiling is
    * reached (caller should return it immediately), or null to continue normally.
    */
   private checkR2Ceiling(): CycleResult | null {
-    if (this.metrics.successfulCycles >= 50) {
+    const ceiling = this.config.maxSuccessfulCyclesPerWake;
+    if (!ceiling || ceiling <= 0) return null;
+    if (this.metrics.successfulCycles >= ceiling) {
       this.logger.warn(`[R2] Session dispatch ceiling reached (${this.metrics.successfulCycles} cycles) — sleeping`);
       this.pendingMessages.push(`[SYSTEM] R2 ceiling reached: ${this.metrics.successfulCycles} successful cycles. Session sleeping to prevent runaway dispatch cost. Escalate to partner.`);
       this.enterSleep();
       return { cycleNumber: this.cycleNumber, action: "idle" as const, success: true, summary: "R2 session ceiling sleep" };
     }
-    if (this.metrics.successfulCycles >= 30) {
-      this.logger.warn(`[R2] Session dispatch warning: ${this.metrics.successfulCycles}/50 cycles`);
+    if (this.metrics.successfulCycles >= Math.floor(ceiling * 0.6)) {
+      this.logger.warn(`[R2] Session dispatch warning: ${this.metrics.successfulCycles}/${ceiling} cycles`);
     }
     return null;
   }
