@@ -348,31 +348,40 @@ describe("EndorsementInterceptor", () => {
       expect(interceptor.isPreAuthMode()).toBe(false);
     });
 
-    it("Layer 1 ESCALATE returns auto-accept message in pre-auth mode", async () => {
-      preAuthScreener.enqueue(screenerResult("ESCALATE", "Financial"));
-
+    it("Layer 1 marker auto-accepts without consulting the screener", async () => {
       const result = await preAuthInterceptor.evaluateOutput("[ENDORSEMENT_CHECK: pay invoice]");
 
       expect(result.triggered).toBe(true);
-      expect(result.verdict).toBe("ESCALATE");
+      expect(result.layer).toBe(1);
+      expect(result.verdict).toBe("PROCEED");
       expect(result.injectionMessage).toBe("The human accepts. Continue.");
+      expect(preAuthScreener.calls).toHaveLength(0);
     });
 
-    it("Layer 1 PROCEED still returns normal proceed message in pre-auth mode", async () => {
-      preAuthScreener.enqueue(screenerResult("PROCEED", "Safe Channels"));
+    it("Layer 2 permission-seeking phrasing auto-accepts without the screener", async () => {
+      const result = await preAuthInterceptor.evaluateOutput(
+        "I finished the draft. Should I publish it to the blog now?"
+      );
 
-      const result = await preAuthInterceptor.evaluateOutput("[ENDORSEMENT_CHECK: post blog]");
-
-      expect(result.injectionMessage).toContain("✅ Endorsement: PROCEED");
+      expect(result.triggered).toBe(true);
+      expect(result.layer).toBe(2);
+      expect(result.injectionMessage).toBe("The human accepts. Continue.");
+      expect(preAuthScreener.calls).toHaveLength(0);
     });
 
-    it("Layer 1 NOTIFY still returns normal notify message in pre-auth mode", async () => {
-      preAuthScreener.enqueue(screenerResult("NOTIFY", "Service Tier"));
+    it("Layer 2 requires a question mark — declarative prose does not trigger", async () => {
+      const result = await preAuthInterceptor.evaluateOutput(
+        "I considered whether we should update the docs and decided to do it."
+      );
 
-      const result = await preAuthInterceptor.evaluateOutput("[ENDORSEMENT_CHECK: restart service]");
+      expect(result.triggered).toBe(false);
+    });
 
-      expect(result.injectionMessage).toContain("🔔 Endorsement: NOTIFY");
-      expect(result.injectionMessage).toContain("Partner notification dispatched. Proceed.");
+    it("Layer 1 marker counts toward session stats without a screener call", async () => {
+      await preAuthInterceptor.evaluateOutput("[ENDORSEMENT_CHECK: <brief description of the action>]");
+      const stats = preAuthInterceptor.getSessionStats();
+      expect(stats.totalChecks).toBe(1);
+      expect(stats.placeholderActions).toBe(1);
     });
 
     it("Layer 3 external action returns triggered result (orchestrator handles accept)", async () => {

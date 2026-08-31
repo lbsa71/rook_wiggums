@@ -542,7 +542,10 @@ export async function createLoopLayer(
         boundariesPath,
         logPath: endorsementLogPath,
         screenerModel: "haiku",
-        failVerdict: preAuthMode ? "PROCEED" : "NOTIFY",
+        // Under preAuthMode the interceptor answers before the screener is ever
+        // consulted, so this failure verdict is only reachable with preAuth off:
+        // notify Stefan and proceed rather than silently passing or blocking.
+        failVerdict: "NOTIFY",
       }
     );
     if (preAuthMode) {
