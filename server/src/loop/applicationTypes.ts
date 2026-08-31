@@ -70,6 +70,15 @@ export interface ApplicationConfig {
   };
   /** Optional two-stage dispatch: a cheap planner can choose direct execution or bounded fanout. */
   dualPrompt?: DualPromptConfig;
+  /** Configuration for post-task outcome evaluation. */
+  evaluateOutcome?: {
+    enabled: boolean;
+    qualityThreshold?: number;
+  };
+  /** R2 forced-sleep ceiling on successful cycles per wake. 0 or unset disables it. */
+  maxSuccessfulCyclesPerWake?: number;
+  /** When true, a commercial-shell defaultCodeBackend is honored for implicit code dispatch. */
+  allowCommercialImplicitDispatch?: boolean;
   maxConsecutiveIdleCycles?: number;
   mode?: "cycle" | "tick";
   sdkQueryFn?: SdkQueryFn;
