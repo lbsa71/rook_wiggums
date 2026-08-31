@@ -30,6 +30,24 @@ async function post(port: number, path: string): Promise<{ status: number; body:
   });
 }
 
+async function get(port: number, path: string): Promise<{ status: number; body: unknown; headers: http.IncomingHttpHeaders }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path, method: "GET" }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try {
+          resolve({ status: res.statusCode ?? 0, body: JSON.parse(data), headers: res.headers });
+        } catch {
+          resolve({ status: res.statusCode ?? 0, body: data, headers: res.headers });
+        }
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 async function setupSubstrateFiles(fs: InMemoryFileSystem) {
   await fs.mkdir("/substrate", { recursive: true });
   await fs.writeFile("/substrate/PLAN.md", "# Plan\n\n## Tasks\n- [x] Done");
@@ -157,5 +175,90 @@ describe("POST /api/canary/run", () => {
     expect(body.error).toBe("Rate limited");
     expect(typeof body.retryAfterSeconds).toBe("number");
     expect(body.retryAfterSeconds as number).toBeGreaterThan(0);
+  });
+});
+
+describe("GET /api/canary/status", () => {
+  let server: LoopHttpServer;
+  let port: number;
+  let fs: InMemoryFileSystem;
+  let canaryLogger: CanaryLogger;
+  let launcher: InMemorySessionLauncher;
+  let id: Id;
+  const canaryPath = "/data/canary-log.jsonl";
+
+  beforeEach(async () => {
+    fs = new InMemoryFileSystem();
+    await setupSubstrateFiles(fs);
+
+    canaryLogger = new CanaryLogger(fs, canaryPath);
+
+    launcher = new InMemorySessionLauncher();
+    const config = new SubstrateConfig("/substrate");
+    const reader = new SubstrateFileReader(fs, config);
+    const checker = new PermissionChecker();
+    const promptBuilder = new PromptBuilder(reader, checker);
+    const taskClassifier = new TaskClassifier({ strategicModel: "opus", tacticalModel: "sonnet" });
+    const clock = new FixedClock(new Date("2026-03-11T16:00:00.000Z"));
+
+    id = new Id(reader, checker, promptBuilder, launcher, clock, taskClassifier);
+
+    server = new LoopHttpServer();
+    server.setEventSink(new InMemoryEventSink(), clock);
+    server.setCanaryRoute(id, canaryLogger, "claude");
+
+    port = await server.listen(0);
+  });
+
+  afterEach(async () => {
+    await server.close();
+  });
+
+  it("returns rateLimited:false and nulls before any run has happened", async () => {
+    const res = await get(port, "/api/canary/status");
+
+    expect(res.status).toBe(200);
+    const body = res.body as Record<string, unknown>;
+    expect(body.rateLimited).toBe(false);
+    expect(body.lastRunAt).toBeNull();
+    expect(body.nextAvailableAt).toBeNull();
+    expect(body.retryAfterSeconds).toBe(0);
+    expect(body.rateLimitWindowSeconds).toBe(55 * 60);
+  });
+
+  it("does not itself trigger the rate limiter or invoke inference", async () => {
+    // No launcher.enqueueSuccess() call — if this handler ever called generateDrives(),
+    // the InMemorySessionLauncher would throw on an empty queue and the test would fail.
+    const first = await get(port, "/api/canary/status");
+    const second = await get(port, "/api/canary/status");
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect((second.body as Record<string, unknown>).rateLimited).toBe(false);
+  });
+
+  it("reports rateLimited:true with correct retryAfterSeconds after a run", async () => {
+    launcher.enqueueSuccess(JSON.stringify({ goalCandidates: [] }));
+    const runRes = await post(port, "/api/canary/run");
+    expect(runRes.status).toBe(200);
+
+    const statusRes = await get(port, "/api/canary/status");
+    expect(statusRes.status).toBe(200);
+    const body = statusRes.body as Record<string, unknown>;
+    expect(body.rateLimited).toBe(true);
+    expect(body.lastRunAt).toBe("2026-03-11T16:00:00.000Z");
+    expect(body.nextAvailableAt).toBe("2026-03-11T16:55:00.000Z");
+    expect(body.retryAfterSeconds).toBe(55 * 60);
+  });
+
+  it("returns 503 when the canary route is not configured", async () => {
+    const bareServer = new LoopHttpServer();
+    bareServer.setEventSink(new InMemoryEventSink(), new FixedClock(new Date()));
+    const barePort = await bareServer.listen(0);
+    try {
+      const res = await get(barePort, "/api/canary/status");
+      expect(res.status).toBe(503);
+    } finally {
+      await bareServer.close();
+    }
   });
 });
