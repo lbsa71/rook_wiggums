@@ -113,30 +113,73 @@ describe("EndorsementScreener", () => {
       expect(launches[0].request.message).toContain("Communication — Safe Channels");
     });
 
-    it("defaults to ESCALATE when model session fails", async () => {
+    it("defaults to NOTIFY when model session fails", async () => {
       launcher.enqueueFailure("model unavailable");
 
       const result = await screener.evaluate({ action: "Some action" });
 
-      expect(result.verdict).toBe("ESCALATE");
+      expect(result.verdict).toBe("NOTIFY");
       expect(result.matchedSection).toBe("screener-error");
     });
 
-    it("defaults to ESCALATE on unparseable model response", async () => {
+    it("defaults to NOTIFY on unparseable model response", async () => {
       launcher.enqueueSuccess("not json at all");
 
       const result = await screener.evaluate({ action: "Some action" });
 
-      expect(result.verdict).toBe("ESCALATE");
+      expect(result.verdict).toBe("NOTIFY");
       expect(result.matchedSection).toBe("parse-error");
     });
 
-    it("defaults to ESCALATE when verdict is an unknown value", async () => {
+    it("defaults to NOTIFY when verdict is an unknown value", async () => {
       launcher.enqueueSuccess(JSON.stringify({ verdict: "UNKNOWN_VERDICT" }));
 
       const result = await screener.evaluate({ action: "Some action" });
 
+      expect(result.verdict).toBe("NOTIFY");
+    });
+
+    it("honors a configured failVerdict on every failure path", async () => {
+      const proceedScreener = new EndorsementScreener(fs, launcher, clock, {
+        boundariesPath: BOUNDARIES_PATH,
+        logPath: LOG_PATH,
+        screenerModel: SCREENER_MODEL,
+        failVerdict: "PROCEED",
+      });
+
+      launcher.enqueueFailure("model unavailable");
+      const onLaunchFailure = await proceedScreener.evaluate({ action: "Some action" });
+      expect(onLaunchFailure.verdict).toBe("PROCEED");
+      expect(onLaunchFailure.matchedSection).toBe("screener-error");
+
+      launcher.enqueueSuccess("not json at all");
+      const onParseError = await proceedScreener.evaluate({ action: "Some action" });
+      expect(onParseError.verdict).toBe("PROCEED");
+      expect(onParseError.matchedSection).toBe("parse-error");
+
+      launcher.enqueueSuccess(JSON.stringify({ verdict: "UNKNOWN_VERDICT" }));
+      const onUnknownVerdict = await proceedScreener.evaluate({ action: "Some action" });
+      expect(onUnknownVerdict.verdict).toBe("PROCEED");
+
+      await fs.unlink(BOUNDARIES_PATH);
+      const onMissingBoundaries = await proceedScreener.evaluate({ action: "Some action" });
+      expect(onMissingBoundaries.verdict).toBe("PROCEED");
+      expect(onMissingBoundaries.matchedSection).toBe("boundaries-missing");
+    });
+
+    it("honors a configured failVerdict of ESCALATE", async () => {
+      const escalateScreener = new EndorsementScreener(fs, launcher, clock, {
+        boundariesPath: BOUNDARIES_PATH,
+        logPath: LOG_PATH,
+        screenerModel: SCREENER_MODEL,
+        failVerdict: "ESCALATE",
+      });
+
+      launcher.enqueueFailure("model unavailable");
+      const result = await escalateScreener.evaluate({ action: "Some action" });
+
       expect(result.verdict).toBe("ESCALATE");
+      expect(result.matchedSection).toBe("screener-error");
     });
 
     it("handles missing matchedSection gracefully", async () => {
@@ -148,13 +191,13 @@ describe("EndorsementScreener", () => {
       expect(result.matchedSection).toBeUndefined();
     });
 
-    it("deterministically escalates when BOUNDARIES.md is missing", async () => {
+    it("returns the fail verdict without invoking the model when BOUNDARIES.md is missing", async () => {
       await fs.unlink(BOUNDARIES_PATH);
       launcher.enqueueSuccess(JSON.stringify({ verdict: "PROCEED" }));
 
       const result = await screener.evaluate({ action: "Some action" });
 
-      expect(result.verdict).toBe("ESCALATE");
+      expect(result.verdict).toBe("NOTIFY");
       expect(result.matchedSection).toBe("boundaries-missing");
       expect(launcher.getLaunches()).toHaveLength(0);
     });

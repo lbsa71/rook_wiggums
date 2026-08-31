@@ -8,65 +8,11 @@ import { PromptBuilder, SubstrateSnapshot } from "../prompts/PromptBuilder";
 import { ISessionLauncher, ProcessLogEntry, LaunchOptions } from "../claude/ISessionLauncher";
 import { PlanParser } from "../parsers/PlanParser";
 import { ShellTriggerEvaluator } from "../parsers/ShellTriggerEvaluator";
-import { extractJson } from "../parsers/extractJson";
 import { AgentRole } from "../types";
 import { TaskClassifier } from "../TaskClassifier";
-import { AgoraReply } from "./Subconscious";
 import { RateLimitError } from "../../loop/RateLimitError";
 import { isRateLimitText } from "../../loop/rateLimitParser";
 import { ICycleLogWriter } from "../../substrate/io/ICycleLogWriter";
-import { EgoSessionCache } from "../EgoSessionCache";
-
-export interface EgoDecision {
-  action: "dispatch" | "update_plan" | "converse" | "idle";
-  taskId?: string;       // present when action === "dispatch"
-  description?: string;  // present when action === "dispatch"
-  content?: string;      // present when action === "update_plan"
-  entry?: string;        // present when action === "converse"
-  reason?: string;       // present when action === "idle"
-  agoraReplies: AgoraReply[];
-  operatingContextEntry?: string | null;
-  /**
-   * Optional handoff note from this Ego session for the next session.
-   * Written to ego_session_cache.md when non-null/non-empty.
-   * ~500-word limit enforced by EgoSessionCache.write().
-   */
-  sessionNotes?: string;
-}
-
-/**
- * JSON Schema for EgoDecision — used by OllamaSessionLauncher for
- * grammar-constrained decoding via the `format` field.
- */
-export const EGO_DECISION_SCHEMA = {
-  type: "object",
-  properties: {
-    action: {
-      type: "string",
-      enum: ["dispatch", "update_plan", "converse", "idle"],
-    },
-    taskId: { type: "string" },
-    description: { type: "string" },
-    content: { type: "string" },
-    entry: { type: "string" },
-    reason: { type: "string" },
-    operatingContextEntry: { type: ["string", "null"] },
-    sessionNotes: { type: "string" },
-    agoraReplies: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          to: { type: "string" },
-          text: { type: "string" },
-          inReplyTo: { type: "string" },
-        },
-        required: ["to", "text"],
-      },
-    },
-  },
-  required: ["action", "agoraReplies"],
-} as const;
 
 export interface DispatchResult {
   targetRole: AgentRole;
@@ -79,6 +25,8 @@ export interface DispatchNextResult {
   dispatch: DispatchResult | null;
   blockedTaskIds: string[];
   timeBlockedTasks: Array<{ taskId: string; blockedUntil: Date }>;
+  /** Deferred (- [~]) tasks with no WHEN trigger — permanently undispatchable as written. */
+  unreachableDeferredTaskIds: string[];
   taskCount: number;
   /** True when PLAN.md contains tasks and every task is complete. */
   planComplete: boolean;
@@ -101,83 +49,7 @@ export class Ego {
     private readonly workingDirectory?: string,
     private readonly sourceCodePath?: string,
     private readonly cycleLogWriter?: ICycleLogWriter,
-    private readonly sessionCache?: EgoSessionCache,
   ) {}
-
-  async decide(onLogEntry?: (entry: ProcessLogEntry) => void, runtimeContext?: string): Promise<EgoDecision> {
-    // Read session cache before launch (fail-closed: renames cache to .prev)
-    let sessionNotesContext: string | undefined;
-    if (this.sessionCache) {
-      try {
-        const cached = await this.sessionCache.read();
-        if (cached) {
-          sessionNotesContext = formatSessionNotesBlock(cached.writtenAt, cached.notes);
-        }
-      } catch {
-        // Session cache read failure is non-fatal — start fresh
-      }
-    }
-
-    try {
-      const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.EGO);
-      const eagerRefs = await this.promptBuilder.getEagerReferences(AgentRole.EGO);
-      const lazyRefs = this.promptBuilder.getLazyReferences(AgentRole.EGO);
-
-      // Combine runtimeContext with session notes (session notes are low-priority, appended last)
-      const combinedContext = [runtimeContext, sessionNotesContext].filter(Boolean).join("\n\n") || undefined;
-
-      const message = this.promptBuilder.buildAgentMessage(
-        eagerRefs,
-        lazyRefs,
-        `Analyze the current context. What should we do next?`,
-        combinedContext
-      );
-
-      const model = this.taskClassifier.getModel({ role: AgentRole.EGO, operation: "decide" });
-      const result = await this.sessionLauncher.launch({
-        systemPrompt,
-        message,
-      }, {
-        model,
-        onLogEntry,
-        cwd: this.workingDirectory,
-        continueSession: true,
-        persistSession: true,
-        outputSchema: EGO_DECISION_SCHEMA,
-        usageContext: { role: AgentRole.EGO, operation: "decide" },
-        ...(this.sourceCodePath ? { additionalDirs: [this.sourceCodePath] } : {}),
-      });
-
-      if (!result.success) {
-        return { action: "idle", reason: `Claude session error: ${result.error || "unknown"}`, agoraReplies: [] };
-      }
-
-      const parsed = extractJson(result.rawOutput) as EgoDecision;
-      if (!Array.isArray(parsed.agoraReplies)) {
-        parsed.agoraReplies = [];
-      }
-      if (parsed.operatingContextEntry) {
-        await this.appendOperatingContext(parsed.operatingContextEntry);
-      }
-
-      // Write session notes to cache if provided (best-effort; never blocks)
-      if (this.sessionCache && parsed.sessionNotes) {
-        try {
-          const scope = parsed.action === "dispatch" && parsed.taskId
-            ? `dispatched task ${parsed.taskId}`
-            : `action=${parsed.action}`;
-          await this.sessionCache.write(parsed.sessionNotes, scope);
-        } catch {
-          // Cache write failure is non-fatal
-        }
-      }
-
-      return parsed;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { action: "idle", reason: `Decision failed: ${msg}`, agoraReplies: [] };
-    }
-  }
 
   async readPlan(): Promise<string> {
     this.checker.assertCanRead(AgentRole.EGO, SubstrateFileType.PLAN);
@@ -269,10 +141,11 @@ export class Ego {
       taskId: t.id,
       blockedUntil: t.blockedUntil!,
     }));
+    const unreachableDeferredTaskIds = PlanParser.findUnreachableDeferredTasks(tasks).map((t) => t.id);
     const planComplete = tasks.length > 0 && PlanParser.isComplete(tasks);
     const next = await PlanParser.findNextActionable(tasks, this.triggerEvaluator, now, excludedTaskIds);
 
-    if (!next) return { dispatch: null, blockedTaskIds, timeBlockedTasks, taskCount: tasks.length, planComplete, snapshot };
+    if (!next) return { dispatch: null, blockedTaskIds, timeBlockedTasks, unreachableDeferredTaskIds, taskCount: tasks.length, planComplete, snapshot };
 
     return {
       dispatch: {
@@ -283,22 +156,10 @@ export class Ego {
       },
       blockedTaskIds,
       timeBlockedTasks,
+      unreachableDeferredTaskIds,
       taskCount: tasks.length,
       planComplete,
       snapshot,
     };
   }
-}
-
-/**
- * Formats session cache notes as a context block for injection into the agent message.
- */
-function formatSessionNotesBlock(writtenAt: Date, notes: string): string {
-  return `[EGO SESSION NOTES — last session, ${writtenAt.toISOString()}]
-Advisory only. These are notes your previous session left for you.
-Resume posture: verify-before-continuing. Check current substrate before acting on the below.
-
-${notes}
-
-[END SESSION NOTES — verify against current substrate before acting on the above]`;
 }

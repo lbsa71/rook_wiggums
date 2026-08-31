@@ -19,6 +19,9 @@ export interface SurvivalModelPolicyConfig {
 const FRONTIER_MODELS = new Set([
   "gpt-5.5",
   "gpt-5.4",
+  "claude-fable-5",
+  "claude-opus-5",
+  "claude-sonnet-5",
   "claude-opus-4-6",
   "claude-opus-4-5",
   "claude-opus-4-20250514",
@@ -35,7 +38,7 @@ const LOW_COST_BY_PROVIDER: Partial<Record<SessionUsage["provider"], string>> = 
 
 const NON_FRONTIER_BY_PROVIDER: Partial<Record<SessionUsage["provider"], string>> = {
   codex: "gpt-5.4-mini",
-  claude: "claude-sonnet-4-6",
+  claude: "claude-sonnet-5",
   anthropic: "claude-sonnet-4-20250514",
   gemini: "gemini-2.5-flash",
   vertex: "gemini-2.5-flash",

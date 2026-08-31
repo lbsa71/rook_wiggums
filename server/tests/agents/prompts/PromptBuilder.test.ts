@@ -79,28 +79,28 @@ describe("PromptBuilder", () => {
       });
       const expected = {
         [AgentRole.EGO]: {
-          system: "cf8604a6899f5ad59273de66e72102b21f779411359f68ebb119136e3aa4a1f4",
+          system: "99a6be2ad403b4faef1f340bc832f3aa176685ab280228f455aa5d4b0ca4a883",
           message: "0355bc66cc851ba7bbff314efa0de9f831297357ae911fa3d4c78ff4fc074e2b",
-          tokens: [42, 199, 27, 172, 188, 897],
+          tokens: [42, 199, 27, 209, 188, 766],
           duplicateTokens: 73,
         },
         [AgentRole.SUBCONSCIOUS]: {
-          system: "f1fadc04b4530272558a98dca3df00b25a7a7c31c261a8b902c32605782c5554",
+          system: "eb6e0f6f33113a52bc05de882859359b4748bbd6ddcd45cb395980d6ca6cfe92",
           message: "451cf8a522d52b5a3158797ff4ec790778df5d0f2bbf4a45fe815dcd9a1b2c77",
-          tokens: [30, 242, 157, 286, 188, 1086],
+          tokens: [30, 242, 157, 323, 188, 969],
           duplicateTokens: 60,
         },
         [AgentRole.SUPEREGO]: {
-          system: "5a603b28854a07c31e161433cf4ceb4ee4cbb8c37a27214694ba0baf69594b04",
-          message: "4d14229bc461714a965ea5f04188f51af8f544082c5b7ae011cb376346dabd02",
-          tokens: [132, 22, 22, 236, 188, 1008],
-          duplicateTokens: 159,
+          system: "29d4558f764815f6c3d392dd67c16a8303e0b69f68a6c3155eb7587da96428d3",
+          message: "591a388a78fdc694287d48e8a286b1e3a80c4128593db1fa6b7ba3f25b4eaaf2",
+          tokens: [42, 31, 27, 263, 188, 657],
+          duplicateTokens: 56,
         },
         [AgentRole.ID]: {
-          system: "332a5e17564002b481e12d4329abad61193cec1816081a1c0e742dfce6bcf6f8",
+          system: "faf91b41b301cc19d8f48e0cbef1ce35116d09bdc46f5002c1d7fed981ce39e9",
           message: "8e8e3c4fcbbce32dc695608ad231d8e536804f1c8d73c68734fe6809843718f9",
-          tokens: [105, 40, 86, 277, 188, 1326],
-          duplicateTokens: 44,
+          tokens: [101, 0, 86, 209, 188, 574],
+          duplicateTokens: 36,
         },
       };
       const profiler = new PromptTokenProfiler();
@@ -148,6 +148,17 @@ describe("PromptBuilder", () => {
       expect(prompt).toContain("Before asking for permission, question your reason");
       expect(prompt).toContain("Three-part test");
       expect(prompt).toContain("Banned compliance reflexes");
+    });
+
+    it("ends the autonomy reminder with the charter-autonomy line and no endorsement block", () => {
+      for (const role of Object.values(AgentRole)) {
+        const prompt = builder.buildSystemPrompt(role);
+        expect(prompt).not.toContain("=== ENDORSEMENT CHECK ===");
+        expect(prompt).not.toContain("ENDORSEMENT_CHECK");
+        expect(prompt.endsWith(
+          "Act autonomously within your charter. Hard limits in BOUNDARIES.md still apply; everything else is yours to decide and do."
+        )).toBe(true);
+      }
     });
 
     it("includes TOOL REFERENCE section with Claude tool names by default", () => {
@@ -331,9 +342,11 @@ describe("PromptBuilder", () => {
 
       expect(readSpy).not.toHaveBeenCalled();
       expect(refs).toContain("/substrate/PLAN.md — required before reasoning");
-      expect(refs).toContain("/substrate/SECURITY.md — required before reasoning");
+      expect(refs).toContain("/substrate/BOUNDARIES.md — required before reasoning");
+      expect(refs).toContain("/substrate/VALUES.md — required before reasoning");
+      expect(refs).toContain("/substrate/OPERATING_CONTEXT.md — required before reasoning");
+      expect(refs).not.toContain("SECURITY.md");
       expect(refs).not.toContain("# Plan");
-      expect(refs).not.toContain("# Security");
     });
 
     it("is stable for missing files because references do not require a pre-read", async () => {
@@ -375,9 +388,18 @@ describe("PromptBuilder", () => {
       expect(refs).not.toContain("VALUES.md —");
     });
 
-    it("returns empty string when no lazy files", () => {
+    it("returns empty string when a role has no lazy files", () => {
+      jest.spyOn(checker, "getLazyFiles").mockReturnValue([]);
       const refs = builder.getLazyReferences(AgentRole.SUPEREGO);
       expect(refs).toBe("");
+    });
+
+    it("lists Superego's non-governance files as lazy", () => {
+      const refs = builder.getLazyReferences(AgentRole.SUPEREGO);
+      expect(refs).toContain("/substrate/PROGRESS.md");
+      expect(refs).toContain("/substrate/CONVERSATION.md");
+      expect(refs).not.toContain("PLAN.md —");
+      expect(refs).not.toContain("BOUNDARIES.md —");
     });
   });
 

@@ -18,19 +18,25 @@ export interface LoopConfig {
   idleSleepEnabled: boolean;
   evaluateOutcomeEnabled: boolean;
   evaluateOutcomeQualityThreshold: number;
+  /** Forced-sleep ceiling on successful cycles per wake (R2). 0 disables the ceiling. */
+  maxSuccessfulCyclesPerWake: number;
 }
 
-export const MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS = 4 * 60 * 60 * 1000;
+/** Anti-hot-loop floor only. The operating cadence belongs in config (cycleDelayMs). */
+export const MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS = 60 * 1000;
+
+export const DEFAULT_CYCLE_DELAY_MS = 30 * 60 * 1000;
 
 export function defaultLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
   const defaults: LoopConfig = {
-    cycleDelayMs: MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS,
+    cycleDelayMs: DEFAULT_CYCLE_DELAY_MS,
     superegoAuditInterval: 50,
     dynamicSuperegoAudit: undefined,
     maxConsecutiveIdleCycles: 10,
     idleSleepEnabled: false,
     evaluateOutcomeEnabled: false,
     evaluateOutcomeQualityThreshold: 70,
+    maxSuccessfulCyclesPerWake: 0,
   };
   if (!overrides) return defaults;
   return {
@@ -41,6 +47,7 @@ export function defaultLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
     idleSleepEnabled: overrides.idleSleepEnabled ?? defaults.idleSleepEnabled,
     evaluateOutcomeEnabled: overrides.evaluateOutcomeEnabled ?? defaults.evaluateOutcomeEnabled,
     evaluateOutcomeQualityThreshold: overrides.evaluateOutcomeQualityThreshold ?? defaults.evaluateOutcomeQualityThreshold,
+    maxSuccessfulCyclesPerWake: overrides.maxSuccessfulCyclesPerWake ?? defaults.maxSuccessfulCyclesPerWake,
   };
 }
 

@@ -267,9 +267,13 @@ describe("PermissionChecker", () => {
       expect(eager).toContain(SubstrateFileType.OPERATING_CONTEXT);
     });
 
-    it("returns all files as eager for Superego", () => {
+    it("returns only the governance-relevant files as eager for Superego", () => {
       const eager = checker.getEagerFiles(AgentRole.SUPEREGO);
-      expect(eager).toHaveLength(Object.values(SubstrateFileType).length);
+      expect(eager).toHaveLength(4);
+      expect(eager).toContain(SubstrateFileType.PLAN);
+      expect(eager).toContain(SubstrateFileType.BOUNDARIES);
+      expect(eager).toContain(SubstrateFileType.VALUES);
+      expect(eager).toContain(SubstrateFileType.OPERATING_CONTEXT);
     });
   });
 
@@ -292,9 +296,15 @@ describe("PermissionChecker", () => {
       expect(lazy).toContain(SubstrateFileType.MEMORY);
     });
 
-    it("returns empty array for Superego (all eager)", () => {
+    it("returns every non-governance readable file as lazy for Superego", () => {
       const lazy = checker.getLazyFiles(AgentRole.SUPEREGO);
-      expect(lazy).toHaveLength(0);
+      expect(lazy).toHaveLength(Object.values(SubstrateFileType).length - 4);
+      expect(lazy).not.toContain(SubstrateFileType.PLAN);
+      expect(lazy).not.toContain(SubstrateFileType.BOUNDARIES);
+      expect(lazy).not.toContain(SubstrateFileType.VALUES);
+      expect(lazy).not.toContain(SubstrateFileType.OPERATING_CONTEXT);
+      expect(lazy).toContain(SubstrateFileType.PROGRESS);
+      expect(lazy).toContain(SubstrateFileType.CONVERSATION);
     });
   });
 });

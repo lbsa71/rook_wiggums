@@ -36,7 +36,6 @@ import { BudgetGuard } from "../budget/BudgetGuard";
 import { FlashGate } from "../gates/FlashGate";
 import { ShellIndependenceService } from "../shell/ShellIndependenceService";
 import { inferPiProvider } from "../shell/piProviderUtils";
-import { EgoSessionCache } from "../agents/EgoSessionCache";
 import type { IFlashGate } from "../gates/IFlashGate";
 import type { ApplicationConfig } from "./applicationTypes";
 import type { SubstrateLayerResult } from "./createSubstrateLayer";
@@ -545,8 +544,7 @@ export async function createAgentLayer(
     diskSpaceChecker: nodeDiskSpaceChecker,
   });
 
-  const egoSessionCache = new EgoSessionCache(config.substratePath, fs, clock);
-  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.EGO), config.sourceCodePath, cycleLogWriter, egoSessionCache);
+  const ego = new Ego(reader, writer, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.EGO), config.sourceCodePath, cycleLogWriter);
   const subconscious = new Subconscious(reader, writer, appendWriter, conversationManager, checker, promptBuilder, gatedLauncher, clock, taskClassifier, workspaceManager.workspacePath(AgentRole.SUBCONSCIOUS), cycleLogWriter, config.sourceCodePath);
   const superego = new Superego(reader, appendWriter, checker, promptBuilder, gatedLauncher, clock, taskClassifier, writer, workspaceManager.workspacePath(AgentRole.SUPEREGO), logger);
   const configuredModelClasses = config.dualPrompt?.modelClasses ?? {};

@@ -1,4 +1,4 @@
-import { Ego, EGO_DECISION_SCHEMA } from "../../../src/agents/roles/Ego";
+import { Ego } from "../../../src/agents/roles/Ego";
 import { PermissionChecker } from "../../../src/agents/permissions";
 import { PromptBuilder } from "../../../src/agents/prompts/PromptBuilder";
 import { InMemorySessionLauncher } from "../../../src/agents/claude/InMemorySessionLauncher";
@@ -84,171 +84,6 @@ describe("Ego agent", () => {
     await fs.writeFile("/substrate/PROGRESS.md", "# Progress\n\n");
     await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
     await fs.writeFile("/substrate/OPERATING_CONTEXT.md", "# Operating Context\n\n");
-  });
-
-  describe("decide", () => {
-    it("sends context to Claude and returns an EgoDecision", async () => {
-      const claudeResponse = JSON.stringify({
-        action: "dispatch",
-        taskId: "task-1",
-        description: "Implement task A",
-      });
-      launcher.enqueueSuccess(claudeResponse);
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("dispatch");
-    });
-
-    it("appends operating context when decision includes operatingContextEntry", async () => {
-      launcher.enqueueSuccess(JSON.stringify({
-        action: "idle",
-        reason: "handoff",
-        agoraReplies: [],
-        operatingContextEntry: "Keep watching Agora state",
-      }));
-
-      const decision = await ego.decide();
-
-      expect(decision.operatingContextEntry).toBe("Keep watching Agora state");
-      const operatingContext = await fs.readFile("/substrate/OPERATING_CONTEXT.md");
-      expect(operatingContext).toContain("[EGO] Keep watching Agora state");
-    });
-
-    it("returns idle decision with stderr when Claude fails", async () => {
-      launcher.enqueueFailure("claude: rate limited");
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("idle");
-      expect(decision.reason).toContain("claude: rate limited");
-    });
-
-    it("returns idle decision with error message on invalid JSON", async () => {
-      launcher.enqueueSuccess("not json");
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("idle");
-      expect(decision.reason).toMatch(/JSON|Unexpected|parse/i);
-    });
-
-    it("passes substratePath as cwd to session launcher", async () => {
-      launcher.enqueueSuccess(JSON.stringify({ action: "idle" }));
-
-      await ego.decide();
-
-      const launches = launcher.getLaunches();
-      expect(launches[0].options?.cwd).toBe("/workspace");
-    });
-
-    it("passes sourceCodePath as additionalDirs when provided", async () => {
-      const { ego: egoWithSource, launcher: launcher2 } = await makeEgo("/workspace", "/source/root");
-
-      launcher2.enqueueSuccess(JSON.stringify({ action: "idle" }));
-      await egoWithSource.decide();
-
-      const launches = launcher2.getLaunches();
-      expect(launches[0].options?.additionalDirs).toEqual(["/source/root"]);
-    });
-
-    it("does not set additionalDirs when sourceCodePath is not provided", async () => {
-      launcher.enqueueSuccess(JSON.stringify({ action: "idle" }));
-
-      await ego.decide();
-
-      const launches = launcher.getLaunches();
-      expect(launches[0].options?.additionalDirs).toBeUndefined();
-    });
-
-    it("forwards onLogEntry callback to session launcher", async () => {
-      launcher.enqueueSuccess(JSON.stringify({ action: "idle" }));
-
-      const logEntries: ProcessLogEntry[] = [];
-      await ego.decide((entry) => logEntries.push(entry));
-
-      // InMemorySessionLauncher doesn't emit log entries,
-      // but we verify the callback was passed by checking the recorded launch
-      const launches = launcher.getLaunches();
-      expect(launches[0].options?.onLogEntry).toBeDefined();
-    });
-
-    it("returns agoraReplies from the decision", async () => {
-      const response = JSON.stringify({
-        action: "idle",
-        reason: "waiting",
-        agoraReplies: [
-          { to: "stefan", text: "Standing by" },
-          { to: "nova", text: "Acknowledged", inReplyTo: "env-123" },
-        ],
-      });
-      launcher.enqueueSuccess(response);
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("idle");
-      expect(decision.agoraReplies).toHaveLength(2);
-      expect(decision.agoraReplies[0].to).toBe("stefan");
-      expect(decision.agoraReplies[0].text).toBe("Standing by");
-      expect(decision.agoraReplies[1].inReplyTo).toBe("env-123");
-    });
-
-    it("defaults agoraReplies to empty array when field is missing", async () => {
-      const response = JSON.stringify({
-        action: "idle",
-        reason: "waiting",
-      });
-      launcher.enqueueSuccess(response);
-
-      const decision = await ego.decide();
-      expect(decision.agoraReplies).toEqual([]);
-    });
-
-    it("returns empty agoraReplies on session failure", async () => {
-      launcher.enqueueFailure("rate limited");
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("idle");
-      expect(decision.agoraReplies).toEqual([]);
-    });
-
-    it("returns empty agoraReplies on invalid JSON", async () => {
-      launcher.enqueueSuccess("not valid json");
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("idle");
-      expect(decision.agoraReplies).toEqual([]);
-    });
-
-    it("passes EGO_DECISION_SCHEMA as outputSchema to session launcher", async () => {
-      launcher.enqueueSuccess(JSON.stringify({ action: "idle", agoraReplies: [] }));
-
-      await ego.decide();
-
-      const launches = launcher.getLaunches();
-      expect(launches[0].options?.outputSchema).toBe(EGO_DECISION_SCHEMA);
-    });
-
-    it("returns dispatch decision with agoraReplies", async () => {
-      const response = JSON.stringify({
-        action: "dispatch",
-        taskId: "t1",
-        description: "write spec",
-        agoraReplies: [],
-      });
-      launcher.enqueueSuccess(response);
-
-      const decision = await ego.decide();
-      expect(decision.action).toBe("dispatch");
-      expect(decision.taskId).toBe("t1");
-      expect(decision.agoraReplies).toEqual([]);
-    });
-
-    it("includes [RUNTIME STATE] in message when runtimeContext is provided", async () => {
-      launcher.enqueueSuccess(JSON.stringify({ action: "idle", agoraReplies: [] }));
-
-      await ego.decide(undefined, "Status: UP — endpoint healthy");
-
-      const launches = launcher.getLaunches();
-      expect(launches[0].request.message).toContain("[RUNTIME STATE]");
-      expect(launches[0].request.message).toContain("Status: UP — endpoint healthy");
-    });
   });
 
   describe("readPlan", () => {
@@ -344,6 +179,25 @@ describe("Ego agent", () => {
       expect(launches[0].options?.cwd).toBe("/workspace");
     });
 
+    it("passes sourceCodePath as additionalDirs when provided", async () => {
+      const { ego: egoWithSource, launcher: launcher2 } = await makeEgo("/workspace", "/source/root");
+      launcher2.enqueueSuccess("Hi!");
+
+      await egoWithSource.respondToMessage("Hello");
+
+      const launches = launcher2.getLaunches();
+      expect(launches[0].options?.additionalDirs).toEqual(["/source/root"]);
+    });
+
+    it("does not set additionalDirs when sourceCodePath is not provided", async () => {
+      launcher.enqueueSuccess("Hi!");
+
+      await ego.respondToMessage("Hello");
+
+      const launches = launcher.getLaunches();
+      expect(launches[0].options?.additionalDirs).toBeUndefined();
+    });
+
     it("builds respondToMessage system prompt from PromptBuilder plus message-mode instructions", async () => {
       launcher.enqueueSuccess("Hi!");
       const promptBuilderSpy = jest.spyOn(PromptBuilder.prototype, "buildSystemPrompt");
@@ -356,11 +210,9 @@ describe("Ego agent", () => {
       expect(systemPrompt).toContain("Your role is to plan, decide, and dispatch.");
       expect(systemPrompt).toContain("=== AUTONOMY REMINDER ===");
       expect(systemPrompt).toContain("Before asking for permission, question your reason.");
-      expect(systemPrompt).toContain("=== ENDORSEMENT CHECK ===");
-      expect(systemPrompt).toContain("[ENDORSEMENT_CHECK: <brief description of the action>]");
-      expect(systemPrompt).toContain("Before any action that may fall under BOUNDARIES.md NOTIFY or ESCALATE");
-      expect(systemPrompt).toContain("END THE TURN before any tool call, mutation, or external effect");
-      expect(systemPrompt).toContain("deliver the notification before authorizing continuation");
+      expect(systemPrompt).toContain("Act autonomously within your charter. Hard limits in BOUNDARIES.md still apply; everything else is yours to decide and do.");
+      expect(systemPrompt).not.toContain("=== ENDORSEMENT CHECK ===");
+      expect(systemPrompt).not.toContain("ENDORSEMENT_CHECK");
       expect(systemPrompt).toContain("=== MESSAGE MODE ===");
       expect(systemPrompt).toContain("A user or peer has sent you a message.");
 
@@ -406,6 +258,23 @@ describe("Ego agent", () => {
       expect(snapshot).toBeDefined();
       expect(snapshot.files[SubstrateFileType.PLAN]).toBeDefined();
       expect(snapshot.files[SubstrateFileType.PLAN]).toContain("Task A");
+    });
+
+    it("reports deferred tasks without WHEN triggers as unreachable", async () => {
+      await fs.writeFile(
+        "/substrate/PLAN.md",
+        "# Plan\n\n## Current Goal\nGoal\n\n## Tasks\n- [ ] Task A\n- [~] Orphan deferred task\n- [~] Gated task WHEN `true`\n"
+      );
+
+      const { dispatch, unreachableDeferredTaskIds } = await ego.dispatchNext();
+
+      expect(dispatch).toBeDefined();
+      expect(unreachableDeferredTaskIds).toEqual(["task-2"]);
+    });
+
+    it("returns empty unreachableDeferredTaskIds when no orphan deferred tasks exist", async () => {
+      const { unreachableDeferredTaskIds } = await ego.dispatchNext();
+      expect(unreachableDeferredTaskIds).toEqual([]);
     });
   });
 });

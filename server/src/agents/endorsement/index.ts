@@ -5,7 +5,5 @@ export type { EndorsementVerdict, ScreenerInput, ScreenerResult } from "./types"
 export { EndorsementInterceptor } from "./EndorsementInterceptor";
 export type { EndorsementSessionStats, EndorsementInterceptorOptions } from "./EndorsementInterceptor";
 export type { EndorsementInterceptResult, IEndorsementInterceptor } from "./IEndorsementInterceptor";
-export { HesitationDetector } from "./HesitationDetector";
-export type { HesitationMatch } from "./HesitationDetector";
 export { ActionClassifier } from "./ActionClassifier";
 export type { ActionClassification } from "./ActionClassifier";

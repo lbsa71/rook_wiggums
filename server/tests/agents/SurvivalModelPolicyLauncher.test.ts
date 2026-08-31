@@ -30,7 +30,7 @@ describe("SurvivalModelPolicyLauncher", () => {
       usageContext: { role: "SUBCONSCIOUS", operation: "evaluateOutcome" },
     });
 
-    expect(inner.getLaunches()[0].options?.model).toBe("claude-sonnet-4-6");
+    expect(inner.getLaunches()[0].options?.model).toBe("claude-sonnet-5");
   });
 
   it("allows frontier models only when the launch opts in explicitly", async () => {

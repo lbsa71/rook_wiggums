@@ -3,7 +3,7 @@ import { IFileSystem } from "../../src/substrate/abstractions/IFileSystem";
 import { LoopOrchestrator } from "../../src/loop/LoopOrchestrator";
 import { InMemoryEventSink } from "../../src/loop/InMemoryEventSink";
 import { ImmediateTimer } from "../../src/loop/ImmediateTimer";
-import { defaultLoopConfig, LoopState } from "../../src/loop/types";
+import { defaultLoopConfig, LoopConfig, LoopState } from "../../src/loop/types";
 import { InMemoryLogger } from "../../src/logging";
 import { Ego } from "../../src/agents/roles/Ego";
 import { Subconscious } from "../../src/agents/roles/Subconscious";
@@ -70,11 +70,11 @@ async function setupIdleSubstrate(fs: InMemoryFileSystem) {
   await fs.writeFile("/substrate/CONVERSATION.md", "# Conversation\n\n");
 }
 
-function createOrchestrator(substratePath?: string, fileSystem?: IFileSystem) {
+function createOrchestrator(substratePath?: string, fileSystem?: IFileSystem, configOverrides?: Partial<LoopConfig>) {
   const deps = createDeps();
   const logger = new InMemoryLogger();
   const eventSink = new InMemoryEventSink();
-  const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 100 });
+  const config = defaultLoopConfig({ maxConsecutiveIdleCycles: 100, ...configOverrides });
   const orchestrator = new LoopOrchestrator(
     deps.ego, deps.subconscious, deps.superego, deps.id,
     deps.appendWriter, deps.clock, new ImmediateTimer(), eventSink,
@@ -87,8 +87,23 @@ function createOrchestrator(substratePath?: string, fileSystem?: IFileSystem) {
 }
 
 describe("R2 pre-dispatch ceiling check", () => {
-  it("enters SLEEPING (not STOPPED) when successfulCycles >= 50", async () => {
+  it("is disabled by default (maxSuccessfulCyclesPerWake = 0)", async () => {
     const { orchestrator, logger, deps } = createOrchestrator();
+    await setupIdleSubstrate(deps.fs);
+    (orchestrator as unknown as { metrics: { successfulCycles: number } }).metrics.successfulCycles = 50;
+
+    orchestrator.start();
+    orchestrator.stop();
+    const runPromise = orchestrator.runLoop();
+    await runPromise;
+
+    expect(orchestrator.getState()).not.toBe(LoopState.SLEEPING);
+    const r2Entries = logger.getWarnEntries().filter(e => e.includes("[R2]"));
+    expect(r2Entries).toHaveLength(0);
+  });
+
+  it("enters SLEEPING (not STOPPED) when successfulCycles >= 50", async () => {
+    const { orchestrator, logger, deps } = createOrchestrator(undefined, undefined, { maxSuccessfulCyclesPerWake: 50 });
     await setupIdleSubstrate(deps.fs);
     // Force metrics to 50 successful cycles
     (orchestrator as unknown as { metrics: { successfulCycles: number } }).metrics.successfulCycles = 50;
@@ -104,7 +119,7 @@ describe("R2 pre-dispatch ceiling check", () => {
   });
 
   it("warns but does not halt when successfulCycles >= 30 and < 50", async () => {
-    const { orchestrator, logger, deps } = createOrchestrator();
+    const { orchestrator, logger, deps } = createOrchestrator(undefined, undefined, { maxSuccessfulCyclesPerWake: 50 });
     await setupIdleSubstrate(deps.fs);
     (orchestrator as unknown as { metrics: { successfulCycles: number } }).metrics.successfulCycles = 30;
 
@@ -119,7 +134,7 @@ describe("R2 pre-dispatch ceiling check", () => {
   });
 
   it("takes no R2 action when successfulCycles < 30", async () => {
-    const { orchestrator, logger, deps } = createOrchestrator();
+    const { orchestrator, logger, deps } = createOrchestrator(undefined, undefined, { maxSuccessfulCyclesPerWake: 50 });
     await setupIdleSubstrate(deps.fs);
     (orchestrator as unknown as { metrics: { successfulCycles: number } }).metrics.successfulCycles = 10;
 

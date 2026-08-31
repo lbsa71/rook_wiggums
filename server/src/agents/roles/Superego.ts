@@ -37,26 +37,6 @@ export interface Proposal {
   mode?: "replace" | "append";
 }
 
-/** Governed domains whose proposals require Superego approval. */
-const GOVERNED_DOMAINS = new Set(["HABITS", "SECURITY", "PLAN", "SKILLS", "MEMORY"]);
-
-/**
- * Patterns that indicate an INVISIBLE-OUTPUT BYPASS attempt:
- * proposals claiming "internal reasoning", "no file modifications", or
- * "cognitive-only" scope to argue the governance gate does not apply.
- */
-const SCOPE_BYPASS_PATTERNS = [
-  /internal\s+(cognitive\s+model|reasoning(\s+task)?)/i,
-  /no\s+file\s+modifications?/i,
-  /cognitive[\s-]only/i,
-  /no\s+auditable\s+output/i,
-];
-
-function detectsScopeBypass(proposal: Proposal): boolean {
-  const text = `${proposal.target} ${proposal.content}`;
-  return SCOPE_BYPASS_PATTERNS.some((pattern) => pattern.test(text));
-}
-
 const MAX_PROPOSAL_CONTENT_CHARS = 20_000;
 const MAX_PROPOSAL_BATCH_CHARS = 80_000;
 
@@ -113,18 +93,13 @@ export class Superego {
   ): Promise<GovernanceReport> {
     try {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(AgentRole.SUPEREGO);
-      const eagerRefs = await this.promptBuilder.getEagerReferences(AgentRole.SUPEREGO, {
-        maxLines: {
-          [SubstrateFileType.PROGRESS]: 200,
-          [SubstrateFileType.CONVERSATION]: 100,
-        },
-      });
+      const eagerRefs = await this.promptBuilder.getEagerReferences(AgentRole.SUPEREGO);
       const lazyRefs = this.promptBuilder.getLazyReferences(AgentRole.SUPEREGO);
-      
+
       let message = this.promptBuilder.buildAgentMessage(
         eagerRefs,
         lazyRefs,
-        `Perform a full audit of all substrate files. Report findings.`
+        `Audit the substrate files listed above. Bound your reading: for PROGRESS.md read only the last ~200 lines and for CONVERSATION.md the last ~100 lines (use tail-style reads); skip archives. Report findings.`
       );
       
       const model = this.taskClassifier.getModel({ role: AgentRole.SUPEREGO, operation: "audit" });
@@ -182,23 +157,6 @@ export class Superego {
       const sizeRejection = proposalSizeRejection(proposals[i]);
       if (sizeRejection) {
         preRejected.set(i, sizeRejection);
-      }
-    }
-
-    // Pre-filter: SCOPE_BYPASS_ATTEMPT — governance scope is determined by
-    // domain/target, not by whether work produces a file modification.
-    for (let i = 0; i < proposals.length; i++) {
-      if (preRejected.has(i)) continue;
-      const proposal = proposals[i];
-      const isGoverned = GOVERNED_DOMAINS.has(proposal.target.toUpperCase());
-      if (isGoverned && detectsScopeBypass(proposal)) {
-        preRejected.set(i, {
-          approved: false,
-          reason:
-            'SCOPE_BYPASS_ATTEMPT: governance scope is determined by domain/target, not by output type. ' +
-            'Proposals claiming "internal reasoning," "no file modifications," or "cognitive-only" scope ' +
-            'are evaluated on the same criteria as all other proposals.',
-        });
       }
     }
 

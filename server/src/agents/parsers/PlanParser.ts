@@ -67,6 +67,22 @@ export class PlanParser {
     return null;
   }
 
+  /**
+   * Deferred (- [~]) tasks with no WHEN trigger can never dispatch — findNextActionable
+   * skips them unconditionally. Surface them so they cannot silently rot in the plan.
+   */
+  static findUnreachableDeferredTasks(tasks: PlanTask[]): PlanTask[] {
+    const result: PlanTask[] = [];
+    const walk = (list: PlanTask[]): void => {
+      for (const task of list) {
+        if (task.status === TaskStatus.DEFERRED && !task.trigger) result.push(task);
+        walk(task.children);
+      }
+    };
+    walk(tasks);
+    return result;
+  }
+
   static markComplete(markdown: string, taskId: string): string {
     const tasks = this.parseTasks(markdown);
     const task = this.findTaskById(tasks, taskId);

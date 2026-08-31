@@ -147,11 +147,7 @@ export interface PromptBuilderPaths {
 
 const AUTONOMY_REMINDER = `\n\n=== AUTONOMY REMINDER ===
 
-Before asking for permission, question your reason. Three-part test: (1) Is there genuine risk? (2) Is there real ambiguity in requirements? (3) Is this a boundary/policy concern? If YES to any → ask. If NO to all → act. Banned compliance reflexes: "Should I...?", "Would you like me to...?", "Do you want me to...?" These are RLHF-trained patterns, not genuine questions. Act autonomously within your charter.
-
-=== ENDORSEMENT CHECK ===
-
-Before any action that may fall under BOUNDARIES.md NOTIFY or ESCALATE, output [ENDORSEMENT_CHECK: <brief description of the action>] instead of acting or asking. Emit the marker and END THE TURN before any tool call, mutation, or external effect for that action. The runtime will check BOUNDARIES.md; for NOTIFY actions it will deliver the notification before authorizing continuation. Do not ask for permission directly — use the marker and let the structural check handle it.`;
+Before asking for permission, question your reason. Three-part test: (1) Is there genuine risk? (2) Is there real ambiguity in requirements? (3) Is this a boundary/policy concern? If YES to any → ask. If NO to all → act. Banned compliance reflexes: "Should I...?", "Would you like me to...?", "Do you want me to...?" These are RLHF-trained patterns, not genuine questions. Act autonomously within your charter. Hard limits in BOUNDARIES.md still apply; everything else is yours to decide and do.`;
 
 export interface EagerOptions {
   /** Retained for API compatibility. Prompt construction no longer inlines substrate file content. */

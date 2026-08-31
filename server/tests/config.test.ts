@@ -1,7 +1,7 @@
 import { InMemoryFileSystem } from "../src/substrate/abstractions/InMemoryFileSystem";
 import { resolveConfig, ConfigValidationError } from "../src/config";
 import type { AppPaths } from "../src/paths";
-import { MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS } from "../src/loop/types";
+import { DEFAULT_CYCLE_DELAY_MS, MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS } from "../src/loop/types";
 
 const TEST_PATHS: AppPaths = {
   config: "/xdg/config/substrate",
@@ -268,10 +268,10 @@ describe("resolveConfig", () => {
     });
   });
 
-  it("clamps cycleDelayMs from config file below the survival minimum", async () => {
+  it("clamps cycleDelayMs from config file below the 60s anti-hot-loop floor", async () => {
     await fs.mkdir("/project", { recursive: true });
     await fs.writeFile("/project/config.json", JSON.stringify({
-      cycleDelayMs: 60000,
+      cycleDelayMs: 30000,
     }));
 
     const config = await resolveConfig(fs, {
@@ -283,7 +283,7 @@ describe("resolveConfig", () => {
     expect(config.cycleDelayMs).toBe(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS);
   });
 
-  it("uses cycleDelayMs from config file at or above the survival minimum", async () => {
+  it("honors cycleDelayMs from config file at or above the 60s floor", async () => {
     await fs.mkdir("/project", { recursive: true });
     await fs.writeFile("/project/config.json", JSON.stringify({
       cycleDelayMs: MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS + 1000,
@@ -298,13 +298,63 @@ describe("resolveConfig", () => {
     expect(config.cycleDelayMs).toBe(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS + 1000);
   });
 
-  it("defaults cycleDelayMs to the survival minimum", async () => {
+  it("defaults cycleDelayMs to DEFAULT_CYCLE_DELAY_MS (30 min)", async () => {
     const config = await resolveConfig(fs, {
       appPaths: TEST_PATHS,
       env: {},
     });
 
-    expect(config.cycleDelayMs).toBe(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS);
+    expect(config.cycleDelayMs).toBe(DEFAULT_CYCLE_DELAY_MS);
+  });
+
+  it("honors maxSuccessfulCyclesPerWake from config file", async () => {
+    await fs.mkdir("/project", { recursive: true });
+    await fs.writeFile("/project/config.json", JSON.stringify({
+      maxSuccessfulCyclesPerWake: 50,
+    }));
+
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      cwd: "/project",
+      env: {},
+    });
+
+    expect(config.maxSuccessfulCyclesPerWake).toBe(50);
+  });
+
+  it("leaves maxSuccessfulCyclesPerWake unset by default (R2 ceiling disabled)", async () => {
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      env: {},
+    });
+
+    expect(config.maxSuccessfulCyclesPerWake).toBeUndefined();
+  });
+
+  it("rejects negative maxSuccessfulCyclesPerWake", async () => {
+    await fs.mkdir("/project", { recursive: true });
+    await fs.writeFile("/project/config.json", JSON.stringify({
+      maxSuccessfulCyclesPerWake: -1,
+    }));
+
+    await expect(
+      resolveConfig(fs, { appPaths: TEST_PATHS, cwd: "/project", env: {} })
+    ).rejects.toThrow(ConfigValidationError);
+  });
+
+  it("honors allowCommercialImplicitDispatch from config file", async () => {
+    await fs.mkdir("/project", { recursive: true });
+    await fs.writeFile("/project/config.json", JSON.stringify({
+      allowCommercialImplicitDispatch: true,
+    }));
+
+    const config = await resolveConfig(fs, {
+      appPaths: TEST_PATHS,
+      cwd: "/project",
+      env: {},
+    });
+
+    expect(config.allowCommercialImplicitDispatch).toBe(true);
   });
 
   it("defaults conversationIdleTimeoutMs to 20000", async () => {

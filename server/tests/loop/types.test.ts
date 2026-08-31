@@ -2,6 +2,7 @@ import {
   LoopState,
   defaultLoopConfig,
   MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS,
+  DEFAULT_CYCLE_DELAY_MS,
   CycleResult,
   IdleReason,
   LoopEvent,
@@ -20,12 +21,18 @@ describe("defaultLoopConfig", () => {
   it("returns default configuration", () => {
     const config = defaultLoopConfig();
 
-    expect(config.cycleDelayMs).toBe(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS);
+    expect(config.cycleDelayMs).toBe(DEFAULT_CYCLE_DELAY_MS);
     expect(config.superegoAuditInterval).toBe(50);
     expect(config.dynamicSuperegoAudit).toBeUndefined();
     expect(config.maxConsecutiveIdleCycles).toBe(10);
     expect(config.evaluateOutcomeEnabled).toBe(false);
     expect(config.evaluateOutcomeQualityThreshold).toBe(70);
+    expect(config.maxSuccessfulCyclesPerWake).toBe(0);
+  });
+
+  it("keeps the anti-hot-loop floor at 60s and the default cadence at 30 minutes", () => {
+    expect(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS).toBe(60 * 1000);
+    expect(DEFAULT_CYCLE_DELAY_MS).toBe(30 * 60 * 1000);
   });
 
   it("clamps routine cycle delay overrides below the survival minimum", () => {
@@ -49,9 +56,15 @@ describe("defaultLoopConfig", () => {
       maxConsecutiveIdleCycles: undefined,
     });
 
-    expect(config.cycleDelayMs).toBe(MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS);
+    expect(config.cycleDelayMs).toBe(DEFAULT_CYCLE_DELAY_MS);
     expect(config.superegoAuditInterval).toBe(50);
     expect(config.maxConsecutiveIdleCycles).toBe(10);
+  });
+
+  it("allows overriding maxSuccessfulCyclesPerWake to enable the R2 ceiling", () => {
+    const config = defaultLoopConfig({ maxSuccessfulCyclesPerWake: 50 });
+
+    expect(config.maxSuccessfulCyclesPerWake).toBe(50);
   });
 
   it("allows overriding all fields", () => {

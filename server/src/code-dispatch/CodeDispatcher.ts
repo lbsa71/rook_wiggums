@@ -21,6 +21,7 @@ export class CodeDispatcher {
     private readonly backends: Map<BackendType, ICodeBackend>,
     private readonly clock: IClock,
     private readonly defaultBackend: BackendType = "auto",
+    private readonly allowCommercialImplicitDispatch: boolean = false,
   ) {}
 
   async dispatch(task: CodeTask): Promise<CodeResult> {
@@ -156,9 +157,13 @@ export class CodeDispatcher {
 
     // A configured commercial-shell default would make paid/opaque dispatch
     // implicit again. Prefer the portable Pi route for implicit dispatch while
-    // keeping commercial shells available only as explicit per-task overrides.
+    // keeping commercial shells available only as explicit per-task overrides —
+    // unless allowCommercialImplicitDispatch explicitly opts the default in.
     if (this.defaultBackend !== "auto") {
       if (isCommercialShellBackend(this.defaultBackend)) {
+        if (this.allowCommercialImplicitDispatch) {
+          return { backend: this.defaultBackend };
+        }
         if (this.backends.has("pi")) {
           return { backend: "pi" };
         }

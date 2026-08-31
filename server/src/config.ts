@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { IEnvironment } from "./substrate/abstractions/IEnvironment";
 import type { IFileSystem } from "./substrate/abstractions/IFileSystem";
 import type { AppPaths } from "./paths";
-import { MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS } from "./loop/types";
+import { DEFAULT_CYCLE_DELAY_MS, MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS } from "./loop/types";
 import { REASONING_EFFORT_VALUES, type ReasoningEffort } from "./agents/reasoningEffort";
 
 export class ConfigValidationError extends Error {
@@ -134,6 +134,7 @@ const AppConfigSchema = z
       .optional(),
     dualPrompt: DualPromptConfigSchema.optional(),
     cycleDelayMs: z.number().min(0).optional(),
+    maxSuccessfulCyclesPerWake: z.number().int().min(0).optional(),
     conversationIdleTimeoutMs: z.number().min(0).optional(),
     conversationArchive: z
       .object({
@@ -183,6 +184,7 @@ const AppConfigSchema = z
     ollamaModel: z.string().optional(),
     ollamaKeyPath: z.string().optional(),
     defaultCodeBackend: z.enum(["claude", "copilot", "codex", "gemini", "pi", "auto"]).optional(),
+    allowCommercialImplicitDispatch: z.boolean().optional(),
     ollamaOffload: z
       .object({
         enabled: z.boolean(),
@@ -331,8 +333,10 @@ export interface AppConfig {
   };
   /** Optional two-stage dispatch: a cheap planner can choose direct execution or bounded fanout. */
   dualPrompt?: DualPromptConfig;
-  /** Delay between loop cycles in ms (default: 30000). For primarily reactive agents, consider 60000 or more. */
+  /** Delay between loop cycles in ms (default: 1800000 — 30 min; floored at 60000). */
   cycleDelayMs?: number;
+  /** R2 forced-sleep ceiling on successful cycles per wake. 0 or unset disables it. */
+  maxSuccessfulCyclesPerWake?: number;
   /** How long (ms) a conversation session stays open after the last message before being closed (default: 20000). */
   conversationIdleTimeoutMs?: number;
   /** Maximum duration (ms) for a single conversation session. Prevents runaway sessions from blocking cycles.
@@ -392,6 +396,8 @@ export interface AppConfig {
   ollamaModel?: string;
   /** Default code backend to use for code dispatch tasks (default: "auto", which routes to Pi). */
   defaultCodeBackend?: "claude" | "copilot" | "codex" | "gemini" | "pi" | "auto";
+  /** When true, a commercial-shell defaultCodeBackend (claude/codex/...) is honored for implicit dispatch instead of being rerouted to pi. */
+  allowCommercialImplicitDispatch?: boolean;
   /** Configuration for Ollama offload — offloads maintenance tasks (compaction) to local Ollama.
    *  Uses ollamaBaseUrl/ollamaModel for endpoint config. Works regardless of sessionLauncher setting. */
   ollamaOffload?: {
@@ -495,7 +501,7 @@ export async function resolveConfig(
     backupRetentionCount: 14,
     superegoAuditInterval: 50,
     dynamicSuperegoAudit: undefined,
-    cycleDelayMs: MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS,
+    cycleDelayMs: DEFAULT_CYCLE_DELAY_MS,
     evaluateOutcome: {
       enabled: false,
       qualityThreshold: 85,
@@ -588,6 +594,7 @@ export async function resolveConfig(
       }
       : defaults.dynamicSuperegoAudit,
     cycleDelayMs: Math.max(fileConfig.cycleDelayMs ?? defaults.cycleDelayMs, MIN_SURVIVAL_ROUTINE_CYCLE_DELAY_MS),
+    maxSuccessfulCyclesPerWake: fileConfig.maxSuccessfulCyclesPerWake ?? defaults.maxSuccessfulCyclesPerWake,
     evaluateOutcome: fileConfig.evaluateOutcome
       ? {
         enabled: fileConfig.evaluateOutcome.enabled ?? defaults.evaluateOutcome!.enabled,
@@ -654,6 +661,7 @@ export async function resolveConfig(
     ollamaModel: providerFallback(fileConfig, "ollama")?.model ?? fileConfig.ollamaModel,
     ollamaKeyPath: providerFallback(fileConfig, "ollama")?.keyPath ?? fileConfig.ollamaKeyPath,
     defaultCodeBackend: fileConfig.defaultCodeBackend ?? defaults.defaultCodeBackend,
+    allowCommercialImplicitDispatch: fileConfig.allowCommercialImplicitDispatch ?? defaults.allowCommercialImplicitDispatch,
     ollamaOffload: fileConfig.ollamaOffload
       ? {
         enabled: fileConfig.ollamaOffload.enabled ?? false,

@@ -154,7 +154,12 @@ export class AgentSdkLauncher implements ISessionLauncher {
     const startTime = this.clock.now();
 
     const modelToUse = options?.model ?? this.model;
-    const effortToUse = options?.effort ?? this.effort;
+    const rawEffort = options?.effort ?? this.effort;
+    // Claude models accept low|medium|high|xhigh|max; "minimal" is a substrate-only
+    // level. Haiku models take no effort parameter at all — omit it for them.
+    const effortToUse = modelToUse.includes("haiku")
+      ? undefined
+      : rawEffort === "minimal" ? "low" : rawEffort;
     this.logger.debug(`sdk-launch: model=${modelToUse} effort=${effortToUse ?? "default"} cwd=${options?.cwd ?? "(inherit)"}`);
 
     const mcpEntries = Object.entries(this.mcpServers);

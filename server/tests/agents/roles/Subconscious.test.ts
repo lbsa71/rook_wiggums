@@ -521,7 +521,7 @@ describe("Subconscious agent", () => {
       expect(minRating).toBe(3);
     });
 
-    it("penalizes high same-model convergence risk in task scoring", () => {
+    it("applies no same-model convergence penalty (heuristic removed)", () => {
       const rating = Subconscious.computeDriveRating({
         result: "success",
         summary: "Rook and Bishop agreed; no issues remain",
@@ -531,7 +531,8 @@ describe("Subconscious agent", () => {
         proposals: [],
       }, "Review Rook's VALUES refinement under same-model conditions");
 
-      expect(rating).toBe(7);
+      // 5 baseline + 4 adversarial-work bonus; the task description no longer affects the score.
+      expect(rating).toBe(9);
     });
   });
 

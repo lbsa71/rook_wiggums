@@ -22,6 +22,12 @@ export interface EndorsementScreenerConfig {
   boundariesPath: string;
   logPath: string;
   screenerModel: string;
+  /**
+   * Verdict used when the screener itself fails (missing boundaries file, launch
+   * failure, unparseable output). Defaults to NOTIFY so screener flakiness never
+   * reads as "requires partner approval"; wiring sets PROCEED under preAuthMode.
+   */
+  failVerdict?: EndorsementVerdict;
 }
 
 export class EndorsementScreener implements IEndorsementScreener {
@@ -32,10 +38,14 @@ export class EndorsementScreener implements IEndorsementScreener {
     private readonly config: EndorsementScreenerConfig
   ) {}
 
+  private failVerdict(): EndorsementVerdict {
+    return this.config.failVerdict ?? "NOTIFY";
+  }
+
   async evaluate(input: ScreenerInput): Promise<ScreenerResult> {
     const boundaries = await this.loadBoundaries();
     if (boundaries === null) {
-      const verdict = { verdict: "ESCALATE" as const, matchedSection: "boundaries-missing" };
+      const verdict = { verdict: this.failVerdict(), matchedSection: "boundaries-missing" };
       await this.appendLog(input.action, verdict);
       return { ...verdict, timestamp: this.clock.now().getTime() };
     }
@@ -71,7 +81,7 @@ export class EndorsementScreener implements IEndorsementScreener {
     );
 
     if (!result.success) {
-      return { verdict: "ESCALATE", matchedSection: "screener-error" };
+      return { verdict: this.failVerdict(), matchedSection: "screener-error" };
     }
 
     return this.parseResponse(result.rawOutput);
@@ -84,7 +94,7 @@ export class EndorsementScreener implements IEndorsementScreener {
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        return { verdict: "ESCALATE", matchedSection: "parse-error" };
+        return { verdict: this.failVerdict(), matchedSection: "parse-error" };
       }
       const parsed = JSON.parse(jsonMatch[0]) as {
         verdict?: string;
@@ -96,7 +106,7 @@ export class EndorsementScreener implements IEndorsementScreener {
         matchedSection: parsed.matchedSection ?? undefined,
       };
     } catch {
-      return { verdict: "ESCALATE", matchedSection: "parse-error" };
+      return { verdict: this.failVerdict(), matchedSection: "parse-error" };
     }
   }
 
@@ -104,7 +114,7 @@ export class EndorsementScreener implements IEndorsementScreener {
     if (raw === "PROCEED" || raw === "NOTIFY" || raw === "ESCALATE") {
       return raw;
     }
-    return "ESCALATE";
+    return this.failVerdict();
   }
 
   private async appendLog(

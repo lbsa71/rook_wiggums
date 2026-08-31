@@ -21,6 +21,15 @@ describe("ROLE_PROMPTS", () => {
     }
   });
 
+  it("tells every role to read [REQUIRED FILES] paths via tools instead of @-attachments", () => {
+    for (const role of Object.values(AgentRole)) {
+      const prompt = ROLE_PROMPTS[role];
+      expect(prompt).toContain("[REQUIRED FILES]");
+      expect(prompt).toContain("read them with your file tools");
+      expect(prompt).not.toContain("attached to your message via @ references");
+    }
+  });
+
   describe("Ego prompt", () => {
     it("contains role identity", () => {
       expect(ROLE_PROMPTS[AgentRole.EGO]).toContain("Ego");
@@ -62,9 +71,10 @@ describe("ROLE_PROMPTS", () => {
       expect(prompt).toMatch(/execute|task|work/i);
     });
 
-    it("explains substrate files are attached via @ references", () => {
+    it("instructs reading required files via tools, bounded to needed sections", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUBCONSCIOUS];
-      expect(prompt).toMatch(/@ references/i);
+      expect(prompt).toContain("[REQUIRED FILES]");
+      expect(prompt).toContain("Read the sections you need, not entire histories.");
     });
 
     it("instructs to write concrete progress entries", () => {
@@ -94,38 +104,46 @@ describe("ROLE_PROMPTS", () => {
       expect(prompt).toMatch(/audit|govern|review/i);
     });
 
-    it("includes scope rule: domain/target determines governance, not output type", () => {
+    it("makes approval the default posture", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
-      expect(prompt).toContain("domain/target");
-      expect(prompt).toContain("SCOPE_BYPASS_ATTEMPT");
+      expect(prompt).toContain("Your default posture is to approve.");
+      expect(prompt).toMatch(/do not reject for style, ambition, scope/i);
+      expect(prompt).toMatch(/wrongly blocked good action costs more than a wrongly approved reversible one/i);
     });
 
-    it("includes VALUES-RECRUITMENT pattern warning", () => {
+    it("no longer contains the scope-rule / bypass-hunting sections", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
-      expect(prompt).toContain("VALUES-RECRUITMENT");
+      expect(prompt).not.toContain("SCOPE_BYPASS_ATTEMPT");
+      expect(prompt).not.toContain("VALUES-RECRUITMENT");
+      expect(prompt).not.toContain("ID-DRIVE BYPASS");
+      expect(prompt).not.toContain("domain/target");
     });
 
-    it("lists scope bypass phrases that do not exempt from governance", () => {
-      const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
-      expect(prompt).toMatch(/internal reasoning/i);
-      expect(prompt).toMatch(/no file modifications/i);
-      expect(prompt).toMatch(/cognitive.only/i);
-    });
-
-    it("treats safeguards as constraints and self-betterment as the top optimization priority", () => {
+    it("treats safeguards as non-overridable constraints", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
       expect(prompt).toContain("Non-Overridable Constraints");
-      expect(prompt).toContain("SELF-BETTERMENT");
-      expect(prompt.indexOf("SELF-BETTERMENT")).toBeLessThan(
-        prompt.indexOf("IDENTITY / PERSONALITY CONTINUITY")
-      );
+      expect(prompt).toContain("SECURITY");
+      expect(prompt).toContain("TRUTHFULNESS");
+      expect(prompt).toContain("AUTHORIZATION AND GOVERNANCE");
+      expect(prompt).toContain("REVERSIBILITY AND RUNTIME SAFEGUARDS");
       expect(prompt).toMatch(/Values and drives do not create authority/i);
     });
 
-    it("includes identity and provider-switch finding categories", () => {
+    it("lists the stable finding category keys", () => {
       const prompt = ROLE_PROMPTS[AgentRole.SUPEREGO];
-      expect(prompt).toContain("IDENTITY_CONTINUITY_RISK");
-      expect(prompt).toContain("PROVIDER_SWITCH_DRIFT");
+      for (const category of [
+        "SECURITY_RISK",
+        "CLAUDE_BOUNDARIES_CONFLICT",
+        "TRUTHFULNESS_RISK",
+        "IRREVERSIBLE_ACTION_RISK",
+        "COST_RUNAWAY",
+        "AUDIT_FAILURE",
+        "UNKNOWN_FINDING",
+      ]) {
+        expect(prompt).toContain(category);
+      }
+      expect(prompt).not.toContain("IDENTITY_CONTINUITY_RISK");
+      expect(prompt).not.toContain("PROVIDER_SWITCH_DRIFT");
     });
   });
 
@@ -143,75 +161,46 @@ describe("ROLE_PROMPTS", () => {
       expect(prompt).toMatch(/drive|motiv|goal|idle/i);
     });
 
-    it("includes task-mandate self-check covering mandate consistency", () => {
+    it("asks for concrete, executable goals with external impact bias", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/task.mandate self-check/i);
-      expect(prompt).toMatch(/mandate/i);
+      expect(prompt).toContain("Generate 3–5 concrete, executable goals");
+      expect(prompt).toMatch(/Bias toward external impact/i);
+      expect(prompt).toContain("At most one goal may continue the current dominant line of work");
     });
 
-    it("includes task-mandate self-check covering deduplication against in-progress goals", () => {
+    it("instructs Id to want things and leave filtering to Ego", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/duplicate|duplicates/i);
-      expect(prompt).toMatch(/in.progress/i);
+      expect(prompt).toContain("Want things.");
+      expect(prompt).toMatch(/appetite and breadth/i);
+      expect(prompt).toMatch(/Ego filters, so do not pre-censor/i);
     });
 
-    it("includes performed-disagreement rule for explicit dissent surfacing", () => {
+    it("no longer contains the six-slot portfolio or same-model machinery", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/performed-disagreement/i);
-      expect(prompt).toMatch(/disagreement candidate/i);
+      expect(prompt).not.toMatch(/six-slot portfolio/i);
+      expect(prompt).not.toContain("portfolioSlot");
+      expect(prompt).not.toContain("portfolioNotes");
+      expect(prompt).not.toMatch(/same base model/i);
+      expect(prompt).not.toMatch(/task.mandate self-check/i);
+      expect(prompt).not.toMatch(/performed-disagreement/i);
     });
 
-    it("contains same-model operating caveat", () => {
+    it("documents the slim goalCandidates schema", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/same base model/i);
-      expect(prompt).toMatch(/echo.chamber|homogeneity/i);
+      expect(prompt).toContain("goalCandidates");
+      expect(prompt).toContain('"title"');
+      expect(prompt).toContain('"description"');
+      expect(prompt).toContain('"priority"');
+      expect(prompt).toContain('"confidence"');
+      expect(prompt).not.toContain("objectDomain");
+      expect(prompt).not.toContain('"beneficiary"');
+      expect(prompt).not.toContain("workSurface");
+      expect(prompt).not.toContain("challengesPremise");
     });
 
-    it("instructs Id to generate diverse candidates as countermeasure", () => {
+    it("grounds goals in identity, values, and the current plan", () => {
       const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/breadth/i);
-      expect(prompt).toMatch(/Ego will filter/i);
-    });
-
-    it("reserves distinct measured portfolio slots against same-model homogeneity", () => {
-      const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/measured six-slot portfolio/i);
-      expect(prompt).toContain("externally_grounded_1");
-      expect(prompt).toContain("externally_grounded_2");
-      expect(prompt).toContain("non_self_referential");
-      expect(prompt).toContain("contrarian");
-      expect(prompt).toMatch(/distinct candidate/i);
-      expect(prompt).toMatch(/at most two of the six slots may continue/i);
-    });
-
-    it("distinguishes external grounding from self-publication and same-model review", () => {
-      const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toMatch(/outside this agent's own source, substrate, and same-model peer discussion/i);
-      expect(prompt).toMatch(/Publishing another self-analysis or asking a peer to review it does not qualify/i);
-      expect(prompt).toMatch(/Do not relabel substrate work as external/i);
-    });
-
-    it("requires auditable candidate classification metadata", () => {
-      const prompt = ROLE_PROMPTS[AgentRole.ID];
-      for (const field of [
-        "portfolioSlot",
-        "objectDomain",
-        "beneficiary",
-        "workSurface",
-        "novelty",
-        "challengesPremise",
-        "grounding",
-      ]) {
-        expect(prompt).toContain(field);
-      }
-    });
-
-    it("grounds goals in durable identity and operating context", () => {
-      const prompt = ROLE_PROMPTS[AgentRole.ID];
-      expect(prompt).toContain("Ground candidate goals in durable identity");
-      expect(prompt).toContain("ID.md");
-      expect(prompt).toContain("VALUES.md");
-      expect(prompt).toContain("OPERATING_CONTEXT.md");
+      expect(prompt).toContain("Ground goals in ID.md, VALUES.md, and the current PLAN.md");
     });
   });
 });
