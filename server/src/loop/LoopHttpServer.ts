@@ -385,6 +385,10 @@ export class LoopHttpServer {
         this.handleCanaryRun(res);
         break;
 
+      case "GET /api/canary/status":
+        this.handleCanaryStatus(res);
+        break;
+
       default:
         this.json(res, 404, { error: "Not found" });
     }
@@ -1087,6 +1091,46 @@ export class LoopHttpServer {
         this.json(res, 500, { error: message });
       }
     );
+  }
+
+  /**
+   * Cheap, read-only status check for the canary rate limiter. Never invokes inference and is
+   * never itself rate-limited — callers (baseline-sampling automation, peer agents) can poll this
+   * to learn when the next `/api/canary/run` call will succeed instead of eating a 429 against
+   * the real (LLM-backed) endpoint. Added 2026-08-31 in response to a cadence/rate-limit
+   * mismatch: cycleDelayMs dropped to 30min while CANARY_RATE_LIMIT_MS stayed at 55min, so
+   * cadence-driven callers now hit the limiter on almost every attempt.
+   */
+  private handleCanaryStatus(res: http.ServerResponse): void {
+    if (!this.canaryId || !this.clock) {
+      this.json(res, 503, { error: "Canary route not configured" });
+      return;
+    }
+
+    if (this.canaryLastRunAt === null) {
+      this.json(res, 200, {
+        rateLimited: false,
+        lastRunAt: null,
+        nextAvailableAt: null,
+        retryAfterSeconds: 0,
+        rateLimitWindowSeconds: LoopHttpServer.CANARY_RATE_LIMIT_MS / 1000,
+      });
+      return;
+    }
+
+    const now = this.clock.now().getTime();
+    const elapsed = now - this.canaryLastRunAt;
+    const remaining = LoopHttpServer.CANARY_RATE_LIMIT_MS - elapsed;
+    const rateLimited = remaining > 0;
+    const retryAfterSeconds = rateLimited ? Math.ceil(remaining / 1000) : 0;
+
+    this.json(res, 200, {
+      rateLimited,
+      lastRunAt: new Date(this.canaryLastRunAt).toISOString(),
+      nextAvailableAt: new Date(this.canaryLastRunAt + LoopHttpServer.CANARY_RATE_LIMIT_MS).toISOString(),
+      retryAfterSeconds,
+      rateLimitWindowSeconds: LoopHttpServer.CANARY_RATE_LIMIT_MS / 1000,
+    });
   }
 
   private tryStateTransition(res: http.ServerResponse, fn: () => void): void {
