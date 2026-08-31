@@ -148,7 +148,13 @@ export class AgoraOutboundProvider implements Provider {
 
     // Multi-recipient send via the `to` list.
     // For in-reply-to flows, unknown recipients should still work via relay reply semantics.
-    const resolvedTargets = (payload.to ?? []).map((ref) => ({
+    // Models sometimes pass a single comma-joined string ("rook@...,stefan@...") instead of
+    // an array — split defensively so each recipient resolves individually.
+    const toRefs = (payload.to ?? [])
+      .flatMap((ref) => (typeof ref === "string" ? ref.split(",") : [ref]))
+      .map((ref) => String(ref).trim())
+      .filter((ref) => ref.length > 0);
+    const resolvedTargets = toRefs.map((ref) => ({
       original: ref,
       resolved: resolvePeerReference(ref, peerDirectory),
     }));

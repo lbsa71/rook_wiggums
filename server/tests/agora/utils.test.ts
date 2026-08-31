@@ -73,6 +73,17 @@ describe("Agora utils", () => {
       expect(resolvePeerReference("unknown-peer", directory)).toBe("unknown-peer");
     });
 
+    it("resolves names case-insensitively when the match is unique", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      expect(resolvePeerReference("Rook", directory)).toBe("302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(resolvePeerReference("BISHOP", directory)).toBe("302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    });
+
+    it("resolves name@suffix8 with case-insensitive name", () => {
+      const directory = buildPeerReferenceDirectory(mockService as never);
+      expect(resolvePeerReference("Bishop@bbbbbbbb", directory)).toBe("302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    });
+
     it("compacts inline @refs only for IDs present in config", () => {
       const directory = buildPeerReferenceDirectory(mockService as never);
       const text = "ping @302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa and @302a300506032b6570032100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";

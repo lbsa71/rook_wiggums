@@ -191,6 +191,27 @@ describe("AgoraOutboundProvider", () => {
       });
     });
 
+    it("should split comma-joined recipient strings into individual refs", async () => {
+      await provider.start();
+
+      const message = createMessage({
+        type: "agora.send",
+        payload: {
+          to: ["test-peer, other-peer"],
+          type: "publish",
+          payload: { text: "Hello both" },
+        },
+      });
+
+      await provider.send(message);
+
+      expect(agoraService.sentToAll).toHaveLength(1);
+      expect(agoraService.sentToAll[0].recipients).toEqual([
+        "302a300506032b6570032100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "302a300506032b6570032100bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ]);
+    });
+
     it("should not throw on partial multi-recipient failure", async () => {
       agoraService.sendToAll = async (options) => {
         agoraService.sentToAll.push(options);

@@ -146,7 +146,34 @@ export function resolvePeerReference(reference: string, directory: PeerReference
   }
 
   const expanded = coreExpand ? coreExpand(token, directory) : expandLocal(token, directory);
-  return expanded ?? reference;
+  if (expanded) {
+    return expanded;
+  }
+
+  // Case-insensitive fallback: models routinely write "Stefan" for the peer
+  // configured as "stefan", and a failed resolution silently drops the reply.
+  // Only resolve when the lowercased name matches exactly one directory entry.
+  const lower = token.toLowerCase();
+  const byName = Object.values(directory).filter((entry) => entry.name?.toLowerCase() === lower);
+  if (byName.length === 1) {
+    return byName[0].publicKey;
+  }
+
+  // name@suffix8 with case-insensitive name (canonical short form).
+  const namedAtSuffix = token.match(/^(.+)@([0-9a-fA-F]{8})$/);
+  if (namedAtSuffix) {
+    const [, name, suffix] = namedAtSuffix;
+    const matches = Object.values(directory).filter(
+      (entry) =>
+        entry.name?.toLowerCase() === name.toLowerCase() &&
+        entry.publicKey.toLowerCase().endsWith(suffix.toLowerCase()),
+    );
+    if (matches.length === 1) {
+      return matches[0].publicKey;
+    }
+  }
+
+  return reference;
 }
 
 /**
